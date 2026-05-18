@@ -1,0 +1,45 @@
+{
+  "name": "cordillera-saas-pro",
+  "private": true,
+  "version": "3.0.0",
+  "workspaces": [
+    "backend",
+    "frontend",
+    "shared"
+  ],
+  "scripts": {
+    "dev": "concurrently \"npm run dev:backend\" \"npm run dev:frontend\"",
+    "dev:backend": "npm --workspace backend run dev",
+    "dev:frontend": "npm --workspace frontend run dev",
+    "db:up": "docker compose up -d postgres",
+    "db:down": "docker compose down",
+    "db:migrate": "npm --workspace backend run prisma:migrate",
+    "db:seed": "npm --workspace backend run prisma:seed",
+    "db:setup": "npm --workspace backend run db:setup",
+    "db:reset": "npm --workspace backend run db:reset",
+    "db:studio": "npm --workspace backend run prisma:studio",
+    "build": "npm run build:backend && npm run build:frontend",
+    "build:backend": "npm --workspace backend run build",
+    "build:frontend": "npm --workspace frontend run build",
+    "lint": "eslint .",
+    "lint:fix": "eslint . --fix",
+    "format": "prettier --write .",
+    "format:check": "prettier --check .",
+    "typecheck": "npm run typecheck:backend && npm run typecheck:frontend",
+    "typecheck:backend": "npm --workspace backend run typecheck",
+    "typecheck:frontend": "npm --workspace frontend run typecheck",
+    "security:audit": "npm audit --omit=dev",
+    "prerelease:check": "npm run lint && npm run typecheck && npm run build && npm run security:audit"
+  },
+  "devDependencies": {
+    "@eslint/js": "^9.39.4",
+    "concurrently": "^9.1.0",
+    "eslint": "^9.39.4",
+    "eslint-config-prettier": "^9.1.2",
+    "eslint-plugin-react": "^7.37.5",
+    "eslint-plugin-react-hooks": "^7.1.1",
+    "globals": "^17.6.0",
+    "prettier": "^3.8.3",
+    "typescript-eslint": "^8.59.3"
+  }
+}

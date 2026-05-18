@@ -1,0 +1,11 @@
+node_modules/
+dist/
+.env
+backend/data/
+backend/dist/
+frontend/.vite/
+frontend/node_modules/
+backend/node_modules/
+*.log
+coverage/
+backups/

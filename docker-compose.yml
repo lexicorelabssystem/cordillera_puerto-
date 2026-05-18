@@ -1,0 +1,121 @@
+services:
+  postgres:
+    image: postgres:16-alpine
+    container_name: cordillera-postgres
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER:-cordillera}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-cordillera_dev_2026}
+      POSTGRES_DB: ${POSTGRES_DB:-cordillera_dev}
+    ports:
+      - "5433:5432"
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U cordillera -d cordillera_dev"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+    networks:
+      - cordillera-net
+
+  backend:
+    build:
+      context: .
+      dockerfile: backend/Dockerfile
+    container_name: cordillera-backend
+    restart: unless-stopped
+    environment:
+      NODE_ENV: production
+      PORT: 4000
+      HOST: 0.0.0.0
+      DATABASE_URL: postgresql://${POSTGRES_USER:-cordillera}:${POSTGRES_PASSWORD:-cordillera_dev_2026}@postgres:5432/${POSTGRES_DB:-cordillera_dev}
+      JWT_SECRET: ${JWT_SECRET:-SsBGAtdu02uwk8MUkaggKpFiYVttIqynB7vHgLhiErI1H-gabA2SbJidRIoLV5pt}
+      JWT_ISSUER: cordillera-saas
+      JWT_AUDIENCE: cordillera-app
+      JWT_ACCESS_EXPIRES_IN: 15m
+      JWT_REFRESH_EXPIRES_IN: 7d
+      CORS_ORIGINS: ${CORS_ORIGINS:-http://localhost:80,http://localhost:5173}
+    ports:
+      - "4000:4000"
+    depends_on:
+      postgres:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD-SHELL", "wget -qO- http://localhost:4000/health || exit 1"]
+      interval: 15s
+      timeout: 5s
+      retries: 3
+      start_period: 10s
+    networks:
+      - cordillera-net
+
+  backup:
+    image: postgres:16-alpine
+    container_name: cordillera-backup
+    restart: unless-stopped
+    depends_on:
+      postgres:
+        condition: service_healthy
+    environment:
+      PGHOST: postgres
+      PGUSER: ${POSTGRES_USER:-cordillera}
+      PGPASSWORD: ${POSTGRES_PASSWORD:-cordillera_dev_2026}
+      PGDATABASE: ${POSTGRES_DB:-cordillera_dev}
+      BACKUP_DIR: /backups
+      BACKUP_RETENTION_DAYS: 30
+      BACKUP_CRON_SCHEDULE: "0 3 * * *"
+    volumes:
+      - backups:/backups
+      - ./scripts/backup-entrypoint.sh:/usr/local/bin/backup-entrypoint.sh:ro
+    entrypoint: ["/bin/sh", "/usr/local/bin/backup-entrypoint.sh"]
+    networks:
+      - cordillera-net
+
+  # Opcional: pgAdmin para administración de base de datos
+  pgadmin:
+    image: dpage/pgadmin4:8
+    container_name: cordillera-pgadmin
+    restart: unless-stopped
+    environment:
+      PGADMIN_DEFAULT_EMAIL: admin@cordillera.cl
+      PGADMIN_DEFAULT_PASSWORD: AdminDev2026*
+    ports:
+      - "5050:80"
+    depends_on:
+      postgres:
+        condition: service_healthy
+    networks:
+      - cordillera-net
+    profiles:
+      - dev
+
+  nginx:
+    image: nginx:alpine
+    container_name: cordillera-nginx
+    restart: unless-stopped
+    ports:
+      - "${NGINX_PORT:-80}:80"
+    volumes:
+      - ./nginx.conf:/etc/nginx/conf.d/default.conf:ro
+      - ./frontend/dist:/usr/share/nginx/html:ro
+    depends_on:
+      backend:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD-SHELL", "wget -qO- http://localhost:80/health || exit 1"]
+      interval: 15s
+      timeout: 3s
+      retries: 3
+    networks:
+      - cordillera-net
+
+volumes:
+  pgdata:
+    driver: local
+  backups:
+    driver: local
+
+networks:
+  cordillera-net:
+    driver: bridge

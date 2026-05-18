@@ -1,0 +1,172 @@
+import {
+  Controller, Get, Post, Patch, Delete, Body, Param, Query, HttpCode, HttpStatus,
+  UseGuards, ParseUUIDPipe,
+} from "@nestjs/common";
+import { ApiTags, ApiOperation, ApiBearerAuth, ApiQuery } from "@nestjs/swagger";
+import { AssessmentType } from "@prisma/client";
+import { AssessmentsService } from "./assessments.service.js";
+import { CreateAssessmentDto, UpdateAssessmentDto, AssessmentItemDto, ReorderItemsDto } from "./dto/create-assessment.dto.js";
+import { JwtAuthGuard } from "../../auth/jwt-auth.guard.js";
+import { RolesGuard } from "../../../common/guards/roles.guard.js";
+import { Roles } from "../../../common/decorators/roles.decorator.js";
+import { CurrentUser, JwtPayload } from "../../../common/decorators/current-user.decorator.js";
+
+@ApiTags("Assessments")
+@Controller("assessments")
+@UseGuards(JwtAuthGuard, RolesGuard)
+@ApiBearerAuth("access-token")
+export class AssessmentsController {
+  constructor(private readonly service: AssessmentsService) {}
+
+  // ─── CRUD ────────────────────────────────────────────
+
+  @Post()
+  @Roles("ADMIN", "SUPER_ADMIN", "UTP", "TEACHER")
+  @ApiOperation({ summary: "Crear evaluación en estado DRAFT" })
+  create(@Body() dto: CreateAssessmentDto, @CurrentUser() user: JwtPayload) {
+    return this.service.create(dto, user.sub);
+  }
+
+  @Get()
+  @Roles("ADMIN", "SUPER_ADMIN", "DIRECTION", "UTP", "TEACHER")
+  @ApiOperation({ summary: "Listar evaluaciones con filtros" })
+  @ApiQuery({ name: "courseId", required: false })
+  @ApiQuery({ name: "subjectId", required: false })
+  @ApiQuery({ name: "status", required: false })
+  @ApiQuery({ name: "assessmentType", required: false, enum: AssessmentType })
+  @ApiQuery({ name: "teacherId", required: false })
+  @ApiQuery({ name: "periodId", required: false })
+  @ApiQuery({ name: "page", required: false })
+  @ApiQuery({ name: "limit", required: false })
+  findAll(
+    @Query("courseId") courseId?: string,
+    @Query("subjectId") subjectId?: string,
+    @Query("status") status?: string,
+    @Query("assessmentType") assessmentType?: string,
+    @Query("teacherId") teacherId?: string,
+    @Query("periodId") periodId?: string,
+    @Query("page") page?: string,
+    @Query("limit") limit?: string,
+  ) {
+    return this.service.findAll(
+      { courseId, subjectId, status, assessmentType, teacherId, periodId },
+      Number(page ?? 1), Number(limit ?? 20),
+    );
+  }
+
+  @Get(":id")
+  @Roles("ADMIN", "SUPER_ADMIN", "DIRECTION", "UTP", "TEACHER", "STUDENT")
+  @ApiOperation({ summary: "Obtener evaluación por ID (incluye preguntas sin respuestas correctas para estudiantes)" })
+  findOne(@Param("id", ParseUUIDPipe) id: string) {
+    return this.service.findById(id);
+  }
+
+  @Patch(":id")
+  @Roles("ADMIN", "SUPER_ADMIN", "UTP", "TEACHER")
+  @ApiOperation({ summary: "Actualizar metadatos de evaluación" })
+  update(@Param("id", ParseUUIDPipe) id: string, @Body() dto: UpdateAssessmentDto) {
+    return this.service.update(id, dto);
+  }
+
+  @Delete(":id")
+  @HttpCode(HttpStatus.NO_CONTENT)
+  @Roles("ADMIN", "SUPER_ADMIN")
+  @ApiOperation({ summary: "Archivar evaluación (soft delete cuando tiene intentos)" })
+  remove(@Param("id", ParseUUIDPipe) id: string) {
+    return this.service.softDelete(id);
+  }
+
+  // ─── STATE MACHINE ───────────────────────────────────
+
+  @Post(":id/publish")
+  @HttpCode(HttpStatus.OK)
+  @Roles("ADMIN", "SUPER_ADMIN", "UTP", "TEACHER")
+  @ApiOperation({ summary: "DRAFT → PUBLISHED (requiere preguntas, fechas y periodo si sumativa)" })
+  publish(@Param("id", ParseUUIDPipe) id: string) {
+    return this.service.publish(id);
+  }
+
+  @Post(":id/activate")
+  @HttpCode(HttpStatus.OK)
+  @Roles("ADMIN", "SUPER_ADMIN", "UTP", "TEACHER")
+  @ApiOperation({ summary: "PUBLISHED → ACTIVE (requiere preguntas, puntaje máximo > 0)" })
+  activate(@Param("id", ParseUUIDPipe) id: string) {
+    return this.service.activate(id);
+  }
+
+  @Post(":id/close")
+  @HttpCode(HttpStatus.OK)
+  @Roles("ADMIN", "SUPER_ADMIN", "UTP", "TEACHER")
+  @ApiOperation({ summary: "ACTIVE → CLOSED (cierra recepción de respuestas)" })
+  close(@Param("id", ParseUUIDPipe) id: string) {
+    return this.service.close(id);
+  }
+
+  @Post(":id/start-grading")
+  @HttpCode(HttpStatus.OK)
+  @Roles("ADMIN", "SUPER_ADMIN", "UTP", "TEACHER")
+  @ApiOperation({ summary: "CLOSED → IN_GRADING" })
+  startGrading(@Param("id", ParseUUIDPipe) id: string) {
+    return this.service.startGrading(id);
+  }
+
+  @Post(":id/mark-graded")
+  @HttpCode(HttpStatus.OK)
+  @Roles("ADMIN", "SUPER_ADMIN", "UTP", "TEACHER")
+  @ApiOperation({ summary: "IN_GRADING → GRADED (requiere notas registradas)" })
+  markGraded(@Param("id", ParseUUIDPipe) id: string) {
+    return this.service.markGraded(id);
+  }
+
+  @Post(":id/mark-reported")
+  @HttpCode(HttpStatus.OK)
+  @Roles("ADMIN", "SUPER_ADMIN", "DIRECTION", "UTP", "TEACHER")
+  @ApiOperation({ summary: "GRADED → REPORTED" })
+  markReported(@Param("id", ParseUUIDPipe) id: string) {
+    return this.service.markReported(id);
+  }
+
+  @Post(":id/archive")
+  @HttpCode(HttpStatus.OK)
+  @Roles("ADMIN", "SUPER_ADMIN")
+  @ApiOperation({ summary: "REPORTED → ARCHIVED" })
+  archive(@Param("id", ParseUUIDPipe) id: string) {
+    return this.service.archive(id);
+  }
+
+  @Post(":id/revert-to-draft")
+  @HttpCode(HttpStatus.OK)
+  @Roles("ADMIN", "SUPER_ADMIN", "UTP", "TEACHER")
+  @ApiOperation({ summary: "PUBLISHED → DRAFT (solo si no tiene intentos)" })
+  revertToDraft(@Param("id", ParseUUIDPipe) id: string) {
+    return this.service.revertToDraft(id);
+  }
+
+  // ─── ASSESSMENT ITEMS ─────────────────────────────────
+
+  @Post(":id/items")
+  @Roles("ADMIN", "SUPER_ADMIN", "UTP", "TEACHER")
+  @ApiOperation({ summary: "Agregar preguntas a evaluación (solo en DRAFT)" })
+  addItems(@Param("id", ParseUUIDPipe) id: string, @Body() dto: { items: AssessmentItemDto[] }) {
+    return this.service.addItems(id, dto.items);
+  }
+
+  @Delete(":id/items/:questionId")
+  @HttpCode(HttpStatus.NO_CONTENT)
+  @Roles("ADMIN", "SUPER_ADMIN", "UTP", "TEACHER")
+  @ApiOperation({ summary: "Quitar pregunta de evaluación (solo en DRAFT)" })
+  removeItem(
+    @Param("id", ParseUUIDPipe) id: string,
+    @Param("questionId", ParseUUIDPipe) questionId: string,
+  ) {
+    return this.service.removeItem(id, questionId);
+  }
+
+  @Post(":id/items/reorder")
+  @HttpCode(HttpStatus.OK)
+  @Roles("ADMIN", "SUPER_ADMIN", "UTP", "TEACHER")
+  @ApiOperation({ summary: "Reordenar preguntas de evaluación" })
+  reorderItems(@Param("id", ParseUUIDPipe) id: string, @Body() dto: ReorderItemsDto) {
+    return this.service.reorderItems(id, dto);
+  }
+}

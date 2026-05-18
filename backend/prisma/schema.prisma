@@ -1,0 +1,1041 @@
+generator client {
+  provider        = "prisma-client-js"
+  previewFeatures = ["fullTextSearchPostgres"]
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+// ─── ENUMS ────────────────────────────────────────────
+
+enum UserRole {
+  SUPER_ADMIN
+  ADMIN
+  DIRECTION
+  UTP
+  TEACHER
+  STUDENT
+  PARENT
+}
+
+enum AssessmentType {
+  DIAGNOSTICA
+  PROCESO
+  CIERRE
+  PARCIAL
+  FINAL
+  SIMCE
+}
+
+enum QuestionType {
+  MULTIPLE_CHOICE
+  TRUE_FALSE
+  SHORT_ANSWER
+  ESSAY
+  MATCHING
+}
+
+enum AssessmentMode {
+  ONLINE
+  PRINTED
+  MIXED
+}
+
+enum AttemptStatus {
+  IN_PROGRESS
+  COMPLETED
+  TIMED_OUT
+  CLOSED
+  CANCELLED
+}
+
+enum AnswerStatus {
+  PENDING
+  CORRECT
+  INCORRECT
+  PARTIAL
+  OMITTED
+  MANUAL_REVIEW
+}
+
+enum RemedialStatus {
+  PENDING
+  IN_PROGRESS
+  COMPLETED
+  EVALUATED
+  EFFECTIVE
+  NOT_EFFECTIVE
+}
+
+enum ImportStatus {
+  PENDING
+  VALIDATING
+  READY
+  IMPORTING
+  COMPLETED
+  PARTIAL
+  FAILED
+}
+
+enum ResourceType {
+  GUIDE
+  PRESENTATION
+  PRINTABLE_TEST
+  WORKSHEET
+  REMEDIAL_ACTIVITY
+  CLASS_MATERIAL
+  EXTERNAL_LINK
+}
+
+enum ResourceStatus {
+  DRAFT
+  READY
+  PUBLISHED
+  USED_IN_CLASS
+  ARCHIVED
+}
+
+enum AssessmentDeliveryMode {
+  ONLINE
+  PRINTED
+  VISUAL_PROJECTED
+  NOTEBOOK
+  MIXED
+}
+
+enum LessonStatus {
+  PLANNED
+  EXECUTED
+  RESCHEDULED
+  CANCELLED
+  ARCHIVED
+}
+
+enum GuideType {
+  CONTENT
+  EXERCISES
+  REMEDIAL
+  REINFORCEMENT
+  HOMEWORK
+  EVALUATION
+  CLASS_GUIDE
+}
+
+enum PermissionAction {
+  USERS_CREATE
+  USERS_READ
+  USERS_UPDATE
+  USERS_DISABLE
+  USERS_EXPORT
+  ROLES_ASSIGN
+  PERMISSIONS_ASSIGN
+  SETTINGS_UPDATE
+  INSTITUTIONS_CREATE
+  INSTITUTIONS_UPDATE
+  INSTITUTIONS_DELETE
+  ACADEMIC_YEARS_CREATE
+  ACADEMIC_YEARS_UPDATE
+  ACADEMIC_YEARS_CLOSE
+  COURSES_CREATE
+  COURSES_UPDATE
+  SUBJECTS_CREATE
+  SUBJECTS_UPDATE
+  STUDENTS_CREATE
+  STUDENTS_READ
+  STUDENTS_UPDATE
+  STUDENTS_DISABLE
+  STUDENTS_IMPORT
+  STUDENTS_EXPORT
+  STUDENTS_TRANSFER
+  CURRICULUM_CREATE
+  CURRICULUM_UPDATE
+  CURRICULUM_IMPORT
+  CURRICULUM_EXPORT
+  QUESTIONS_CREATE
+  QUESTIONS_READ
+  QUESTIONS_UPDATE
+  QUESTIONS_DISABLE
+  QUESTIONS_SHARE
+  QUESTIONS_IMPORT
+  QUESTIONS_EXPORT
+  ASSESSMENTS_CREATE
+  ASSESSMENTS_READ
+  ASSESSMENTS_UPDATE
+  ASSESSMENTS_PUBLISH
+  ASSESSMENTS_APPLY
+  ASSESSMENTS_CLOSE
+  ASSESSMENTS_EXPORT
+  RESULTS_READ
+  RESULTS_EXPORT
+  RESULTS_CHANGE_REQUEST
+  RESULTS_CHANGE_APPROVE
+  RESULTS_CHANGE_REJECT
+  REPORTS_READ
+  REPORTS_EXPORT
+  VOICE_USE
+  AUDIT_READ
+  IMPORTS_EXECUTE
+  EXPORTS_EXECUTE
+}
+
+// ─── INSTITUCIÓN Y AÑO ACADÉMICO ─────────────────────
+
+model Institution {
+  id        String    @id @default(uuid()) @db.Uuid
+  name      String
+  rbd       String?   @unique
+  address   String?
+  phone     String?
+  email     String?
+  logoUrl   String?
+  sede      String?
+  region    String?
+  comuna    String?
+  jornada   String?
+  isActive  Boolean   @default(true)
+  createdAt DateTime  @default(now()) @db.Timestamptz()
+  updatedAt DateTime  @updatedAt @db.Timestamptz()
+  deletedAt DateTime? @db.Timestamptz()
+
+  academicYears    AcademicYear[]
+  users            User[]
+  courses          Course[]
+  auditLogs        AuditLog[]
+  learningResources LearningResource[]
+  lessons          Lesson[]
+  config           InstitutionConfig?
+
+  @@index([isActive])
+  @@map("institutions")
+}
+
+model InstitutionConfig {
+  id              String   @id @default(uuid()) @db.Uuid
+  institutionId   String   @unique @db.Uuid
+  gradingScaleMin Float    @default(1.0)
+  gradingScaleMax Float    @default(7.0)
+  exigencia       Float    @default(60.0)
+  allowGradeEdit  Boolean  @default(true)
+  allowSelfRegistration Boolean @default(false)
+  defaultLanguage String   @default("es-CL")
+  createdAt       DateTime @default(now()) @db.Timestamptz()
+  updatedAt       DateTime @updatedAt @db.Timestamptz()
+
+  institution Institution @relation(fields: [institutionId], references: [id], onDelete: Cascade)
+
+  @@map("institution_configs")
+}
+
+model AcademicYear {
+  id            String   @id @default(uuid()) @db.Uuid
+  institutionId String   @db.Uuid
+  year          Int
+  isActive      Boolean  @default(false)
+  startDate     DateTime @db.Date
+  endDate       DateTime @db.Date
+  createdAt     DateTime @default(now()) @db.Timestamptz()
+
+  institution Institution @relation(fields: [institutionId], references: [id], onDelete: Cascade)
+  courses     Course[]
+  periods     Period[]
+  lessons     Lesson[]
+
+  @@unique([institutionId, year])
+  @@index([institutionId, isActive])
+  @@map("academic_years")
+}
+
+model Period {
+  id             String    @id @default(uuid()) @db.Uuid
+  academicYearId String    @db.Uuid
+  name           String
+  type           String    @default("SEMESTER")
+  startDate      DateTime  @db.Date
+  endDate        DateTime  @db.Date
+  weight         Float?
+  status         String    @default("ACTIVE")
+  closedAt       DateTime? @db.Timestamptz()
+  closedBy       String?   @db.Uuid
+  reopenedAt     DateTime? @db.Timestamptz()
+  reopenedBy     String?   @db.Uuid
+  createdAt      DateTime  @default(now()) @db.Timestamptz()
+  updatedAt      DateTime  @updatedAt @db.Timestamptz()
+
+  academicYear AcademicYear @relation(fields: [academicYearId], references: [id], onDelete: Cascade)
+  assessments  Assessment[]
+
+  @@unique([academicYearId, name])
+  @@index([academicYearId, status])
+  @@map("periods")
+}
+
+// ─── USUARIOS Y ROLES ────────────────────────────────
+
+model User {
+  id                 String    @id @default(uuid()) @db.Uuid
+  institutionId      String?   @db.Uuid
+  email              String    @unique
+  passwordHash       String
+  firstName          String
+  lastName           String
+  role               UserRole  @default(STUDENT)
+  isActive           Boolean   @default(true)
+  mustChangePassword Boolean   @default(false)
+  lastLoginAt        DateTime? @db.Timestamptz()
+  refreshTokenHash   String?
+  createdAt          DateTime  @default(now()) @db.Timestamptz()
+  updatedAt          DateTime  @updatedAt @db.Timestamptz()
+  deletedAt          DateTime? @db.Timestamptz()
+
+  institution Institution?    @relation(fields: [institutionId], references: [id])
+  teacher     Teacher?
+  student     Student?
+  grades      Grade[]
+  auditEvents AuditLog[]      @relation("ActorAudit")
+  importJobs    ImportJob[]     @relation("ImportActor")
+  attempts      AssessmentAttempt[]
+  refreshTokens RefreshToken[]
+  createdResources LearningResource[]
+  userPermissions UserPermission[]
+  requestedGradeChanges GradeChangeRequest[] @relation("GradeChangeRequester")
+  reviewedGradeChanges  GradeChangeRequest[] @relation("GradeChangeReviewer")
+
+  @@index([email, isActive])
+  @@index([institutionId, role])
+  @@map("users")
+}
+
+model RefreshToken {
+  id        String    @id @default(uuid()) @db.Uuid
+  userId    String    @db.Uuid
+  tokenHash String    @unique
+  expiresAt DateTime  @db.Timestamptz()
+  revokedAt DateTime? @db.Timestamptz()
+  createdAt DateTime  @default(now()) @db.Timestamptz()
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+  @@index([tokenHash])
+  @@map("refresh_tokens")
+}
+
+model Permission {
+  id          String           @id @default(uuid()) @db.Uuid
+  action      PermissionAction @unique
+  description String
+  module      String
+  createdAt   DateTime         @default(now()) @db.Timestamptz()
+
+  userPermissions UserPermission[]
+
+  @@map("permissions")
+}
+
+model UserPermission {
+  id           String   @id @default(uuid()) @db.Uuid
+  userId       String   @db.Uuid
+  permissionId String   @db.Uuid
+  grantedBy    String?  @db.Uuid
+  createdAt    DateTime @default(now()) @db.Timestamptz()
+
+  user       User       @relation(fields: [userId], references: [id], onDelete: Cascade)
+  permission Permission @relation(fields: [permissionId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, permissionId])
+  @@index([userId])
+  @@map("user_permissions")
+}
+
+// ─── PROFESORES ──────────────────────────────────────
+
+model Teacher {
+  id     String  @id @default(uuid()) @db.Uuid
+  userId String  @unique @db.Uuid
+  rut    String?
+  title  String?
+
+  user                User                         @relation(fields: [userId], references: [id], onDelete: Cascade)
+  courseAssignments   TeacherCourseAssignment[]
+  assessments         Assessment[]
+  lessons             Lesson[]
+
+  @@map("teachers")
+}
+
+// ─── ESTUDIANTES ─────────────────────────────────────
+
+model Student {
+  id        String    @id @default(uuid()) @db.Uuid
+  userId    String?   @unique @db.Uuid
+  firstName String
+  lastName  String
+  rut       String?
+  gender    String?
+  birthDate DateTime? @db.Date
+  createdAt DateTime  @default(now()) @db.Timestamptz()
+  updatedAt DateTime  @updatedAt @db.Timestamptz()
+  deletedAt DateTime? @db.Timestamptz()
+
+  user      User?              @relation(fields: [userId], references: [id], onDelete: SetNull)
+  enrollments   Enrollment[]
+  grades        Grade[]
+  attempts      AssessmentAttempt[]
+  remedialPlans RemedialPlan[]
+
+  @@index([lastName, firstName])
+  @@map("students")
+}
+
+// ─── CURSOS ──────────────────────────────────────────
+
+model Course {
+  id             String   @id @default(uuid()) @db.Uuid
+  institutionId  String   @db.Uuid
+  academicYearId String   @db.Uuid
+  name           String
+  gradeLevel     Int
+  section        String?
+  maxStudents    Int      @default(45)
+  isActive       Boolean  @default(true)
+  createdAt      DateTime @default(now()) @db.Timestamptz()
+  updatedAt      DateTime @updatedAt @db.Timestamptz()
+
+  institution        Institution                  @relation(fields: [institutionId], references: [id])
+  academicYear       AcademicYear                 @relation(fields: [academicYearId], references: [id])
+  enrollments        Enrollment[]
+  teacherAssignments TeacherCourseAssignment[]
+  assessments        Assessment[]
+  learningResources  LearningResource[]
+  lessons            Lesson[]
+
+  @@unique([academicYearId, name])
+  @@index([institutionId, gradeLevel])
+  @@map("courses")
+}
+
+model Enrollment {
+  id         String   @id @default(uuid()) @db.Uuid
+  studentId  String   @db.Uuid
+  courseId   String   @db.Uuid
+  enrolledAt DateTime @default(now()) @db.Timestamptz()
+  isActive   Boolean  @default(true)
+
+  student Student @relation(fields: [studentId], references: [id], onDelete: Cascade)
+  course  Course  @relation(fields: [courseId], references: [id], onDelete: Cascade)
+
+  @@unique([studentId, courseId])
+  @@index([courseId, isActive])
+  @@map("enrollments")
+}
+
+model TeacherCourseAssignment {
+  id        String @id @default(uuid()) @db.Uuid
+  teacherId String @db.Uuid
+  courseId  String @db.Uuid
+  subjectId String @db.Uuid
+
+  teacher Teacher @relation(fields: [teacherId], references: [id], onDelete: Cascade)
+  course  Course  @relation(fields: [courseId], references: [id], onDelete: Cascade)
+  subject Subject @relation(fields: [subjectId], references: [id], onDelete: Cascade)
+
+  @@unique([teacherId, courseId, subjectId])
+  @@map("teacher_course_assignments")
+}
+
+// ─── ASIGNATURAS ─────────────────────────────────────
+
+model Subject {
+  id        String   @id @default(uuid()) @db.Uuid
+  name      String   @unique
+  code      String?  @unique
+  isActive  Boolean  @default(true)
+  createdAt DateTime @default(now()) @db.Timestamptz()
+
+  axes                Axis[]
+  units               CurriculumUnit[]
+  learningObjectives  LearningObjective[]
+  questions           Question[]
+  assessments         Assessment[]
+  teacherAssignments  TeacherCourseAssignment[]
+  curriculumRules     CurriculumRule[]
+  learningResources   LearningResource[]
+  lessons             Lesson[]
+
+  @@map("subjects")
+}
+
+model CurriculumRule {
+  id         String  @id @default(uuid()) @db.Uuid
+  subjectId  String  @db.Uuid
+  gradeLevel Int
+  isActive   Boolean @default(true)
+
+  subject Subject @relation(fields: [subjectId], references: [id])
+
+  @@unique([subjectId, gradeLevel])
+  @@map("curriculum_rules")
+}
+
+// ─── CURRÍCULUM: EJES, UNIDADES, HABILIDADES ─────────
+
+model Axis {
+  id          String @id @default(uuid()) @db.Uuid
+  subjectId   String @db.Uuid
+  name        String
+  description String?
+  sortOrder   Int    @default(0)
+
+  subject            Subject             @relation(fields: [subjectId], references: [id])
+  learningObjectives LearningObjective[]
+  questions          Question[]
+  learningResources  LearningResource[]
+
+  @@unique([subjectId, name])
+  @@map("axes")
+}
+
+model CurriculumUnit {
+  id          String @id @default(uuid()) @db.Uuid
+  subjectId   String @db.Uuid
+  gradeLevel  Int
+  name        String
+  description String?
+  sortOrder   Int    @default(0)
+  semester    Int    @default(1)
+
+  subject            Subject             @relation(fields: [subjectId], references: [id])
+  learningObjectives LearningObjective[]
+
+  @@unique([subjectId, gradeLevel, name])
+  @@map("curriculum_units")
+}
+
+model Skill {
+  id          String @id @default(uuid()) @db.Uuid
+  name        String @unique
+  description String?
+
+  learningObjectiveSkills LearningObjectiveSkill[]
+  questions               Question[]
+  learningResources       LearningResource[]
+
+  @@map("skills")
+}
+
+// ─── OBJETIVOS DE APRENDIZAJE ────────────────────────
+
+model LearningObjective {
+  id          String  @id @default(uuid()) @db.Uuid
+  subjectId   String  @db.Uuid
+  axisId      String? @db.Uuid
+  unitId      String? @db.Uuid
+  code        String  @unique
+  description String
+  gradeLevel  Int
+  isActive    Boolean @default(true)
+
+  subject      Subject               @relation(fields: [subjectId], references: [id])
+  axis         Axis?                 @relation(fields: [axisId], references: [id])
+  unit         CurriculumUnit?       @relation(fields: [unitId], references: [id])
+  skills       LearningObjectiveSkill[]
+  indicators   EvaluationIndicator[]
+  questions    Question[]
+  remedialPlans RemedialPlan[]
+  learningResources LearningResource[]
+
+  @@index([subjectId, gradeLevel])
+  @@map("learning_objectives")
+}
+
+model LearningObjectiveSkill {
+  id                  String @id @default(uuid()) @db.Uuid
+  learningObjectiveId String @db.Uuid
+  skillId             String @db.Uuid
+
+  learningObjective LearningObjective @relation(fields: [learningObjectiveId], references: [id], onDelete: Cascade)
+  skill             Skill             @relation(fields: [skillId], references: [id], onDelete: Cascade)
+
+  @@unique([learningObjectiveId, skillId])
+  @@map("learning_objective_skills")
+}
+
+model EvaluationIndicator {
+  id                  String @id @default(uuid()) @db.Uuid
+  learningObjectiveId String @db.Uuid
+  description         String
+  sortOrder           Int    @default(0)
+
+  learningObjective LearningObjective @relation(fields: [learningObjectiveId], references: [id], onDelete: Cascade)
+
+  @@map("evaluation_indicators")
+}
+
+// ─── BANCO DE PREGUNTAS ──────────────────────────────
+
+model Question {
+  id                  String       @id @default(uuid()) @db.Uuid
+  subjectId           String       @db.Uuid
+  axisId              String?      @db.Uuid
+  learningObjectiveId String?      @db.Uuid
+  skillId             String?      @db.Uuid
+  type                QuestionType
+  statement           String
+  explanation         String?
+  difficulty          Int          @default(2)
+  points              Float        @default(1.0)
+  isActive            Boolean      @default(true)
+  createdBy           String?      @db.Uuid
+  createdAt           DateTime     @default(now()) @db.Timestamptz()
+  updatedAt           DateTime     @updatedAt @db.Timestamptz()
+
+  subject             Subject?            @relation(fields: [subjectId], references: [id])
+  axis                Axis?               @relation(fields: [axisId], references: [id])
+  learningObjective   LearningObjective?  @relation(fields: [learningObjectiveId], references: [id])
+  skill               Skill?              @relation(fields: [skillId], references: [id])
+  options             QuestionOption[]
+  assessmentQuestions AssessmentQuestion[]
+  studentAnswers      StudentAnswer[]
+
+  @@index([subjectId, type, isActive])
+  @@index([learningObjectiveId])
+  @@map("questions")
+}
+
+model QuestionOption {
+  id         String  @id @default(uuid()) @db.Uuid
+  questionId String  @db.Uuid
+  text       String
+  isCorrect  Boolean @default(false)
+  sortOrder  Int     @default(0)
+
+  question Question @relation(fields: [questionId], references: [id], onDelete: Cascade)
+
+  @@index([questionId])
+  @@map("question_options")
+}
+
+// ─── EVALUACIONES ────────────────────────────────────
+
+model Assessment {
+  id               String                 @id @default(uuid()) @db.Uuid
+  courseId         String                 @db.Uuid
+  subjectId        String                 @db.Uuid
+  teacherId        String                 @db.Uuid
+  periodId         String?                @db.Uuid
+  title            String
+  description      String?
+  assessmentType   AssessmentType
+  deliveryMode     AssessmentDeliveryMode @default(ONLINE)
+  status           String                 @default("DRAFT")
+  semester         Int
+  maxScore         Float                  @default(100.0)
+  weight           Float?                 @default(0)
+  timeLimitMin     Int?
+  startDate        DateTime               @db.Timestamptz()
+  endDate          DateTime?              @db.Timestamptz()
+  isActive         Boolean                @default(true)
+  allowRetake      Boolean                @default(false)
+  shuffleQuestions Boolean                @default(false)
+  answerKeyFileId  String?                @db.Uuid
+  publishedAt      DateTime?              @db.Timestamptz()
+  closedAt         DateTime?              @db.Timestamptz()
+  gradingStartedAt DateTime?              @db.Timestamptz()
+  gradedAt         DateTime?              @db.Timestamptz()
+  reportedAt       DateTime?              @db.Timestamptz()
+  archivedAt       DateTime?              @db.Timestamptz()
+  createdBy        String                 @db.Uuid
+  createdAt        DateTime               @default(now()) @db.Timestamptz()
+  updatedAt        DateTime               @updatedAt @db.Timestamptz()
+
+  course    Course               @relation(fields: [courseId], references: [id])
+  subject   Subject              @relation(fields: [subjectId], references: [id])
+  teacher   Teacher              @relation(fields: [teacherId], references: [id])
+  period    Period?              @relation(fields: [periodId], references: [id])
+  questions AssessmentQuestion[]
+  attempts  AssessmentAttempt[]
+  grades    Grade[]
+  learningResources LearningResource[]
+
+  @@index([courseId, subjectId, assessmentType])
+  @@index([status])
+  @@index([isActive, startDate, endDate])
+  @@map("assessments")
+}
+
+model AssessmentQuestion {
+  id           String @id @default(uuid()) @db.Uuid
+  assessmentId String @db.Uuid
+  questionId   String @db.Uuid
+  sortOrder    Int    @default(0)
+  points       Float  @default(1.0)
+
+  assessment Assessment @relation(fields: [assessmentId], references: [id], onDelete: Cascade)
+  question   Question   @relation(fields: [questionId], references: [id], onDelete: Cascade)
+
+  @@unique([assessmentId, questionId])
+  @@index([assessmentId, sortOrder])
+  @@map("assessment_questions")
+}
+
+// ─── APLICACIÓN ONLINE ───────────────────────────────
+
+model AssessmentAttempt {
+  id           String        @id @default(uuid()) @db.Uuid
+  assessmentId String        @db.Uuid
+  studentId    String        @db.Uuid
+  userId       String        @db.Uuid
+  status       AttemptStatus @default(IN_PROGRESS)
+  startedAt    DateTime      @default(now()) @db.Timestamptz()
+  submittedAt  DateTime?     @db.Timestamptz()
+  timeSpentSec Int           @default(0)
+  totalScore   Float?
+  percentage   Float?
+
+  assessment Assessment     @relation(fields: [assessmentId], references: [id])
+  student    Student        @relation(fields: [studentId], references: [id])
+  user       User           @relation(fields: [userId], references: [id])
+  answers    StudentAnswer[]
+
+  @@unique([assessmentId, studentId])
+  @@index([assessmentId, status])
+  @@index([studentId])
+  @@map("assessment_attempts")
+}
+
+model StudentAnswer {
+  id               String       @id @default(uuid()) @db.Uuid
+  attemptId        String       @db.Uuid
+  questionId       String       @db.Uuid
+  selectedOptionId String?      @db.Uuid
+  textAnswer       String?
+  isCorrect        Boolean?
+  score            Float?
+  status           AnswerStatus @default(PENDING)
+  answeredAt       DateTime     @default(now()) @db.Timestamptz()
+  isGraded         Boolean      @default(false)
+
+  attempt  AssessmentAttempt @relation(fields: [attemptId], references: [id], onDelete: Cascade)
+  question Question          @relation(fields: [questionId], references: [id])
+
+  @@unique([attemptId, questionId])
+  @@map("student_answers")
+}
+
+// ─── NOTAS ───────────────────────────────────────────
+
+model Grade {
+  id           String   @id @default(uuid()) @db.Uuid
+  assessmentId String   @db.Uuid
+  studentId    String   @db.Uuid
+  grade        Float
+  score        Float?
+  percentage   Float?
+  comments     String?
+  recordedBy   String   @db.Uuid
+  createdAt    DateTime @default(now()) @db.Timestamptz()
+  updatedAt    DateTime @updatedAt @db.Timestamptz()
+
+  assessment Assessment @relation(fields: [assessmentId], references: [id], onDelete: Cascade)
+  student    Student    @relation(fields: [studentId], references: [id], onDelete: Cascade)
+  recorder   User       @relation(fields: [recordedBy], references: [id])
+
+  changeRequests GradeChangeRequest[]
+
+  @@unique([assessmentId, studentId])
+  @@index([studentId])
+  @@map("grades")
+}
+
+// ─── CAMBIOS DE NOTA ──────────────────────────────────
+
+enum GradeChangeStatus {
+  PENDING
+  APPROVED
+  REJECTED
+}
+
+model GradeChangeRequest {
+  id           String            @id @default(uuid()) @db.Uuid
+  gradeId      String            @db.Uuid
+  requestedBy  String            @db.Uuid
+  reviewedBy   String?           @db.Uuid
+  oldGrade     Float
+  newGrade     Float
+  reason       String
+  status       GradeChangeStatus @default(PENDING)
+  reviewNotes  String?
+  createdAt    DateTime          @default(now()) @db.Timestamptz()
+  reviewedAt   DateTime?         @db.Timestamptz()
+
+  grade     Grade @relation(fields: [gradeId], references: [id], onDelete: Cascade)
+  requester User  @relation("GradeChangeRequester", fields: [requestedBy], references: [id])
+  reviewer  User? @relation("GradeChangeReviewer", fields: [reviewedBy], references: [id])
+
+  @@index([gradeId])
+  @@index([requestedBy])
+  @@index([status])
+  @@map("grade_change_requests")
+}
+
+// ─── RUTAS REMEDIALES ────────────────────────────────
+
+model RemedialPlan {
+  id                  String         @id @default(uuid()) @db.Uuid
+  studentId           String         @db.Uuid
+  courseId            String         @db.Uuid
+  subjectId           String         @db.Uuid
+  learningObjectiveId String         @db.Uuid
+  title               String
+  description         String
+  status              RemedialStatus @default(PENDING)
+  startDate           DateTime       @db.Date
+  endDate             DateTime       @db.Date
+  preScore            Float?
+  postScore           Float?
+  assignedTo          String?        @db.Uuid
+  createdAt           DateTime       @default(now()) @db.Timestamptz()
+  updatedAt           DateTime       @updatedAt @db.Timestamptz()
+
+  student           Student           @relation(fields: [studentId], references: [id], onDelete: Cascade)
+  learningObjective LearningObjective @relation(fields: [learningObjectiveId], references: [id])
+  learningResources LearningResource[]
+
+  @@index([studentId, status])
+  @@index([assignedTo])
+  @@map("remedial_plans")
+}
+
+// ─── REPORTES ───────────────────────────────────────
+
+model Report {
+  id          String    @id @default(uuid()) @db.Uuid
+  type        String
+  entityId    String?   @db.Uuid
+  courseId    String?   @db.Uuid
+  subjectId   String?   @db.Uuid
+  studentId   String?   @db.Uuid
+  assessmentId String?  @db.Uuid
+  version     Int       @default(1)
+  status      String    @default("PENDING")
+  format      String    @default("PDF")
+  filters     Json?
+  fileAssetId String?   @db.Uuid
+  isOutdated  Boolean   @default(false)
+  generatedAt DateTime? @db.Timestamptz()
+  generatedBy String?   @db.Uuid
+  createdAt   DateTime  @default(now()) @db.Timestamptz()
+
+  @@index([type, entityId])
+  @@index([status])
+  @@index([courseId])
+  @@index([studentId])
+  @@map("reports")
+}
+
+// ─── IMPORTACIÓN / EXPORTACIÓN ───────────────────────
+
+model ImportJob {
+  id           String       @id @default(uuid()) @db.Uuid
+  entityType   String
+  fileName     String
+  fileSize     Int
+  status       ImportStatus @default(PENDING)
+  totalRows    Int          @default(0)
+  successRows  Int          @default(0)
+  errorRows    Int          @default(0)
+  errorDetails Json?
+  actorId      String?      @db.Uuid
+  createdAt    DateTime     @default(now()) @db.Timestamptz()
+  completedAt  DateTime?    @db.Timestamptz()
+
+  actor User? @relation("ImportActor", fields: [actorId], references: [id])
+
+  @@index([entityType, status])
+  @@index([actorId])
+  @@map("import_jobs")
+}
+
+model ExportJob {
+  id          String    @id @default(uuid()) @db.Uuid
+  entityType  String
+  format      String
+  filters     Json?
+  status      String    @default("PENDING")
+  fileUrl     String?
+  actorId     String?   @db.Uuid
+  createdAt   DateTime  @default(now()) @db.Timestamptz()
+  completedAt DateTime? @db.Timestamptz()
+
+  @@map("export_jobs")
+}
+
+// ─── AUDITORÍA ───────────────────────────────────────
+
+model AuditLog {
+  id            String   @id @default(uuid()) @db.Uuid
+  institutionId String?  @db.Uuid
+  actorId       String?  @db.Uuid
+  action        String
+  entityType    String
+  entityId      String?
+  oldValue      Json?
+  newValue      Json?
+  metadata      Json?
+  ipAddress     String?
+  userAgent     String?
+  createdAt     DateTime @default(now()) @db.Timestamptz()
+
+  institution Institution? @relation(fields: [institutionId], references: [id])
+  actor       User?        @relation("ActorAudit", fields: [actorId], references: [id])
+
+  @@index([actorId])
+  @@index([entityType, entityId])
+  @@index([createdAt])
+  @@index([action])
+  @@map("audit_logs")
+}
+
+// ─── ARCHIVOS ────────────────────────────────────────
+
+model FileAsset {
+  id           String    @id @default(uuid()) @db.Uuid
+  entityType   String
+  entityId     String?
+  fileName     String
+  originalName String
+  mimeType     String
+  size         Int
+  storagePath  String
+  url          String?
+  createdBy    String?   @db.Uuid
+  createdAt    DateTime  @default(now()) @db.Timestamptz()
+  expiresAt    DateTime? @db.Timestamptz()
+
+  presentations Presentation[]
+  lessons       Lesson[]
+
+  @@index([entityType, entityId])
+  @@map("file_assets")
+}
+
+// ─── RECURSOS PEDAGÓGICOS ───────────────────────────
+
+model LearningResource {
+  id                  String         @id @default(uuid()) @db.Uuid
+  institutionId       String         @db.Uuid
+  title               String
+  description         String?
+  type                ResourceType
+  status              ResourceStatus @default(DRAFT)
+  subjectId           String?        @db.Uuid
+  courseId            String?        @db.Uuid
+  gradeLevel          Int?
+  axisId              String?        @db.Uuid
+  learningObjectiveId String?        @db.Uuid
+  skillId             String?        @db.Uuid
+  assessmentId        String?        @db.Uuid
+  remedialPlanId      String?        @db.Uuid
+  version             Int            @default(1)
+  createdBy           String         @db.Uuid
+  updatedBy           String?        @db.Uuid
+  usedAt              DateTime?      @db.Timestamptz()
+  createdAt           DateTime       @default(now()) @db.Timestamptz()
+  updatedAt           DateTime       @updatedAt @db.Timestamptz()
+
+  institution        Institution?        @relation(fields: [institutionId], references: [id])
+  subject            Subject?            @relation(fields: [subjectId], references: [id])
+  course             Course?             @relation(fields: [courseId], references: [id])
+  axis               Axis?               @relation(fields: [axisId], references: [id])
+  learningObjective  LearningObjective?  @relation(fields: [learningObjectiveId], references: [id])
+  skill              Skill?              @relation(fields: [skillId], references: [id])
+  assessment         Assessment?         @relation(fields: [assessmentId], references: [id])
+  remedialPlan       RemedialPlan?       @relation(fields: [remedialPlanId], references: [id])
+  createdByUser      User                @relation(fields: [createdBy], references: [id])
+  guide              Guide?
+  presentation       Presentation?
+  lessonResources    LessonResource[]
+
+  @@index([institutionId, type, status])
+  @@index([learningObjectiveId])
+  @@index([courseId])
+  @@index([assessmentId])
+  @@map("learning_resources")
+}
+
+model Guide {
+  id           String    @id @default(uuid()) @db.Uuid
+  resourceId   String    @unique @db.Uuid
+  guideType    GuideType @default(CONTENT)
+  instructions String?
+  isPrintable  Boolean   @default(true)
+  version      Int       @default(1)
+
+  resource LearningResource @relation(fields: [resourceId], references: [id], onDelete: Cascade)
+
+  @@map("guides")
+}
+
+model Presentation {
+  id               String  @id @default(uuid()) @db.Uuid
+  resourceId       String  @unique @db.Uuid
+  presentationType String  @default("PDF")
+  fileAssetId      String? @db.Uuid
+  version          Int     @default(1)
+
+  resource  LearningResource @relation(fields: [resourceId], references: [id], onDelete: Cascade)
+  fileAsset FileAsset?       @relation(fields: [fileAssetId], references: [id])
+
+  @@map("presentations")
+}
+
+// ─── CLASES / SESIONES ──────────────────────────────
+
+model Lesson {
+  id                     String       @id @default(uuid()) @db.Uuid
+  institutionId          String       @db.Uuid
+  academicYearId         String?      @db.Uuid
+  courseId               String       @db.Uuid
+  subjectId              String       @db.Uuid
+  teacherId              String       @db.Uuid
+  title                  String
+  date                   DateTime     @db.Date
+  objective              String?
+  startDescription       String?
+  developmentDescription String?
+  closureDescription     String?
+  status                 LessonStatus @default(PLANNED)
+  executedAt             DateTime?    @db.Timestamptz()
+  fileAssetId            String?      @db.Uuid
+  notes                  String?
+  createdAt              DateTime     @default(now()) @db.Timestamptz()
+  updatedAt              DateTime     @updatedAt @db.Timestamptz()
+
+  institution  Institution       @relation(fields: [institutionId], references: [id])
+  academicYear AcademicYear?     @relation(fields: [academicYearId], references: [id])
+  course       Course            @relation(fields: [courseId], references: [id])
+  subject      Subject           @relation(fields: [subjectId], references: [id])
+  teacher      Teacher           @relation(fields: [teacherId], references: [id])
+  fileAsset    FileAsset?        @relation(fields: [fileAssetId], references: [id])
+  resources    LessonResource[]
+
+  @@index([courseId, date])
+  @@index([teacherId])
+  @@index([status])
+  @@map("lessons")
+}
+
+model LessonResource {
+  id         String @id @default(uuid()) @db.Uuid
+  lessonId   String @db.Uuid
+  resourceId String @db.Uuid
+  sortOrder  Int    @default(0)
+
+  lesson   Lesson            @relation(fields: [lessonId], references: [id], onDelete: Cascade)
+  resource LearningResource  @relation(fields: [resourceId], references: [id], onDelete: Cascade)
+
+  @@unique([lessonId, resourceId])
+  @@map("lesson_resources")
+}
