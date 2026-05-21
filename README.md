@@ -267,9 +267,9 @@ Niveles de desempeño:
 ## Próximos pasos
 
 - [ ] Frontend Next.js con App Router
-- [ ] Exportación PDF con Puppeteer/React-PDF
-- [ ] App móvil PWA para rendición offline
-- [ ] Lector de hojas de respuesta (OMR)
-- [ ] Notificaciones por email
-- [ ] Redis para caché y sesiones distribuidas
-- [ ] Tests unitarios y e2e
+- [ ] Exportación PDF server-side con Puppeteer (cliente: jsPDF implementado)
+- [x] App móvil PWA para rendición offline (Service Worker + manifest)
+- [x] Lector de hojas de respuesta (OMR) — `frontend/src/lib/omr.ts` + `OMRReader`
+- [x] Notificaciones por email — 7 tipos de notificación HTML
+- [x] Redis para caché y sesiones distribuidas — CacheModule con fallback in-memory
+- [x] Tests unitarios y e2e — 288 tests (168 backend + 120 frontend) + e2e smoke test
