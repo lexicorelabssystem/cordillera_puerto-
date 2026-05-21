@@ -48,8 +48,15 @@ export class ReportsController {
   @ApiOperation({ summary: "Listar reportes generados" })
   @ApiQuery({ name: "type", required: false })
   @ApiQuery({ name: "entityId", required: false })
-  list(@Query("type") type?: string, @Query("entityId") entityId?: string) {
-    return this.service.listReports(type, entityId);
+  @ApiQuery({ name: "page", required: false })
+  @ApiQuery({ name: "limit", required: false })
+  list(
+    @Query("type") type?: string,
+    @Query("entityId") entityId?: string,
+    @Query("page") page?: string,
+    @Query("limit") limit?: string,
+  ) {
+    return this.service.listReports(type, entityId, Number(page ?? 1), Number(limit ?? 20));
   }
 
   @Get(":id")

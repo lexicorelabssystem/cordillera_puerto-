@@ -8,12 +8,12 @@ export type FeatureFlag =
   | "grade_change_requests";
 
 export const DEFAULT_FEATURES: Record<FeatureFlag, boolean> = {
-  simce_bank: false,
+  simce_bank: true,
   remedial_routes: true,
   voice_input: true,
-  online_assessments: false,
+  online_assessments: true,
   parent_portal: false,
-  advanced_reports: false,
+  advanced_reports: true,
   grade_change_requests: true,
 };
 

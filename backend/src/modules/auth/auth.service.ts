@@ -11,8 +11,10 @@ import bcrypt from "bcryptjs";
 import * as crypto from "node:crypto";
 import { PrismaService } from "../prisma/prisma.service.js";
 import { AuditLogsService } from "../audit-logs/audit-logs.service.js";
+import { EmailService } from "../notifications/email.service.js";
 import type { AppConfig } from "../../config/config.module.js";
 import type { JwtPayload } from "../../common/decorators/current-user.decorator.js";
+import { validatePasswordPolicy } from "../../common/utils/password-policy.js";
 
 @Injectable()
 export class AuthService {
@@ -22,6 +24,7 @@ export class AuthService {
     private readonly prisma: PrismaService,
     private readonly jwtService: JwtService,
     private readonly auditLog: AuditLogsService,
+    private readonly emailService: EmailService,
     @Inject("APP_CONFIG") private readonly config: AppConfig,
   ) {}
 
@@ -275,10 +278,17 @@ export class AuthService {
       actorId: user.id, action: "PASSWORD_RESET_REQUESTED", entityType: "auth", entityId: user.id,
     });
 
+    const userName = `${user.firstName} ${user.lastName}`;
+
+    this.emailService.sendPasswordReset(user.email, resetToken, userName).catch((err) => {
+      this.logger.warn(`Failed to send password reset email to ${user.email}: ${err?.message ?? String(err)}`);
+    });
+
+    this.logger.log(`Password reset requested for ${user.email} (email ${this.config.notificationsEnabled ? "sent" : "logged only"})`);
+
     return {
       ok: true,
-      resetToken,
-      message: "Token de recuperación generado. En producción se enviaría por email.",
+      message: "Si el correo existe, recibirás instrucciones para restablecer tu clave.",
     };
   }
 
@@ -321,21 +331,6 @@ export class AuthService {
   }
 
   validatePasswordPolicy(password: string): true {
-    if (password.length < 10) {
-      throw new BadRequestException("La contraseña debe tener al menos 10 caracteres");
-    }
-    if (!/[a-z]/.test(password)) {
-      throw new BadRequestException("La contraseña debe incluir al menos una letra minúscula");
-    }
-    if (!/[A-Z]/.test(password)) {
-      throw new BadRequestException("La contraseña debe incluir al menos una letra mayúscula");
-    }
-    if (!/[0-9]/.test(password)) {
-      throw new BadRequestException("La contraseña debe incluir al menos un número");
-    }
-    if (!/[^a-zA-Z0-9]/.test(password)) {
-      throw new BadRequestException("La contraseña debe incluir al menos un símbolo");
-    }
-    return true;
+    return validatePasswordPolicy(password);
   }
 }

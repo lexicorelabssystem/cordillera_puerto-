@@ -18,6 +18,15 @@ function buildConfig(env: EnvConfig) {
     corsOrigins: env.CORS_ORIGINS.split(",").map((s) => s.trim()),
     bcryptRounds: env.BCRYPT_ROUNDS,
     enableDemoSeed: env.ENABLE_DEMO_SEED,
+    smtp: {
+      host: env.SMTP_HOST ?? "",
+      port: env.SMTP_PORT ?? 587,
+      user: env.SMTP_USER ?? "",
+      pass: env.SMTP_PASS ?? "",
+      from: env.SMTP_FROM ?? "noreply@cordillera.cl",
+    },
+    notificationsEnabled: env.NOTIFICATION_EMAILS_ENABLED,
+    redisUrl: env.REDIS_URL,
   };
 }
 

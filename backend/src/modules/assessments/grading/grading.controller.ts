@@ -1,9 +1,9 @@
 import {
-  Controller, Get, Post, Patch, Body, Param, HttpCode, HttpStatus, UseGuards, ParseUUIDPipe,
+  Controller, Get, Post, Patch, Body, Param, Query, HttpCode, HttpStatus, UseGuards, ParseUUIDPipe,
 } from "@nestjs/common";
-import { ApiTags, ApiOperation, ApiBearerAuth } from "@nestjs/swagger";
+import { ApiTags, ApiOperation, ApiBearerAuth, ApiQuery } from "@nestjs/swagger";
 import { GradingService } from "./grading.service.js";
-import { GradeAnswerDto, BulkGradeDto } from "./dto/grade.dto.js";
+import { GradeAnswerDto, BulkGradeDto, DirectGradeDto, BulkDirectGradeDto } from "./dto/grade.dto.js";
 import { JwtAuthGuard } from "../../auth/jwt-auth.guard.js";
 import { RolesGuard } from "../../../common/guards/roles.guard.js";
 import { Roles } from "../../../common/decorators/roles.decorator.js";
@@ -85,5 +85,34 @@ export class GradingController {
     @CurrentUser() user: JwtPayload,
   ) {
     return this.service.updateGradeRecord(gradeId, dto.grade, dto.comments, user.sub);
+  }
+
+  @Get("course-book/:courseId")
+  @Roles("TEACHER", "ADMIN", "SUPER_ADMIN", "DIRECTION", "UTP")
+  @ApiOperation({ summary: "Libro de evaluaciones: estudiantes, evaluaciones, notas y estadisticas de un curso" })
+  @ApiQuery({ name: "subjectId", required: false })
+  getCourseGradeBook(
+    @Param("courseId", ParseUUIDPipe) courseId: string,
+    @Query("subjectId") subjectId?: string,
+  ) {
+    return this.service.getCourseGradeBook(courseId, subjectId);
+  }
+
+  // ══════════════════════════════════════════════════════
+  //  DIRECT GRADE — Crear/actualizar nota desde el Libro
+  // ══════════════════════════════════════════════════════
+
+  @Post("direct-grade")
+  @Roles("TEACHER", "ADMIN", "SUPER_ADMIN", "UTP")
+  @ApiOperation({ summary: "Crear o actualizar una nota directamente (sin intento previo)" })
+  directGrade(@Body() dto: DirectGradeDto, @CurrentUser() user: JwtPayload) {
+    return this.service.directGradeRecord(dto.assessmentId, dto.studentId, dto.grade, user.sub, dto.comments);
+  }
+
+  @Post("direct-grades/bulk")
+  @Roles("TEACHER", "ADMIN", "SUPER_ADMIN", "UTP")
+  @ApiOperation({ summary: "Crear o actualizar multiples notas directamente (carga masiva desde el libro)" })
+  bulkDirectGrades(@Body() dto: BulkDirectGradeDto, @CurrentUser() user: JwtPayload) {
+    return this.service.bulkDirectGrades(dto.grades as any[], user.sub);
   }
 }

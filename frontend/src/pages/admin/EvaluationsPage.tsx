@@ -1,3 +1,4 @@
+import { useNavigate } from "react-router-dom";
 import type { AdminOverview } from "../../types/api";
 
 interface Props {
@@ -5,8 +6,9 @@ interface Props {
 }
 
 export function EvaluationsPage({ overview }: Props) {
+  const navigate = useNavigate();
   const byType = new Map<string, number>();
-  overview.recentAssessments.forEach((a) => {
+  (overview.recentAssessments || []).forEach((a) => {
     byType.set(a.assessment_type, (byType.get(a.assessment_type) || 0) + 1);
   });
 
@@ -14,6 +16,9 @@ export function EvaluationsPage({ overview }: Props) {
     <>
       <section className="panel">
         <h3>Monitoreo de Evaluaciones</h3>
+        <p style={{ color: "var(--muted)", fontSize: ".84rem", marginBottom: 12 }}>
+          Resumen de evaluaciones por tipo y estado. Monitorea el avance de cada curso y asignatura en tiempo real.
+        </p>
         <div className="module-grid">
           {Array.from(byType.entries()).map(([type, count]) => (
             <article key={type} className="module-card">
@@ -21,6 +26,12 @@ export function EvaluationsPage({ overview }: Props) {
               <strong>{type}</strong>
             </article>
           ))}
+          {byType.size === 0 && (
+            <article className="module-card">
+              <span>Sin datos</span>
+              <strong>Crea evaluaciones</strong>
+            </article>
+          )}
         </div>
       </section>
       <section className="panel">
@@ -39,12 +50,12 @@ export function EvaluationsPage({ overview }: Props) {
             </thead>
             <tbody>
               {overview.recentAssessments.map((a) => (
-                <tr key={a.assessment_id}>
+                <tr key={a.assessment_id} onClick={() => navigate(`/admin/evaluaciones/${a.assessment_id}`)} style={{ cursor: "pointer" }}>
                   <td><strong>{a.title}</strong></td>
                   <td>{a.course_name}</td>
                   <td>{a.subject_name}</td>
-                  <td>{a.assessment_type}</td>
-                  <td><span className={`badge ${a.status === "PUBLISHED" || a.status === "ACTIVE" ? "badge--active" : "badge--inactive"}`}>{a.status}</span></td>
+                  <td><span className="badge badge--role">{a.assessment_type}</span></td>
+                  <td><span className={`badge ${a.status === "PUBLISHED" || a.status === "ACTIVE" || a.status === "GRADED" ? "badge--active" : a.status === "CLOSED" || a.status === "IN_GRADING" ? "badge--warning" : "badge--inactive"}`}>{a.status}</span></td>
                   <td>{a.teacher_name}</td>
                 </tr>
               ))}

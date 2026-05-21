@@ -1,5 +1,5 @@
 import { ApiProperty, ApiPropertyOptional } from "@nestjs/swagger";
-import { IsString, IsUUID, IsInt, IsOptional, Min, Max, MinLength } from "class-validator";
+import { IsString, IsUUID, IsInt, IsBoolean, IsOptional, Min, Max, MinLength } from "class-validator";
 
 export class CreateCourseDto {
   @ApiProperty({ description: "ID de la institución" })
@@ -15,10 +15,10 @@ export class CreateCourseDto {
   @MinLength(2)
   name!: string;
 
-  @ApiProperty({ example: 3, minimum: 1, maximum: 8 })
+  @ApiProperty({ example: 3, minimum: 1, maximum: 12, description: "1-8 = básica, 9-12 = media" })
   @IsInt()
   @Min(1)
-  @Max(8)
+  @Max(12)
   gradeLevel!: number;
 
   @ApiPropertyOptional({ example: "A", description: "Letra de sección" })
@@ -52,4 +52,9 @@ export class UpdateCourseDto {
   @Min(1)
   @Max(60)
   maxStudents?: number;
+
+  @ApiPropertyOptional({ description: "Soft-delete: desactivar curso" })
+  @IsOptional()
+  @IsBoolean()
+  isActive?: boolean;
 }

@@ -23,6 +23,15 @@ export class RemedialPlansController {
     return this.service.create(dto);
   }
 
+  @Get()
+  @Roles("ADMIN", "SUPER_ADMIN", "DIRECTION", "UTP")
+  @ApiOperation({ summary: "Listar todos los planes remediales" })
+  @ApiQuery({ name: "courseId", required: false })
+  @ApiQuery({ name: "status", required: false })
+  findAll(@Query("courseId") courseId?: string, @Query("status") status?: string) {
+    return this.service.findAll(courseId, status);
+  }
+
   @Get("course/:courseId")
   @Roles("ADMIN", "SUPER_ADMIN", "DIRECTION", "UTP", "TEACHER")
   @ApiOperation({ summary: "Listar planes remediales de un curso" })

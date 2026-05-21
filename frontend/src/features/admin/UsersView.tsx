@@ -4,6 +4,8 @@ import type { UserRow, UserRole, PermissionCatalogItem } from "../../types/api";
 import { api } from "../../lib/api";
 import { Modal } from "../../components/common/Modal";
 import { LoadingSpinner } from "../../components/common/LoadingSpinner";
+import { useToast } from "../../components/common/Toast";
+import { useInstitution } from "../../app/InstitutionContext";
 
 const ROLES: { value: UserRole; label: string }[] = [
   { value: "SUPER_ADMIN", label: "Super Admin" },
@@ -23,7 +25,8 @@ export function UsersView() {
   const [page, setPage] = useState(1);
   const [roleFilter, setRoleFilter] = useState<string>("");
   const [search, setSearch] = useState("");
-  const [localMessage, setLocalMessage] = useState("");
+  const { toast } = useToast();
+  const { selectedInstitution } = useInstitution();
   const [editingId, setEditingId] = useState<string | null>(null);
   const [form, setForm] = useState({
     firstName: "",
@@ -47,36 +50,36 @@ export function UsersView() {
   const createMutation = useMutation({
     mutationFn: api.createUser,
     onSuccess: () => {
-      setLocalMessage("Usuario creado correctamente (clave temporal asignada).");
+      toast("Usuario creado correctamente (clave temporal asignada).", "success");
       setForm({ firstName: "", lastName: "", email: "", temporaryPassword: "", role: "TEACHER" });
       setEditingId(null);
       queryClient.invalidateQueries({ queryKey: ["users"] });
     },
     onError: (err) =>
-      setLocalMessage(err instanceof Error ? err.message : "Error al crear usuario."),
+      toast(err instanceof Error ? err.message : "Error al crear usuario.", "error"),
   });
 
   const updateMutation = useMutation({
     mutationFn: ({ id, data }: { id: string; data: Record<string, unknown> }) =>
       api.updateUser(id, data),
     onSuccess: () => {
-      setLocalMessage("Usuario actualizado correctamente.");
+      toast("Usuario actualizado correctamente.", "success");
       setEditingId(null);
       setForm({ firstName: "", lastName: "", email: "", temporaryPassword: "", role: "TEACHER" });
       queryClient.invalidateQueries({ queryKey: ["users"] });
     },
     onError: (err) =>
-      setLocalMessage(err instanceof Error ? err.message : "Error al actualizar usuario."),
+      toast(err instanceof Error ? err.message : "Error al actualizar usuario.", "error"),
   });
 
   const deleteMutation = useMutation({
     mutationFn: api.deleteUser,
     onSuccess: () => {
-      setLocalMessage("Usuario desactivado correctamente.");
+      toast("Usuario desactivado correctamente.", "success");
       queryClient.invalidateQueries({ queryKey: ["users"] });
     },
     onError: (err) =>
-      setLocalMessage(err instanceof Error ? err.message : "Error al desactivar usuario."),
+      toast(err instanceof Error ? err.message : "Error al desactivar usuario.", "error"),
   });
 
   function startEdit(user: UserRow) {
@@ -93,16 +96,15 @@ export function UsersView() {
   function cancelEdit() {
     setEditingId(null);
     setForm({ firstName: "", lastName: "", email: "", temporaryPassword: "", role: "TEACHER" });
-    setLocalMessage("");
   }
 
   function handleSave() {
     if (!form.firstName.trim() || !form.lastName.trim() || !form.email.trim()) {
-      setLocalMessage("Nombre, apellido y correo son obligatorios.");
+      toast("Nombre, apellido y correo son obligatorios.", "warning");
       return;
     }
     if (!editingId && !form.temporaryPassword) {
-      setLocalMessage("La clave temporal es obligatoria para nuevos usuarios.");
+      toast("La clave temporal es obligatoria para nuevos usuarios.", "warning");
       return;
     }
 
@@ -126,8 +128,9 @@ export function UsersView() {
     }
   }
 
-  const list = users.data?.data || [];
+  const apiList = users.data?.data || [];
   const meta = users.data?.meta;
+
   const isPending = createMutation.isPending || updateMutation.isPending;
 
   return (
@@ -201,7 +204,6 @@ export function UsersView() {
             </button>
           ) : null}
         </div>
-        {localMessage ? <p className="form-message">{localMessage}</p> : null}
       </section>
 
       <section className="panel">
@@ -230,9 +232,9 @@ export function UsersView() {
             ))}
           </select>
         </div>
-        {users.isLoading ? <p>Cargando usuarios...</p> : null}
+        {users.isLoading ? <LoadingSpinner label="Cargando usuarios..." /> : null}
         {users.isError ? <p className="error">Error al cargar usuarios.</p> : null}
-        {list.length === 0 && !users.isLoading ? (
+        {apiList.length === 0 && !users.isLoading ? (
           <div className="empty-state">
             <strong>No se encontraron usuarios</strong>
             <p>Ajusta los filtros o crea un nuevo usuario.</p>
@@ -242,66 +244,32 @@ export function UsersView() {
             <div className="table-wrap">
               <table className="table">
                 <thead>
-                  <tr>
-                    <th>Nombre</th>
-                    <th>Correo</th>
-                    <th>Rol</th>
-                    <th>Estado</th>
-                    <th>Último acceso</th>
-                    <th>Acciones</th>
-                  </tr>
+                  <tr><th>Nombre</th><th>Email</th><th>Rol</th><th>Activo</th><th>Ultimo acceso</th><th>Acciones</th></tr>
                 </thead>
                 <tbody>
-                  {list.map((u) => (
+                  {apiList.map((u) => (
                     <tr key={u.id}>
-                      <td>
-                        <strong>
-                          {u.firstName} {u.lastName}
-                        </strong>
-                      </td>
+                      <td><strong>{u.firstName} {u.lastName}</strong></td>
                       <td>{u.email}</td>
-                      <td>
-                        <span className={`badge badge--role badge--role-${u.role.toLowerCase()}`}>
-                          {ROLE_LABELS[u.role] || u.role}
-                        </span>
-                      </td>
-                      <td>
-                        <span className={`badge ${u.isActive ? "badge--active" : "badge--inactive"}`}>
-                          {u.isActive ? "Activo" : "Inactivo"}
-                        </span>
-                        {u.mustChangePassword ? (
-                          <span className="badge badge--warning">Debe cambiar clave</span>
-                        ) : null}
-                      </td>
+                      <td><span className={`badge badge--role-${u.role.toLowerCase()}`}>{u.role === "STUDENT" ? "Estudiante" : u.role === "TEACHER" ? "Docente" : ROLE_LABELS[u.role] || u.role}</span></td>
+                      <td><span className={`badge ${u.isActive ? "badge--active" : "badge--inactive"}`}>{u.isActive ? "Si" : "No"}</span></td>
                       <td>
                         {u.lastLoginAt
-                          ? new Date(u.lastLoginAt).toLocaleDateString("es-CL", {
-                              day: "2-digit",
-                              month: "2-digit",
-                              year: "numeric",
-                            })
+                          ? new Date(u.lastLoginAt).toLocaleDateString("es-CL", { day: "2-digit", month: "2-digit", year: "numeric" })
                           : "Nunca"}
                       </td>
                       <td>
                         <div className="action-buttons">
-                          <button className="btn-small" onClick={() => startEdit(u)}>
-                            Editar
-                          </button>
+                          <button className="btn-small" onClick={() => startEdit(u)}>Editar</button>
                           <PermissionButton userId={u.id} userName={`${u.firstName} ${u.lastName}`} />
                           <button
                             className="btn-small btn-danger"
                             onClick={() => {
-                              if (window.confirm(
-                                u.isActive
-                                  ? `¿Desactivar a ${u.firstName} ${u.lastName}?`
-                                  : `¿Reactivar a ${u.firstName} ${u.lastName}?`
-                              )) {
+                              if (window.confirm(u.isActive ? `¿Desactivar a ${u.firstName} ${u.lastName}?` : `¿Reactivar a ${u.firstName} ${u.lastName}?`)) {
                                 deleteMutation.mutate(u.id);
                               }
                             }}
-                          >
-                            {u.isActive ? "Desactivar" : "Activar"}
-                          </button>
+                          >{u.isActive ? "Desactivar" : "Activar"}</button>
                         </div>
                       </td>
                     </tr>
@@ -339,8 +307,8 @@ export function UsersView() {
 
 function PermissionButton({ userId, userName }: { userId: string; userName: string }) {
   const [modalOpen, setModalOpen] = useState(false);
-  const [localMessage, setLocalMessage] = useState("");
   const [toggledActions, setToggledActions] = useState<Set<string>>(new Set());
+  const { toast } = useToast();
 
   const catalogQuery = useQuery<PermissionCatalogItem[]>({
     queryKey: ["permissions-catalog"],
@@ -367,11 +335,11 @@ function PermissionButton({ userId, userName }: { userId: string; userName: stri
   const assignMutation = useMutation({
     mutationFn: (actions: string[]) => api.assignPermissions({ userId, permissionActions: actions }),
     onSuccess: () => {
-      setLocalMessage("Permisos actualizados.");
+      toast("Permisos actualizados.", "success");
       userPermsQuery.refetch();
       setToggledActions(new Set());
     },
-    onError: (err) => setLocalMessage(err instanceof Error ? err.message : "Error al asignar permisos."),
+    onError: (err) => toast(err instanceof Error ? err.message : "Error al asignar permisos.", "error"),
   });
 
   const revokeMutation = useMutation({
@@ -380,7 +348,7 @@ function PermissionButton({ userId, userName }: { userId: string; userName: stri
       userPermsQuery.refetch();
       setToggledActions(new Set());
     },
-    onError: (err) => setLocalMessage(err instanceof Error ? err.message : "Error al revocar permiso."),
+    onError: (err) => toast(err instanceof Error ? err.message : "Error al revocar permiso.", "error"),
   });
 
   const handleToggle = (action: string) => {
@@ -415,7 +383,7 @@ function PermissionButton({ userId, userName }: { userId: string; userName: stri
     }
 
     if (toAssign.length === 0 && toRevoke.length === 0) {
-      setLocalMessage("No hay cambios pendientes.");
+      toast("No hay cambios pendientes.", "info");
     }
   };
 
@@ -428,7 +396,7 @@ function PermissionButton({ userId, userName }: { userId: string; userName: stri
       </button>
       <Modal
         isOpen={modalOpen}
-        onClose={() => { setModalOpen(false); setLocalMessage(""); setToggledActions(new Set()); }}
+        onClose={() => { setModalOpen(false); setToggledActions(new Set()); }}
         title={`Permisos de ${userName}`}
         size="lg"
         footer={
@@ -436,7 +404,7 @@ function PermissionButton({ userId, userName }: { userId: string; userName: stri
             <button onClick={handleSavePermissions} disabled={isPending || toggledActions.size === 0}>
               {isPending ? "Guardando..." : "Guardar cambios"}
             </button>
-            <button className="btn-secondary" onClick={() => { setModalOpen(false); setLocalMessage(""); }}>
+            <button className="btn-secondary" onClick={() => { setModalOpen(false); }}>
               Cerrar
             </button>
           </>
@@ -446,7 +414,6 @@ function PermissionButton({ userId, userName }: { userId: string; userName: stri
           <LoadingSpinner label="Cargando permisos..." />
         ) : (
           <>
-            {localMessage ? <p className="form-message">{localMessage}</p> : null}
             <p style={{ color: "var(--muted)", marginBottom: 12 }}>
               {assignedSet.size} de {catalog.length} permisos asignados.
               Marca/desmarca para modificar. Verdes = asignados, rojos = serán revocados, azules = serán asignados.

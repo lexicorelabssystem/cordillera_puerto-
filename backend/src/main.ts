@@ -8,6 +8,7 @@ import compress from "@fastify/compress";
 import helmet from "@fastify/helmet";
 import { AppModule } from "./app.module.js";
 import { HttpExceptionFilter } from "./common/filters/http-exception.filter.js";
+import { PrismaExceptionFilter } from "./common/filters/prisma-exception.filter.js";
 import { LoggingInterceptor } from "./common/interceptors/logging.interceptor.js";
 import { TimeoutInterceptor } from "./common/interceptors/timeout.interceptor.js";
 import { CsrfGuard } from "./common/guards/csrf.guard.js";
@@ -93,7 +94,7 @@ async function bootstrap() {
     }),
   );
 
-  app.useGlobalFilters(new HttpExceptionFilter());
+  app.useGlobalFilters(new HttpExceptionFilter(), new PrismaExceptionFilter());
 
   app.useGlobalInterceptors(new LoggingInterceptor());
   app.useGlobalInterceptors(new TimeoutInterceptor());

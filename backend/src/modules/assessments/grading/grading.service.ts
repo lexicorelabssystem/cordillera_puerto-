@@ -341,6 +341,207 @@ export class GradingService {
   }
 
   // ══════════════════════════════════════════════════════
+  //  COURSE GRADE BOOK — Libro de Evaluaciones
+  // ══════════════════════════════════════════════════════
+
+  async getCourseGradeBook(courseId: string, subjectId?: string) {
+    const course = await this.prisma.course.findUnique({
+      where: { id: courseId },
+      select: { id: true, name: true, gradeLevel: true, institutionId: true },
+    });
+    if (!course) throw new NotFoundException("Curso no encontrado");
+
+    const assessmentWhere: Record<string, unknown> = {
+      courseId,
+      status: { not: "DRAFT" },
+    };
+    if (subjectId) assessmentWhere.subjectId = subjectId;
+
+    const [students, assessments] = await Promise.all([
+      this.prisma.student.findMany({
+        where: { enrollments: { some: { courseId, isActive: true } } },
+        include: {
+          user: { select: { id: true } },
+        },
+        orderBy: { lastName: "asc" },
+      }),
+      this.prisma.assessment.findMany({
+        where: assessmentWhere,
+        include: {
+          subject: { select: { id: true, name: true } },
+          questions: {
+            include: { question: { select: { id: true, learningObjectiveId: true, learningObjective: { select: { code: true, description: true } } } } },
+          },
+        },
+        orderBy: [{ semester: "asc" }, { createdAt: "desc" }],
+      }),
+    ]);
+
+    const studentIds = students.map((s) => s.id);
+    const assessmentIds = assessments.map((a) => a.id);
+
+    const grades = await this.prisma.grade.findMany({
+      where: {
+        assessmentId: { in: assessmentIds },
+        studentId: { in: studentIds },
+      },
+    });
+
+    const attempts = await this.prisma.assessmentAttempt.findMany({
+      where: {
+        assessmentId: { in: assessmentIds },
+        studentId: { in: studentIds },
+      },
+      select: { assessmentId: true, studentId: true, totalScore: true, percentage: true, status: true },
+    });
+
+    const gradeMap = new Map<string, Map<string, typeof grades[0]>>();
+    for (const g of grades) {
+      if (!gradeMap.has(g.studentId)) gradeMap.set(g.studentId, new Map());
+      gradeMap.get(g.studentId)!.set(g.assessmentId, g);
+    }
+
+    const attemptMap = new Map<string, Map<string, typeof attempts[0]>>();
+    for (const a of attempts) {
+      if (!attemptMap.has(a.studentId)) attemptMap.set(a.studentId, new Map());
+      attemptMap.get(a.studentId)!.set(a.assessmentId, a);
+    }
+
+    const studentRows = students.map((s) => {
+      const studentGrades: {
+        gradeId: string;
+        assessmentId: string;
+        assessmentTitle: string;
+        assessmentType: string;
+        semester: number;
+        subjectName: string;
+        weight: number;
+        maxScore: number;
+        score: number | null;
+        percentage: number | null;
+        grade: number | null;
+        status: string;
+        oaCode: string | null;
+        oaDescription: string | null;
+      }[] = [];
+
+      let totalWeightedSum = 0;
+      let totalWeight = 0;
+
+      for (const a of assessments) {
+        const g = gradeMap.get(s.id)?.get(a.id);
+        const att = attemptMap.get(s.id)?.get(a.id);
+        const oa = a.questions[0]?.question?.learningObjective;
+
+        const score = g?.score ?? att?.totalScore ?? null;
+        const percentage = g?.percentage ?? att?.percentage ?? null;
+        const gradeValue = g?.grade ?? null;
+
+        if (gradeValue !== null && a.weight) {
+          totalWeightedSum += gradeValue * a.weight;
+          totalWeight += a.weight;
+        }
+
+        studentGrades.push({
+          gradeId: g?.id || "",
+          assessmentId: a.id,
+          assessmentTitle: a.title,
+          assessmentType: a.assessmentType,
+          semester: a.semester,
+          subjectName: a.subject?.name || "",
+          weight: a.weight || 0,
+          maxScore: a.maxScore,
+          score,
+          percentage,
+          grade: gradeValue,
+          status: att?.status || "PENDING",
+          oaCode: oa?.code || null,
+          oaDescription: oa?.description || null,
+        });
+      }
+
+      const avgGrade = totalWeight > 0
+        ? Number((totalWeightedSum / totalWeight).toFixed(1))
+        : studentGrades.filter((sg) => sg.grade !== null).reduce((sum, sg) => sum + (sg.grade || 0), 0) / (studentGrades.filter((sg) => sg.grade !== null).length || 1);
+
+      return {
+        studentId: s.id,
+        firstName: s.firstName,
+        lastName: s.lastName,
+        rut: s.rut || "",
+        grades: studentGrades,
+        average: Number(avgGrade.toFixed(1)),
+        atRisk: studentGrades.some((sg) => sg.grade !== null && sg.grade < 4.0),
+        hasPending: studentGrades.some((sg) => sg.grade === null),
+      };
+    });
+
+    const allGrades = grades.map((g) => g.grade);
+    const courseAvg = allGrades.length > 0
+      ? Number((allGrades.reduce((s, v) => s + v, 0) / allGrades.length).toFixed(1))
+      : 0;
+
+    const atRiskCount = studentRows.filter((s) => s.atRisk).length;
+    const pendingsCount = studentRows.filter((s) => s.hasPending).length;
+    const approvedCount = studentRows.filter((s) => s.average >= 4.0 && !s.hasPending).length;
+    const approvalRate = studentRows.length > 0 ? Math.round((approvedCount / studentRows.length) * 100) : 0;
+
+    // Detect OA with low performance
+    const oaPerformance: Record<string, { code: string; description: string; grades: number[] }> = {};
+    for (const s of studentRows) {
+      for (const g of s.grades) {
+        if (g.oaCode && g.grade !== null) {
+          const key = g.oaCode;
+          if (!oaPerformance[key]) oaPerformance[key] = { code: g.oaCode, description: g.oaDescription || "", grades: [] };
+          oaPerformance[key].grades.push(g.grade);
+        }
+      }
+    }
+    const oaDescendidos = Object.values(oaPerformance)
+      .filter((oa) => {
+        const avg = oa.grades.reduce((s, v) => s + v, 0) / oa.grades.length;
+        return avg < 4.0;
+      })
+      .map((oa) => ({
+        code: oa.code,
+        description: oa.description,
+        average: Number((oa.grades.reduce((s, v) => s + v, 0) / oa.grades.length).toFixed(1)),
+        count: oa.grades.length,
+      }));
+
+    return {
+      course: { id: course.id, name: course.name, gradeLevel: course.gradeLevel },
+      subjectId: subjectId || null,
+      assessments: assessments.map((a) => ({
+        id: a.id,
+        title: a.title,
+        type: a.assessmentType,
+        status: a.status,
+        weight: a.weight || 0,
+        maxScore: a.maxScore,
+        semester: a.semester,
+        subjectName: a.subject?.name || "",
+        oaCode: a.questions[0]?.question?.learningObjective?.code || null,
+        oaDescription: a.questions[0]?.question?.learningObjective?.description || null,
+      })),
+      students: studentRows,
+      stats: {
+        courseAvg,
+        approvalRate,
+        approvedCount,
+        atRiskCount,
+        pendingsCount,
+        totalNotes: allGrades.length,
+        totalStudents: students.length,
+        totalAssessments: assessments.length,
+        simceCount: assessments.filter((a) => a.assessmentType === "SIMCE").length,
+        appliedCount: assessments.filter((a) => a.status !== "DRAFT" && a.status !== "PUBLISHED").length,
+      },
+      oaDescendidos,
+    };
+  }
+
+  // ══════════════════════════════════════════════════════
   //  PRIVATE
   // ══════════════════════════════════════════════════════
 
@@ -369,6 +570,75 @@ export class GradingService {
     });
 
     return { ok: true, gradeId: updated.id, grade: updated.grade, comments: updated.comments };
+  }
+
+  // ══════════════════════════════════════════════════════
+  //  DIRECT GRADE — Crear/actualizar nota desde el Libro
+  // ══════════════════════════════════════════════════════
+
+  async directGradeRecord(
+    assessmentId: string,
+    studentId: string,
+    grade: number,
+    userId: string,
+    comments?: string,
+  ) {
+    const assessment = await this.prisma.assessment.findUnique({
+      where: { id: assessmentId },
+      select: { id: true, status: true, courseId: true },
+    });
+    if (!assessment) throw new NotFoundException("Evaluación no encontrada");
+
+    const enrollment = await this.prisma.enrollment.findFirst({
+      where: { studentId, courseId: assessment.courseId, isActive: true },
+    });
+    if (!enrollment) throw new BadRequestException("El estudiante no pertenece a este curso");
+
+    if (grade < 1.0 || grade > 7.0) {
+      throw new BadRequestException("La nota debe estar entre 1.0 y 7.0");
+    }
+
+    const record = await this.prisma.grade.upsert({
+      where: { assessmentId_studentId: { assessmentId, studentId } },
+      create: {
+        assessmentId,
+        studentId,
+        grade,
+        comments: comments || null,
+        recordedBy: userId,
+      },
+      update: {
+        grade,
+        comments: comments !== undefined ? comments : undefined,
+        recordedBy: userId,
+      },
+    });
+
+    return { ok: true, gradeId: record.id, grade: record.grade, comments: record.comments };
+  }
+
+  async bulkDirectGrades(
+    items: { assessmentId: string; studentId: string; grade: number; comments?: string }[],
+    userId: string,
+  ) {
+    const results: { ok: boolean; gradeId: string; assessmentId: string; studentId: string; error?: string }[] = [];
+
+    for (const item of items) {
+      try {
+        const r = await this.directGradeRecord(item.assessmentId, item.studentId, item.grade, userId, item.comments);
+        results.push({ ok: true, gradeId: r.gradeId, assessmentId: item.assessmentId, studentId: item.studentId });
+      } catch (err: unknown) {
+        const message = err instanceof Error ? err.message : "Error desconocido";
+        results.push({ ok: false, gradeId: "", assessmentId: item.assessmentId, studentId: item.studentId, error: message });
+      }
+    }
+
+    return {
+      total: results.length,
+      succeeded: results.filter((r) => r.ok).length,
+      failed: results.filter((r) => !r.ok).length,
+      results,
+    };
   }
 
   private percentageToGrade(percentage: number): number {

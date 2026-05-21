@@ -62,6 +62,12 @@ export class TeachersService {
       orderBy: { user: { lastName: "asc" } },
       include: {
         user: { select: { id: true, email: true, firstName: true, lastName: true, isActive: true, role: true } },
+        courseAssignments: {
+          include: {
+            course: { select: { id: true, name: true, gradeLevel: true } },
+            subject: { select: { id: true, name: true } },
+          },
+        },
         _count: { select: { courseAssignments: true, assessments: true } },
       },
     });

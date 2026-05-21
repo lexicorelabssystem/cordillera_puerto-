@@ -180,6 +180,22 @@ enum PermissionAction {
   EXPORTS_EXECUTE
 }
 
+enum AttendanceStatus {
+  PRESENT
+  ABSENT
+  LATE
+  JUSTIFIED
+  EXCUSED
+}
+
+enum ObservationType {
+  ACADEMIC
+  BEHAVIOR
+  GENERAL
+  POSITIVE
+  NEGATIVE
+}
+
 // ─── INSTITUCIÓN Y AÑO ACADÉMICO ─────────────────────
 
 model Institution {
@@ -199,29 +215,29 @@ model Institution {
   updatedAt DateTime  @updatedAt @db.Timestamptz()
   deletedAt DateTime? @db.Timestamptz()
 
-  academicYears    AcademicYear[]
-  users            User[]
-  courses          Course[]
-  auditLogs        AuditLog[]
+  academicYears     AcademicYear[]
+  users             User[]
+  courses           Course[]
+  auditLogs         AuditLog[]
   learningResources LearningResource[]
-  lessons          Lesson[]
-  config           InstitutionConfig?
+  lessons           Lesson[]
+  config            InstitutionConfig?
 
   @@index([isActive])
   @@map("institutions")
 }
 
 model InstitutionConfig {
-  id              String   @id @default(uuid()) @db.Uuid
-  institutionId   String   @unique @db.Uuid
-  gradingScaleMin Float    @default(1.0)
-  gradingScaleMax Float    @default(7.0)
-  exigencia       Float    @default(60.0)
-  allowGradeEdit  Boolean  @default(true)
-  allowSelfRegistration Boolean @default(false)
-  defaultLanguage String   @default("es-CL")
-  createdAt       DateTime @default(now()) @db.Timestamptz()
-  updatedAt       DateTime @updatedAt @db.Timestamptz()
+  id                    String   @id @default(uuid()) @db.Uuid
+  institutionId         String   @unique @db.Uuid
+  gradingScaleMin       Float    @default(1.0)
+  gradingScaleMax       Float    @default(7.0)
+  exigencia             Float    @default(60.0)
+  allowGradeEdit        Boolean  @default(true)
+  allowSelfRegistration Boolean  @default(false)
+  defaultLanguage       String   @default("es-CL")
+  createdAt             DateTime @default(now()) @db.Timestamptz()
+  updatedAt             DateTime @updatedAt @db.Timestamptz()
 
   institution Institution @relation(fields: [institutionId], references: [id], onDelete: Cascade)
 
@@ -289,18 +305,20 @@ model User {
   updatedAt          DateTime  @updatedAt @db.Timestamptz()
   deletedAt          DateTime? @db.Timestamptz()
 
-  institution Institution?    @relation(fields: [institutionId], references: [id])
-  teacher     Teacher?
-  student     Student?
-  grades      Grade[]
-  auditEvents AuditLog[]      @relation("ActorAudit")
-  importJobs    ImportJob[]     @relation("ImportActor")
-  attempts      AssessmentAttempt[]
-  refreshTokens RefreshToken[]
-  createdResources LearningResource[]
-  userPermissions UserPermission[]
+  institution           Institution?         @relation(fields: [institutionId], references: [id])
+  teacher               Teacher?
+  student               Student?
+  grades                Grade[]
+  auditEvents           AuditLog[]           @relation("ActorAudit")
+  importJobs            ImportJob[]          @relation("ImportActor")
+  attempts              AssessmentAttempt[]
+  refreshTokens         RefreshToken[]
+  createdResources      LearningResource[]
+  userPermissions       UserPermission[]
   requestedGradeChanges GradeChangeRequest[] @relation("GradeChangeRequester")
   reviewedGradeChanges  GradeChangeRequest[] @relation("GradeChangeReviewer")
+  notifications         Notification[]
+  attendances           Attendance[]
 
   @@index([email, isActive])
   @@index([institutionId, role])
@@ -357,10 +375,12 @@ model Teacher {
   rut    String?
   title  String?
 
-  user                User                         @relation(fields: [userId], references: [id], onDelete: Cascade)
-  courseAssignments   TeacherCourseAssignment[]
-  assessments         Assessment[]
-  lessons             Lesson[]
+  user              User                      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  courseAssignments TeacherCourseAssignment[]
+  assessments       Assessment[]
+  lessons           Lesson[]
+  observations      Observation[]
+  classBookEntries  ClassBookEntry[]
 
   @@map("teachers")
 }
@@ -379,11 +399,13 @@ model Student {
   updatedAt DateTime  @updatedAt @db.Timestamptz()
   deletedAt DateTime? @db.Timestamptz()
 
-  user      User?              @relation(fields: [userId], references: [id], onDelete: SetNull)
+  user          User?               @relation(fields: [userId], references: [id], onDelete: SetNull)
   enrollments   Enrollment[]
   grades        Grade[]
   attempts      AssessmentAttempt[]
   remedialPlans RemedialPlan[]
+  attendances   Attendance[]
+  observations  Observation[]
 
   @@index([lastName, firstName])
   @@map("students")
@@ -403,13 +425,16 @@ model Course {
   createdAt      DateTime @default(now()) @db.Timestamptz()
   updatedAt      DateTime @updatedAt @db.Timestamptz()
 
-  institution        Institution                  @relation(fields: [institutionId], references: [id])
-  academicYear       AcademicYear                 @relation(fields: [academicYearId], references: [id])
+  institution        Institution               @relation(fields: [institutionId], references: [id])
+  academicYear       AcademicYear              @relation(fields: [academicYearId], references: [id])
   enrollments        Enrollment[]
   teacherAssignments TeacherCourseAssignment[]
   assessments        Assessment[]
   learningResources  LearningResource[]
   lessons            Lesson[]
+  attendances        Attendance[]
+  observations       Observation[]
+  classBookEntries   ClassBookEntry[]
 
   @@unique([academicYearId, name])
   @@index([institutionId, gradeLevel])
@@ -454,15 +479,16 @@ model Subject {
   isActive  Boolean  @default(true)
   createdAt DateTime @default(now()) @db.Timestamptz()
 
-  axes                Axis[]
-  units               CurriculumUnit[]
-  learningObjectives  LearningObjective[]
-  questions           Question[]
-  assessments         Assessment[]
-  teacherAssignments  TeacherCourseAssignment[]
-  curriculumRules     CurriculumRule[]
-  learningResources   LearningResource[]
-  lessons             Lesson[]
+  axes               Axis[]
+  units              CurriculumUnit[]
+  learningObjectives LearningObjective[]
+  questions          Question[]
+  assessments        Assessment[]
+  teacherAssignments TeacherCourseAssignment[]
+  curriculumRules    CurriculumRule[]
+  learningResources  LearningResource[]
+  lessons            Lesson[]
+  classBookEntries   ClassBookEntry[]
 
   @@map("subjects")
 }
@@ -482,11 +508,11 @@ model CurriculumRule {
 // ─── CURRÍCULUM: EJES, UNIDADES, HABILIDADES ─────────
 
 model Axis {
-  id          String @id @default(uuid()) @db.Uuid
-  subjectId   String @db.Uuid
+  id          String  @id @default(uuid()) @db.Uuid
+  subjectId   String  @db.Uuid
   name        String
   description String?
-  sortOrder   Int    @default(0)
+  sortOrder   Int     @default(0)
 
   subject            Subject             @relation(fields: [subjectId], references: [id])
   learningObjectives LearningObjective[]
@@ -498,13 +524,13 @@ model Axis {
 }
 
 model CurriculumUnit {
-  id          String @id @default(uuid()) @db.Uuid
-  subjectId   String @db.Uuid
+  id          String  @id @default(uuid()) @db.Uuid
+  subjectId   String  @db.Uuid
   gradeLevel  Int
   name        String
   description String?
-  sortOrder   Int    @default(0)
-  semester    Int    @default(1)
+  sortOrder   Int     @default(0)
+  semester    Int     @default(1)
 
   subject            Subject             @relation(fields: [subjectId], references: [id])
   learningObjectives LearningObjective[]
@@ -514,8 +540,8 @@ model CurriculumUnit {
 }
 
 model Skill {
-  id          String @id @default(uuid()) @db.Uuid
-  name        String @unique
+  id          String  @id @default(uuid()) @db.Uuid
+  name        String  @unique
   description String?
 
   learningObjectiveSkills LearningObjectiveSkill[]
@@ -537,13 +563,13 @@ model LearningObjective {
   gradeLevel  Int
   isActive    Boolean @default(true)
 
-  subject      Subject               @relation(fields: [subjectId], references: [id])
-  axis         Axis?                 @relation(fields: [axisId], references: [id])
-  unit         CurriculumUnit?       @relation(fields: [unitId], references: [id])
-  skills       LearningObjectiveSkill[]
-  indicators   EvaluationIndicator[]
-  questions    Question[]
-  remedialPlans RemedialPlan[]
+  subject           Subject                  @relation(fields: [subjectId], references: [id])
+  axis              Axis?                    @relation(fields: [axisId], references: [id])
+  unit              CurriculumUnit?          @relation(fields: [unitId], references: [id])
+  skills            LearningObjectiveSkill[]
+  indicators        EvaluationIndicator[]
+  questions         Question[]
+  remedialPlans     RemedialPlan[]
   learningResources LearningResource[]
 
   @@index([subjectId, gradeLevel])
@@ -591,10 +617,10 @@ model Question {
   createdAt           DateTime     @default(now()) @db.Timestamptz()
   updatedAt           DateTime     @updatedAt @db.Timestamptz()
 
-  subject             Subject?            @relation(fields: [subjectId], references: [id])
-  axis                Axis?               @relation(fields: [axisId], references: [id])
-  learningObjective   LearningObjective?  @relation(fields: [learningObjectiveId], references: [id])
-  skill               Skill?              @relation(fields: [skillId], references: [id])
+  subject             Subject?             @relation(fields: [subjectId], references: [id])
+  axis                Axis?                @relation(fields: [axisId], references: [id])
+  learningObjective   LearningObjective?   @relation(fields: [learningObjectiveId], references: [id])
+  skill               Skill?               @relation(fields: [skillId], references: [id])
   options             QuestionOption[]
   assessmentQuestions AssessmentQuestion[]
   studentAnswers      StudentAnswer[]
@@ -650,13 +676,13 @@ model Assessment {
   createdAt        DateTime               @default(now()) @db.Timestamptz()
   updatedAt        DateTime               @updatedAt @db.Timestamptz()
 
-  course    Course               @relation(fields: [courseId], references: [id])
-  subject   Subject              @relation(fields: [subjectId], references: [id])
-  teacher   Teacher              @relation(fields: [teacherId], references: [id])
-  period    Period?              @relation(fields: [periodId], references: [id])
-  questions AssessmentQuestion[]
-  attempts  AssessmentAttempt[]
-  grades    Grade[]
+  course            Course               @relation(fields: [courseId], references: [id])
+  subject           Subject              @relation(fields: [subjectId], references: [id])
+  teacher           Teacher              @relation(fields: [teacherId], references: [id])
+  period            Period?              @relation(fields: [periodId], references: [id])
+  questions         AssessmentQuestion[]
+  attempts          AssessmentAttempt[]
+  grades            Grade[]
   learningResources LearningResource[]
 
   @@index([courseId, subjectId, assessmentType])
@@ -694,9 +720,9 @@ model AssessmentAttempt {
   totalScore   Float?
   percentage   Float?
 
-  assessment Assessment     @relation(fields: [assessmentId], references: [id])
-  student    Student        @relation(fields: [studentId], references: [id])
-  user       User           @relation(fields: [userId], references: [id])
+  assessment Assessment      @relation(fields: [assessmentId], references: [id])
+  student    Student         @relation(fields: [studentId], references: [id])
+  user       User            @relation(fields: [userId], references: [id])
   answers    StudentAnswer[]
 
   @@unique([assessmentId, studentId])
@@ -758,17 +784,17 @@ enum GradeChangeStatus {
 }
 
 model GradeChangeRequest {
-  id           String            @id @default(uuid()) @db.Uuid
-  gradeId      String            @db.Uuid
-  requestedBy  String            @db.Uuid
-  reviewedBy   String?           @db.Uuid
-  oldGrade     Float
-  newGrade     Float
-  reason       String
-  status       GradeChangeStatus @default(PENDING)
-  reviewNotes  String?
-  createdAt    DateTime          @default(now()) @db.Timestamptz()
-  reviewedAt   DateTime?         @db.Timestamptz()
+  id          String            @id @default(uuid()) @db.Uuid
+  gradeId     String            @db.Uuid
+  requestedBy String            @db.Uuid
+  reviewedBy  String?           @db.Uuid
+  oldGrade    Float
+  newGrade    Float
+  reason      String
+  status      GradeChangeStatus @default(PENDING)
+  reviewNotes String?
+  createdAt   DateTime          @default(now()) @db.Timestamptz()
+  reviewedAt  DateTime?         @db.Timestamptz()
 
   grade     Grade @relation(fields: [gradeId], references: [id], onDelete: Cascade)
   requester User  @relation("GradeChangeRequester", fields: [requestedBy], references: [id])
@@ -799,8 +825,8 @@ model RemedialPlan {
   createdAt           DateTime       @default(now()) @db.Timestamptz()
   updatedAt           DateTime       @updatedAt @db.Timestamptz()
 
-  student           Student           @relation(fields: [studentId], references: [id], onDelete: Cascade)
-  learningObjective LearningObjective @relation(fields: [learningObjectiveId], references: [id])
+  student           Student            @relation(fields: [studentId], references: [id], onDelete: Cascade)
+  learningObjective LearningObjective  @relation(fields: [learningObjectiveId], references: [id])
   learningResources LearningResource[]
 
   @@index([studentId, status])
@@ -811,22 +837,22 @@ model RemedialPlan {
 // ─── REPORTES ───────────────────────────────────────
 
 model Report {
-  id          String    @id @default(uuid()) @db.Uuid
-  type        String
-  entityId    String?   @db.Uuid
-  courseId    String?   @db.Uuid
-  subjectId   String?   @db.Uuid
-  studentId   String?   @db.Uuid
-  assessmentId String?  @db.Uuid
-  version     Int       @default(1)
-  status      String    @default("PENDING")
-  format      String    @default("PDF")
-  filters     Json?
-  fileAssetId String?   @db.Uuid
-  isOutdated  Boolean   @default(false)
-  generatedAt DateTime? @db.Timestamptz()
-  generatedBy String?   @db.Uuid
-  createdAt   DateTime  @default(now()) @db.Timestamptz()
+  id           String    @id @default(uuid()) @db.Uuid
+  type         String
+  entityId     String?   @db.Uuid
+  courseId     String?   @db.Uuid
+  subjectId    String?   @db.Uuid
+  studentId    String?   @db.Uuid
+  assessmentId String?   @db.Uuid
+  version      Int       @default(1)
+  status       String    @default("PENDING")
+  format       String    @default("PDF")
+  filters      Json?
+  fileAssetId  String?   @db.Uuid
+  isOutdated   Boolean   @default(false)
+  generatedAt  DateTime? @db.Timestamptz()
+  generatedBy  String?   @db.Uuid
+  createdAt    DateTime  @default(now()) @db.Timestamptz()
 
   @@index([type, entityId])
   @@index([status])
@@ -898,6 +924,41 @@ model AuditLog {
   @@map("audit_logs")
 }
 
+// ─── NOTIFICACIONES ────────────────────────────────────
+
+enum NotificationChannel {
+  EMAIL
+  IN_APP
+  BOTH
+}
+
+enum NotificationStatus {
+  PENDING
+  SENT
+  READ
+  FAILED
+}
+
+model Notification {
+  id        String              @id @default(uuid()) @db.Uuid
+  userId    String              @db.Uuid
+  type      String
+  title     String
+  message   String
+  channel   NotificationChannel @default(IN_APP)
+  status    NotificationStatus  @default(PENDING)
+  metadata  Json?
+  readAt    DateTime?           @db.Timestamptz()
+  sentAt    DateTime?           @db.Timestamptz()
+  createdAt DateTime            @default(now()) @db.Timestamptz()
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId, status])
+  @@index([status, createdAt])
+  @@map("notifications")
+}
+
 // ─── ARCHIVOS ────────────────────────────────────────
 
 model FileAsset {
@@ -945,18 +1006,18 @@ model LearningResource {
   createdAt           DateTime       @default(now()) @db.Timestamptz()
   updatedAt           DateTime       @updatedAt @db.Timestamptz()
 
-  institution        Institution?        @relation(fields: [institutionId], references: [id])
-  subject            Subject?            @relation(fields: [subjectId], references: [id])
-  course             Course?             @relation(fields: [courseId], references: [id])
-  axis               Axis?               @relation(fields: [axisId], references: [id])
-  learningObjective  LearningObjective?  @relation(fields: [learningObjectiveId], references: [id])
-  skill              Skill?              @relation(fields: [skillId], references: [id])
-  assessment         Assessment?         @relation(fields: [assessmentId], references: [id])
-  remedialPlan       RemedialPlan?       @relation(fields: [remedialPlanId], references: [id])
-  createdByUser      User                @relation(fields: [createdBy], references: [id])
-  guide              Guide?
-  presentation       Presentation?
-  lessonResources    LessonResource[]
+  institution       Institution?       @relation(fields: [institutionId], references: [id])
+  subject           Subject?           @relation(fields: [subjectId], references: [id])
+  course            Course?            @relation(fields: [courseId], references: [id])
+  axis              Axis?              @relation(fields: [axisId], references: [id])
+  learningObjective LearningObjective? @relation(fields: [learningObjectiveId], references: [id])
+  skill             Skill?             @relation(fields: [skillId], references: [id])
+  assessment        Assessment?        @relation(fields: [assessmentId], references: [id])
+  remedialPlan      RemedialPlan?      @relation(fields: [remedialPlanId], references: [id])
+  createdByUser     User               @relation(fields: [createdBy], references: [id])
+  guide             Guide?
+  presentation      Presentation?
+  lessonResources   LessonResource[]
 
   @@index([institutionId, type, status])
   @@index([learningObjectiveId])
@@ -1013,12 +1074,12 @@ model Lesson {
   createdAt              DateTime     @default(now()) @db.Timestamptz()
   updatedAt              DateTime     @updatedAt @db.Timestamptz()
 
-  institution  Institution       @relation(fields: [institutionId], references: [id])
-  academicYear AcademicYear?     @relation(fields: [academicYearId], references: [id])
-  course       Course            @relation(fields: [courseId], references: [id])
-  subject      Subject           @relation(fields: [subjectId], references: [id])
-  teacher      Teacher           @relation(fields: [teacherId], references: [id])
-  fileAsset    FileAsset?        @relation(fields: [fileAssetId], references: [id])
+  institution  Institution      @relation(fields: [institutionId], references: [id])
+  academicYear AcademicYear?    @relation(fields: [academicYearId], references: [id])
+  course       Course           @relation(fields: [courseId], references: [id])
+  subject      Subject          @relation(fields: [subjectId], references: [id])
+  teacher      Teacher          @relation(fields: [teacherId], references: [id])
+  fileAsset    FileAsset?       @relation(fields: [fileAssetId], references: [id])
   resources    LessonResource[]
 
   @@index([courseId, date])
@@ -1033,9 +1094,82 @@ model LessonResource {
   resourceId String @db.Uuid
   sortOrder  Int    @default(0)
 
-  lesson   Lesson            @relation(fields: [lessonId], references: [id], onDelete: Cascade)
-  resource LearningResource  @relation(fields: [resourceId], references: [id], onDelete: Cascade)
+  lesson   Lesson           @relation(fields: [lessonId], references: [id], onDelete: Cascade)
+  resource LearningResource @relation(fields: [resourceId], references: [id], onDelete: Cascade)
 
   @@unique([lessonId, resourceId])
   @@map("lesson_resources")
+}
+
+// ─── ASISTENCIA ──────────────────────────────────────
+
+model Attendance {
+  id         String           @id @default(uuid()) @db.Uuid
+  studentId  String           @db.Uuid
+  courseId   String           @db.Uuid
+  date       DateTime         @db.Date
+  status     AttendanceStatus @default(PRESENT)
+  recordedBy String           @db.Uuid
+  createdAt  DateTime         @default(now()) @db.Timestamptz()
+  updatedAt  DateTime         @updatedAt @db.Timestamptz()
+
+  student  Student @relation(fields: [studentId], references: [id], onDelete: Cascade)
+  course   Course  @relation(fields: [courseId], references: [id], onDelete: Cascade)
+  recorder User    @relation(fields: [recordedBy], references: [id])
+
+  @@unique([studentId, courseId, date])
+  @@index([courseId, date])
+  @@index([studentId])
+  @@map("attendances")
+}
+
+// ─── OBSERVACIONES ────────────────────────────────────
+
+model Observation {
+  id        String          @id @default(uuid()) @db.Uuid
+  studentId String          @db.Uuid
+  courseId  String          @db.Uuid
+  teacherId String          @db.Uuid
+  type      ObservationType @default(GENERAL)
+  title     String
+  content   String
+  createdAt DateTime        @default(now()) @db.Timestamptz()
+  updatedAt DateTime        @updatedAt @db.Timestamptz()
+
+  student Student @relation(fields: [studentId], references: [id], onDelete: Cascade)
+  course  Course  @relation(fields: [courseId], references: [id], onDelete: Cascade)
+  teacher Teacher @relation(fields: [teacherId], references: [id], onDelete: Cascade)
+
+  @@index([studentId])
+  @@index([courseId])
+  @@map("observations")
+}
+
+// ─── LIBRO DE CLASES ────────────────────────────────
+
+model ClassBookEntry {
+  id          String   @id @default(uuid()) @db.Uuid
+  courseId    String   @db.Uuid
+  subjectId   String   @db.Uuid
+  teacherId   String   @db.Uuid
+  date        DateTime @db.Date
+  semester    Int      @default(1)
+  classNumber Int?
+  unitName    String?
+  topic       String?
+  content     String?
+  activities  String?
+  resources   String?
+  notes       String?
+  createdAt   DateTime @default(now()) @db.Timestamptz()
+  updatedAt   DateTime @updatedAt @db.Timestamptz()
+
+  course  Course  @relation(fields: [courseId], references: [id], onDelete: Cascade)
+  subject Subject @relation(fields: [subjectId], references: [id], onDelete: Cascade)
+  teacher Teacher @relation(fields: [teacherId], references: [id], onDelete: Cascade)
+
+  @@unique([courseId, subjectId, date])
+  @@index([courseId, subjectId, date])
+  @@index([teacherId])
+  @@map("class_book_entries")
 }

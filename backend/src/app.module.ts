@@ -15,6 +15,8 @@ import { AuditLogsModule } from "./modules/audit-logs/audit-logs.module.js";
 import { PermissionsModule } from "./modules/permissions/permissions.module.js";
 import { AdminModule } from "./modules/admin/admin.module.js";
 import { FeatureFlagsModule } from "./modules/features/feature-flags.module.js";
+import { NotificationsModule } from "./modules/notifications/notifications.module.js";
+import { CacheModule } from "./modules/cache/cache.module.js";
 import { HealthController } from "./health.controller.js";
 
 @Module({
@@ -50,6 +52,8 @@ import { HealthController } from "./health.controller.js";
     PermissionsModule,
     AdminModule,
     FeatureFlagsModule,
+    NotificationsModule,
+    CacheModule,
   ],
   controllers: [HealthController],
   providers: [

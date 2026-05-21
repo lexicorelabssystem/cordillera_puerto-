@@ -3,6 +3,7 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { api } from "../../lib/api";
 import { LoadingSpinner } from "../../components/common/LoadingSpinner";
 import { EmptyState } from "../../components/common/EmptyState";
+import { useToast } from "../../components/common/Toast";
 
 const ENTITY_TYPES = [
   { value: "students", label: "Estudiantes", accept: ".csv,.xlsx" },
@@ -15,7 +16,7 @@ export function ImportPage() {
   const queryClient = useQueryClient();
   const [entityType, setEntityType] = useState("students");
   const [file, setFile] = useState<File | null>(null);
-  const [message, setMessage] = useState("");
+  const { toast } = useToast();
 
   const jobsQuery = useQuery({
     queryKey: ["import-jobs"],
@@ -25,15 +26,15 @@ export function ImportPage() {
   const uploadMutation = useMutation({
     mutationFn: ({ entity, file }: { entity: string; file: File }) => api.uploadImport(entity, file),
     onSuccess: (data: { jobId?: string; id?: string }) => {
-      setMessage(`Archivo subido correctamente. Job: ${data.jobId || data.id || "N/A"}`);
+      toast("Archivo subido correctamente. Procesando...", "success");
       setFile(null);
       queryClient.invalidateQueries({ queryKey: ["import-jobs"] });
     },
-    onError: (e) => setMessage(e instanceof Error ? e.message : "Error al subir archivo"),
+    onError: (e) => toast(e instanceof Error ? e.message : "Error al subir archivo", "error"),
   });
 
   function handleUpload() {
-    if (!file) { setMessage("Selecciona un archivo."); return; }
+    if (!file) { toast("Selecciona un archivo.", "success"); return; }
     uploadMutation.mutate({ entity: entityType, file });
   }
 
@@ -69,7 +70,6 @@ export function ImportPage() {
             {uploadMutation.isPending ? "Subiendo..." : "Subir y validar"}
           </button>
         </div>
-        {message ? <p className="form-message">{message}</p> : null}
       </section>
 
       <section className="panel">

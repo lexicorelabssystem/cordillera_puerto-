@@ -13,6 +13,7 @@ import type { AppConfig } from "../../config/config.module.js";
 import type { CreateUserDto, UpdateUserDto } from "./dto/create-user.dto.js";
 import type { PaginatedResult } from "../../common/dto/pagination.dto.js";
 import type { UserRole } from "@prisma/client";
+import { validatePasswordPolicy } from "../../common/utils/password-policy.js";
 
 @Injectable()
 export class UsersService {
@@ -190,20 +191,6 @@ export class UsersService {
   }
 
   private validatePasswordPolicy(password: string) {
-    if (password.length < 10) {
-      throw new BadRequestException("La contraseña debe tener al menos 10 caracteres");
-    }
-    if (!/[a-z]/.test(password)) {
-      throw new BadRequestException("La contraseña debe incluir al menos una letra minúscula");
-    }
-    if (!/[A-Z]/.test(password)) {
-      throw new BadRequestException("La contraseña debe incluir al menos una letra mayúscula");
-    }
-    if (!/[0-9]/.test(password)) {
-      throw new BadRequestException("La contraseña debe incluir al menos un número");
-    }
-    if (!/[^a-zA-Z0-9]/.test(password)) {
-      throw new BadRequestException("La contraseña debe incluir al menos un símbolo");
-    }
+    return validatePasswordPolicy(password);
   }
 }

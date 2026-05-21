@@ -1,9 +1,10 @@
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { useMutation, useQuery } from "@tanstack/react-query";
 import { ShellLayout } from "../../components/common/ShellLayout";
 import { KpiCard } from "../../components/common/KpiCard";
 import { GradeBarChart } from "../../components/charts/GradeBarChart";
 import { VoiceTextarea } from "../../components/voice/VoiceTextarea";
+import { useToast } from "../../components/common/Toast";
 import { Modal } from "../../components/common/Modal";
 import { LoadingSpinner } from "../../components/common/LoadingSpinner";
 import { api } from "../../lib/api";
@@ -37,11 +38,6 @@ export function ProfesorDashboard({ user, onLogout }: Props) {
     enabled: Boolean(courseId)
   });
 
-  const kpiQuery = useQuery({
-    queryKey: ["course-kpi", courseId],
-    queryFn: () => api.courseKpi(courseId),
-    enabled: Boolean(courseId)
-  });
   const alertsQuery = useQuery({ queryKey: ["my-alerts"], queryFn: api.myAlerts });
 
   const [title, setTitle] = useState("Control unidad 1");
@@ -50,29 +46,63 @@ export function ProfesorDashboard({ user, onLogout }: Props) {
   const [appliedAt, setAppliedAt] = useState(new Date().toISOString().slice(0, 10));
   const [grades, setGrades] = useState<Record<string, number>>({});
   const [observation, setObservation] = useState("");
-  const [message, setMessage] = useState("");
+  const gradesEditedRef = useRef(false);
+  const prevCourseIdRef = useRef(courseId);
+  const { toast } = useToast();
 
   const createAssessment = useMutation({
     mutationFn: api.createAssessment,
     onSuccess: () => {
       setGrades({});
-      setMessage("Planilla registrada correctamente.");
-      kpiQuery.refetch();
+      gradesEditedRef.current = false;
+      toast("Planilla registrada correctamente.", "success");
       studentsQuery.refetch();
     },
     onError: (error) => {
-      setMessage(error instanceof Error ? error.message : "No se pudo registrar la planilla");
+      toast(error instanceof Error ? error.message : "No se pudo registrar la planilla", "error");
     }
   });
 
   const students = studentsQuery.data || [];
 
+  const kpiData = useMemo(() => {
+    const total = students.length;
+    if (!total) return { avgGrade: "-", avgPercent: "-", level: "-", totalGrades: 0 };
+    const validGrades = Object.values(grades).filter(v => typeof v === 'number' && !isNaN(v) && v > 0);
+    const totalGrades = validGrades.length;
+    if (!totalGrades) return { avgGrade: "-", avgPercent: "-", level: "-", totalGrades: 0 };
+    const avg = validGrades.reduce((s, g) => s + g, 0) / totalGrades;
+    const pct = ((avg / 7) * 100).toFixed(0);
+    let level = "Sin datos";
+    if (avg >= 5.5) level = "Alto";
+    else if (avg >= 4.0) level = "Medio";
+    else level = "Bajo";
+    return { avgGrade: avg.toFixed(2), avgPercent: `${pct}%`, level, totalGrades };
+  }, [students, grades]);
+
   useEffect(() => {
-    if (!students.length) return;
-    const next: Record<string, number> = {};
-    for (const s of students) next[s.student_id] = 4.0;
-    setGrades(next);
-  }, [studentsQuery.data]);
+    if (!studentsQuery.data?.length) return;
+
+    if (courseId !== prevCourseIdRef.current) {
+      if (gradesEditedRef.current) {
+        const confirmed = window.confirm(
+          "Has editado notas en este curso. Al cambiar de curso perderas los cambios no guardados. ¿Deseas continuar?"
+        );
+        if (!confirmed) {
+          setAssignmentId(prevCourseIdRef.current ? assignmentId : "");
+          return;
+        }
+      }
+      prevCourseIdRef.current = courseId;
+      gradesEditedRef.current = false;
+    }
+
+    if (!gradesEditedRef.current) {
+      const next: Record<string, number> = {};
+      for (const s of studentsQuery.data) next[s.student_id] = 4.0;
+      setGrades(next);
+    }
+  }, [studentsQuery.data, courseId]);
 
   const chartData = useMemo(
     () =>
@@ -84,13 +114,13 @@ export function ProfesorDashboard({ user, onLogout }: Props) {
   );
 
   function submitGradebook() {
-    setMessage("");
+    
     if (!title.trim()) {
-      setMessage("El nombre de la evaluacion es obligatorio.");
+      toast("El nombre de la evaluacion es obligatorio.", "warning");
       return;
     }
     if (!students.length) {
-      setMessage("No hay alumnos en el curso seleccionado.");
+      toast("No hay alumnos en el curso seleccionado.", "warning");
       return;
     }
 
@@ -99,7 +129,7 @@ export function ProfesorDashboard({ user, onLogout }: Props) {
       return Number.isNaN(value) || value < 0 || value > 7;
     });
     if (invalid) {
-      setMessage("Todas las notas deben estar entre 0.0 y 7.0.");
+      toast("Todas las notas deben estar entre 0.0 y 7.0.", "warning");
       return;
     }
 
@@ -129,10 +159,10 @@ export function ProfesorDashboard({ user, onLogout }: Props) {
       {assignmentsQuery.isError ? <section className="panel"><p>No se pudieron cargar las asignaciones.</p></section> : null}
 
       <section className="kpi-grid">
-        <KpiCard label="Promedio curso" value={kpiQuery.data?.avgGrade ?? "-"} />
-        <KpiCard label="Equivalente %" value={kpiQuery.data ? `${kpiQuery.data.avgPercent}%` : "-"} />
-        <KpiCard label="Nivel" value={kpiQuery.data?.level ?? "-"} />
-        <KpiCard label="Notas registradas" value={kpiQuery.data?.totalGrades ?? 0} />
+        <KpiCard label="Promedio curso" value={kpiData.avgGrade} />
+        <KpiCard label="Equivalente %" value={kpiData.avgPercent} />
+        <KpiCard label="Nivel" value={kpiData.level} />
+        <KpiCard label="Notas registradas" value={kpiData.totalGrades} />
       </section>
 
       <section className="panel">
@@ -172,7 +202,6 @@ export function ProfesorDashboard({ user, onLogout }: Props) {
             {createAssessment.isPending ? "Guardando..." : "Registrar planilla"}
           </button>
         </div>
-        {message ? <p>{message}</p> : null}
 
         <div style={{ marginTop: 12 }}>
           <VoiceTextarea
@@ -207,6 +236,7 @@ export function ProfesorDashboard({ user, onLogout }: Props) {
                       value={grades[s.student_id] ?? 0}
                       onChange={(e) => {
                         const value = Number(e.target.value);
+                        gradesEditedRef.current = true;
                         setGrades((prev) => ({ ...prev, [s.student_id]: value }));
                       }}
                     />
@@ -222,6 +252,8 @@ export function ProfesorDashboard({ user, onLogout }: Props) {
         <h3>Vista grafica de notas</h3>
         <GradeBarChart data={chartData} />
       </section>
+
+      <EvaluacionesProfesorPanel courseId={courseId} subjectId={subjectId} />
 
       <AnswersInspectionPanel courseId={courseId} subjectId={subjectId} />
 
@@ -241,6 +273,79 @@ export function ProfesorDashboard({ user, onLogout }: Props) {
         )}
       </section>
     </ShellLayout>
+  );
+}
+
+function EvaluacionesProfesorPanel({ courseId, subjectId }: { courseId: string; subjectId: string }) {
+  const assessmentsQuery = useQuery({
+    queryKey: ["teacher-course-assessments", courseId, subjectId],
+    queryFn: () => api.listAssessments({ courseId, subjectId }) as Promise<{ assessment_id: string; title: string; assessment_type: string; status: string; course_name: string; subject_name: string; attempts_count: number; grades_count: number; created_at: string }[]>,
+    enabled: Boolean(courseId) && Boolean(subjectId),
+  });
+
+  const assessments = assessmentsQuery.data || [];
+
+  const porEstado = useMemo(() => {
+    const map: Record<string, number> = {};
+    assessments.forEach((a) => { map[a.status] = (map[a.status] || 0) + 1; });
+    return map;
+  }, [assessments]);
+
+  if (!courseId || !subjectId) return null;
+
+  return (
+    <section className="panel">
+      <h3>Mis Evaluaciones del Curso</h3>
+      <p style={{ color: "var(--muted)", fontSize: ".84rem", marginBottom: 12 }}>
+        Evaluaciones creadas para este curso y asignatura. Puedes crear, revisar y monitorear el progreso de tus estudiantes.
+      </p>
+
+      {assessmentsQuery.isLoading ? <LoadingSpinner size="sm" /> : null}
+
+      {!assessmentsQuery.isLoading && (
+        <div style={{ display: "flex", gap: 8, flexWrap: "wrap", marginBottom: 12 }}>
+          {Object.entries(porEstado).map(([estado, count]) => (
+            <span key={estado} className={`badge ${estado === "PUBLISHED" || estado === "ACTIVE" ? "badge--active" : estado === "CLOSED" || estado === "IN_GRADING" ? "badge--warning" : estado === "GRADED" || estado === "REPORTED" ? "badge--active" : "badge--inactive"}`}>
+              {estado}: {count}
+            </span>
+          ))}
+          {assessments.length === 0 && <span style={{ color: "var(--muted)", fontSize: ".84rem" }}>Sin evaluaciones aún. Crea una planilla arriba.</span>}
+        </div>
+      )}
+
+      {assessments.length > 0 && (
+        <div className="table-wrap">
+          <table className="table">
+            <thead>
+              <tr>
+                <th>Evaluación</th>
+                <th>Tipo</th>
+                <th>Estado</th>
+                <th>Intentos</th>
+                <th>Notas</th>
+                <th>Fecha</th>
+              </tr>
+            </thead>
+            <tbody>
+              {assessments.map((a) => (
+                <tr key={a.assessment_id}>
+                  <td><strong>{a.title}</strong></td>
+                  <td><span className="badge badge--role">{a.assessment_type}</span></td>
+                  <td>
+                    <span className={`badge ${a.status === "PUBLISHED" || a.status === "ACTIVE" || a.status === "GRADED" ? "badge--active" : a.status === "CLOSED" || a.status === "IN_GRADING" ? "badge--warning" : "badge--inactive"}`}>
+                      {a.status}
+                    </span>
+                  </td>
+                  <td style={{ textAlign: "center" }}>{a.attempts_count}</td>
+                  <td style={{ textAlign: "center" }}>{a.grades_count}</td>
+                  <td style={{ fontSize: ".78rem", whiteSpace: "nowrap" }}>{new Date(a.created_at).toLocaleDateString("es-CL")}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      )}
+    </section>
   );
 }
 

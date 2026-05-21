@@ -2,10 +2,13 @@ import { useState, useEffect } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import type { AcademicYear, PeriodRow } from "../../types/api";
 import { api } from "../../lib/api";
+import { useToast } from "../../components/common/Toast";
+import { useInstitution } from "../../app/InstitutionContext";
 
 export function AcademicYearsView() {
   const queryClient = useQueryClient();
-  const [message, setMessage] = useState("");
+  const { toast } = useToast();
+  const { selectedInstitution } = useInstitution();
   const [selectedYearId, setSelectedYearId] = useState<string>("");
   const [editingYearId, setEditingYearId] = useState<string | null>(null);
   const [editingPeriodId, setEditingPeriodId] = useState<string | null>(null);
@@ -24,16 +27,10 @@ export function AcademicYearsView() {
     weight: 50,
   });
 
-  const institutions = useQuery({
-    queryKey: ["institutions-for-years"],
-    queryFn: () => api.listInstitutions(),
-  });
-  const institutionId = institutions.data?.[0]?.id || "";
-
   const years = useQuery({
-    queryKey: ["academic-years", institutionId],
-    queryFn: () => api.listAcademicYears(institutionId),
-    enabled: Boolean(institutionId),
+    queryKey: ["academic-years", selectedInstitution?.id],
+    queryFn: () => api.listAcademicYears(selectedInstitution?.id || ""),
+    enabled: Boolean(selectedInstitution?.id),
   });
 
   useEffect(() => {
@@ -50,81 +47,81 @@ export function AcademicYearsView() {
   const createYear = useMutation({
     mutationFn: api.createAcademicYear,
     onSuccess: () => {
-      setMessage("Año académico creado.");
+      toast("Ano academico creado.", "success");
       setYearForm({ year: new Date().getFullYear(), startDate: "", endDate: "" });
       setEditingYearId(null);
       queryClient.invalidateQueries({ queryKey: ["academic-years"] });
     },
-    onError: (e) => setMessage(e instanceof Error ? e.message : "Error al crear año"),
+    onError: (e) => toast(e instanceof Error ? e.message : "Error al crear año", "error"),
   });
 
   const updateYear = useMutation({
     mutationFn: ({ id, data }: { id: string; data: Record<string, unknown> }) =>
       api.updateAcademicYear(id, data),
     onSuccess: () => {
-      setMessage("Año académico actualizado.");
+      toast("Ano academico actualizado.", "success");
       setEditingYearId(null);
       queryClient.invalidateQueries({ queryKey: ["academic-years"] });
     },
-    onError: (e) => setMessage(e instanceof Error ? e.message : "Error al actualizar"),
+    onError: (e) => toast(e instanceof Error ? e.message : "Error al actualizar", "error"),
   });
 
   const closeYear = useMutation({
     mutationFn: api.closeAcademicYear,
     onSuccess: () => {
-      setMessage("Año académico cerrado.");
+      toast("Ano academico cerrado.", "success");
       queryClient.invalidateQueries({ queryKey: ["academic-years"] });
     },
-    onError: (e) => setMessage(e instanceof Error ? e.message : "Error al cerrar"),
+    onError: (e) => toast(e instanceof Error ? e.message : "Error al cerrar", "error"),
   });
 
   const reopenYear = useMutation({
     mutationFn: api.reopenAcademicYear,
     onSuccess: () => {
-      setMessage("Año académico reabierto.");
+      toast("Ano academico reabierto.", "success");
       queryClient.invalidateQueries({ queryKey: ["academic-years"] });
     },
-    onError: (e) => setMessage(e instanceof Error ? e.message : "Error al reabrir"),
+    onError: (e) => toast(e instanceof Error ? e.message : "Error al reabrir", "error"),
   });
 
   const createPeriod = useMutation({
     mutationFn: api.createPeriod,
     onSuccess: () => {
-      setMessage("Periodo creado.");
+      toast("Periodo creado.", "success");
       setPeriodForm({ name: "", type: "SEMESTER", startDate: "", endDate: "", weight: 50 });
       setEditingPeriodId(null);
       queryClient.invalidateQueries({ queryKey: ["periods"] });
     },
-    onError: (e) => setMessage(e instanceof Error ? e.message : "Error al crear periodo"),
+    onError: (e) => toast(e instanceof Error ? e.message : "Error al crear periodo", "error"),
   });
 
   const updatePeriod = useMutation({
     mutationFn: ({ id, data }: { id: string; data: Record<string, unknown> }) =>
       api.updatePeriod(id, data),
     onSuccess: () => {
-      setMessage("Periodo actualizado.");
+      toast("Periodo actualizado.", "success");
       setEditingPeriodId(null);
       queryClient.invalidateQueries({ queryKey: ["periods"] });
     },
-    onError: (e) => setMessage(e instanceof Error ? e.message : "Error al actualizar"),
+    onError: (e) => toast(e instanceof Error ? e.message : "Error al actualizar", "error"),
   });
 
   const closePeriod = useMutation({
     mutationFn: api.closePeriod,
     onSuccess: () => {
-      setMessage("Periodo cerrado.");
+      toast("Periodo cerrado.", "success");
       queryClient.invalidateQueries({ queryKey: ["periods"] });
     },
-    onError: (e) => setMessage(e instanceof Error ? e.message : "Error al cerrar"),
+    onError: (e) => toast(e instanceof Error ? e.message : "Error al cerrar", "error"),
   });
 
   const reopenPeriod = useMutation({
     mutationFn: api.reopenPeriod,
     onSuccess: () => {
-      setMessage("Periodo reabierto.");
+      toast("Periodo reabierto.", "success");
       queryClient.invalidateQueries({ queryKey: ["periods"] });
     },
-    onError: (e) => setMessage(e instanceof Error ? e.message : "Error al reabrir"),
+    onError: (e) => toast(e instanceof Error ? e.message : "Error al reabrir", "error"),
   });
 
   function startEditYear(y: AcademicYear) {
@@ -148,13 +145,13 @@ export function AcademicYearsView() {
   }
 
   function handleSaveYear() {
-    if (!institutionId) return;
+    if (!selectedInstitution?.id) return;
     if (!yearForm.startDate || !yearForm.endDate) {
-      setMessage("Fechas de inicio y fin son obligatorias.");
+      toast("Fechas de inicio y fin son obligatorias.", "warning");
       return;
     }
     const payload = {
-      institutionId,
+      institutionId: selectedInstitution.id,
       year: yearForm.year,
       startDate: yearForm.startDate,
       endDate: yearForm.endDate,
@@ -169,7 +166,7 @@ export function AcademicYearsView() {
   function handleSavePeriod() {
     if (!selectedYearId) return;
     if (!periodForm.name || !periodForm.startDate || !periodForm.endDate) {
-      setMessage("Nombre y fechas son obligatorios.");
+      toast("Nombre y fechas son obligatorios.", "warning");
       return;
     }
     const payload = {
@@ -296,7 +293,7 @@ export function AcademicYearsView() {
           </div>
         </div>
         <div className="form-actions">
-          <button onClick={handleSaveYear} disabled={!institutionId}>
+          <button onClick={handleSaveYear} disabled={!selectedInstitution?.id}>
             {editingYearId ? "Actualizar año" : "Crear año académico"}
           </button>
           {editingYearId ? (
@@ -417,7 +414,6 @@ export function AcademicYearsView() {
         </section>
       ) : null}
 
-      {message ? <p className="form-message">{message}</p> : null}
     </>
   );
 }

@@ -12,6 +12,11 @@ export async function seed(
 ): Promise<void> {
   console.log("\n─── RESOURCES & LESSONS ────────────────────");
 
+  if (Object.keys(teacherIds).length === 0) {
+    console.log("  [✓] Resources & Lessons: skipped (no teachers)");
+    return;
+  }
+
   const oaLen1 = await prisma.learningObjective.findUnique({ where: { code: "OA1-LEN-4" } });
   if (oaLen1) {
     const guide = await prisma.learningResource.create({

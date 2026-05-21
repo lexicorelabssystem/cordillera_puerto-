@@ -159,14 +159,13 @@ export class CalculationsService {
     if (!academicYear) throw new NotFoundException("Año académico no encontrado");
 
     const periods = academicYear.periods.filter((p) => p.status === "CLOSED" || p.status === "ACTIVE");
-
     if (periods.length === 0) {
       throw new BadRequestException("No hay periodos activos o cerrados para calcular el promedio anual");
     }
 
+    const periodIds = periods.map((p) => p.id);
     const totalPeriodWeight = periods.reduce((sum, p) => sum + (p.weight ?? 100 / periods.length), 0);
 
-    // Get all students via courses in the academic year
     const courses = await this.prisma.course.findMany({
       where: { academicYearId, ...(courseId ? { id: courseId } : {}) },
       include: {
@@ -177,61 +176,101 @@ export class CalculationsService {
       },
     });
 
-    const results = [];
+    const courseIds = courses.map((c) => c.id);
 
+    const allAssessments = await this.prisma.assessment.findMany({
+      where: {
+        courseId: { in: courseIds },
+        periodId: { in: periodIds },
+      },
+      include: {
+        subject: { select: { id: true, name: true } },
+        course: { select: { id: true, name: true, gradeLevel: true } },
+        period: { select: { id: true, weight: true } },
+        grades: {
+          select: { studentId: true, grade: true },
+        },
+      },
+    });
+
+    const periodWeightMap = new Map<string, number>();
+    for (const p of periods) {
+      periodWeightMap.set(p.id, p.weight ?? 100 / periods.length);
+    }
+
+    const results = [];
     for (const course of courses) {
       const studentAverages: Record<string, {
-        studentId: string; studentName: string; periodGrades: { periodId: string; periodName: string; periodWeight: number; average: number | null }[];
-        yearAverage: number | null; level: string;
+        studentId: string; studentName: string;
+        periodGrades: Record<string, { assessments: { weight: number; grade: number }[] }>;
       }> = {};
 
       for (const enrollment of course.enrollments) {
         studentAverages[enrollment.student.id] = {
           studentId: enrollment.student.id,
           studentName: `${enrollment.student.firstName} ${enrollment.student.lastName}`,
-          periodGrades: [],
-          yearAverage: null,
-          level: "Sin datos",
+          periodGrades: {},
         };
       }
 
-      for (const period of periods) {
-        const effectivePeriodWeight = period.weight ?? 100 / periods.length;
+      for (const a of allAssessments) {
+        if (a.courseId !== course.id) continue;
+        const periodId = a.period!.id;
+        if (!periodWeightMap.has(periodId)) continue;
 
-        // Get period averages for this period and course
-        const subjectAverages = await this.getPeriodAverages(period.id, course.id);
-
-        for (const subject of subjectAverages.courses) {
-          for (const student of subject.students) {
-            if (studentAverages[student.studentId]) {
-              studentAverages[student.studentId].periodGrades.push({
-                periodId: period.id,
-                periodName: period.name,
-                periodWeight: effectivePeriodWeight,
-                average: student.average,
-              });
-            }
+        for (const g of a.grades) {
+          if (!studentAverages[g.studentId]) continue;
+          if (!studentAverages[g.studentId].periodGrades[periodId]) {
+            studentAverages[g.studentId].periodGrades[periodId] = { assessments: [] };
           }
+          studentAverages[g.studentId].periodGrades[periodId].assessments.push({
+            weight: a.weight ?? 0,
+            grade: g.grade,
+          });
         }
       }
 
-      // Calculate year average
-      for (const [, sa] of Object.entries(studentAverages)) {
+      const students = Object.values(studentAverages).map((sa) => {
+        const periodGrades = periods.map((p) => {
+          const pg = sa.periodGrades[p.id];
+          let periodAvg: number | null = null;
+          if (pg && pg.assessments.length > 0) {
+            let weightedSum = 0;
+            let weightSum = 0;
+            for (const a of pg.assessments) {
+              const effectiveWeight = a.weight > 0 ? a.weight : (100 / pg.assessments.length);
+              weightedSum += a.grade * effectiveWeight;
+              weightSum += effectiveWeight;
+            }
+            periodAvg = weightSum > 0 ? Number((weightedSum / weightSum).toFixed(2)) : null;
+          }
+          return {
+            periodId: p.id,
+            periodName: p.name,
+            periodWeight: periodWeightMap.get(p.id) ?? 0,
+            average: periodAvg,
+          };
+        });
+
         let weightedSum = 0;
         let weightSum = 0;
-
-        for (const pg of sa.periodGrades) {
-          if (pg.average !== null && pg.average > 0) {
+        for (const pg of periodGrades) {
+          if (pg.average !== null && pg.average > 0 && pg.periodWeight > 0) {
             weightedSum += pg.average * pg.periodWeight;
             weightSum += pg.periodWeight;
           }
         }
 
         const yearAvg = weightSum > 0 ? Number((weightedSum / weightSum).toFixed(2)) : null;
-        sa.yearAverage = yearAvg;
-        sa.level = yearAvg === null ? "Sin evaluaciones"
-          : yearAvg < 4 ? "Critico" : yearAvg < 5 ? "Basico" : yearAvg < 6 ? "Adecuado" : "Avanzado";
-      }
+        return {
+          studentId: sa.studentId,
+          studentName: sa.studentName,
+          periodGrades,
+          yearAverage: yearAvg,
+          level: yearAvg === null ? "Sin evaluaciones"
+            : yearAvg < 4 ? "Critico" : yearAvg < 5 ? "Basico" : yearAvg < 6 ? "Adecuado" : "Avanzado",
+        };
+      });
 
       results.push({
         courseId: course.id,
@@ -239,7 +278,7 @@ export class CalculationsService {
         gradeLevel: course.gradeLevel,
         studentCount: course.enrollments.length,
         totalPeriodWeight,
-        students: Object.values(studentAverages).sort((a, b) => a.studentName.localeCompare(b.studentName)),
+        students: students.sort((a, b) => a.studentName.localeCompare(b.studentName)),
       });
     }
 

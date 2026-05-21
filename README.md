@@ -63,11 +63,9 @@ npm run dev
 
 | Rol | Email | Contraseña |
 |---|---|---|
-| Admin | admin@cordillera.cl | Demo2026* |
-| Dirección | direccion@cordillera.cl | Demo2026* |
-| UTP | utp@cordillera.cl | Demo2026* |
-| Profesor | profesor@cordillera.cl | Demo2026* |
-| Alumno | alumno001@cordillera.cl | Alumno2026* |
+| Alumno | alexis.{curso}@cordillera.cl | Alexis2026* |
+
+> 24 alumnos "Alexis", uno por curso (ej: `alexis.1a@cordillera.cl`, `alexis.4m_a@cordillera.cl`).
 
 ---
 

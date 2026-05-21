@@ -1,10 +1,12 @@
 import { VoiceInputButton } from "./VoiceInputButton";
 import type { VoiceState } from "../../services/voice/voiceTypes";
+import { VOICE_ERRORS } from "../../services/voice/voiceTypes";
 
 interface Props {
   status: VoiceState;
   interimTranscript: string;
   transcript: string;
+  errorMessage: string;
   label?: string;
   disabled?: boolean;
   onStart: () => void;
@@ -15,9 +17,11 @@ interface Props {
 }
 
 export function VoiceRecorder({
-  status, interimTranscript, transcript, label, disabled,
+  status, interimTranscript, transcript, errorMessage, label, disabled,
   onStart, onStop, onInsert, onRetry, onEdit,
 }: Props) {
+  const specificError = VOICE_ERRORS[errorMessage] || errorMessage || "No pudimos captar el audio. Intenta nuevamente.";
+
   return (
     <div className="voice-recorder">
       <VoiceInputButton
@@ -38,20 +42,20 @@ export function VoiceRecorder({
       {status === "preview" && transcript && (
         <div className="voice-recorder__preview">
           <div className="voice-recorder__preview-label">Texto detectado:</div>
-          <div className="voice-recorder__preview-text">“{transcript}”</div>
+          <div className="voice-recorder__preview-text">"{transcript}"</div>
           <div className="voice-recorder__preview-actions">
             <button type="button" className="voice-btn voice-btn--insert" onClick={onInsert}>
-              ✅ Insertar texto
+              Insertar texto
             </button>
             <button type="button" className="voice-btn voice-btn--retry" onClick={onRetry}>
-              🎙️ Volver a grabar
+              Volver a grabar
             </button>
             <button
               type="button"
               className="voice-btn voice-btn--edit"
               onClick={() => onEdit(transcript)}
             >
-              ✏️ Editar
+              Editar
             </button>
           </div>
         </div>
@@ -59,12 +63,13 @@ export function VoiceRecorder({
 
       {status === "error" && (
         <div className="voice-recorder__error">
-          <p>No pudimos captar el audio. Intenta nuevamente.</p>
+          <p>{specificError}</p>
           <button type="button" className="voice-btn voice-btn--retry" onClick={onRetry}>
-            🔄 Intentar de nuevo
+            Intentar de nuevo
           </button>
         </div>
       )}
     </div>
   );
 }
+

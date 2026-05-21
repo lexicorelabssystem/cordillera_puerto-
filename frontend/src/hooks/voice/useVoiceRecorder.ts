@@ -1,4 +1,4 @@
-import { useState, useCallback, useRef } from "react";
+import { useState, useCallback, useRef, useEffect } from "react";
 import { voiceTranscriptionService } from "../../services/voice/voiceTranscription.service";
 import type { VoiceState } from "../../services/voice/voiceTypes";
 import type { SpeechRecognitionResult } from "../../services/voice/voiceTranscription.service";
@@ -9,8 +9,17 @@ export function useVoiceRecorder() {
   const [interimTranscript, setInterimTranscript] = useState("");
   const [errorMessage, setErrorMessage] = useState("");
   const finalTranscriptRef = useRef("");
+  const mountedRef = useRef(true);
 
   const isSupported = voiceTranscriptionService.isSupported();
+
+  useEffect(() => {
+    mountedRef.current = true;
+    return () => {
+      mountedRef.current = false;
+      voiceTranscriptionService.stop();
+    };
+  }, []);
 
   const start = useCallback(async () => {
     setStatus("requesting_permission");
@@ -22,14 +31,15 @@ export function useVoiceRecorder() {
     try {
       await voiceTranscriptionService.start(
         (result: SpeechRecognitionResult) => {
+          if (!mountedRef.current) return;
           if (result.isFinal) {
             if (result.transcript) {
               finalTranscriptRef.current += (finalTranscriptRef.current ? " " : "") + result.transcript;
               setTranscript(finalTranscriptRef.current);
             } else {
-              // Silence detected → stop and show preview
               setStatus("silence_detected");
               setTimeout(() => {
+                if (!mountedRef.current) return;
                 if (finalTranscriptRef.current.trim()) {
                   setStatus("preview");
                 } else {
@@ -44,22 +54,27 @@ export function useVoiceRecorder() {
           }
         },
         (error: string) => {
+          if (!mountedRef.current) return;
           setErrorMessage(error);
           setStatus("error");
         },
       );
-      setStatus("listening");
+      if (mountedRef.current) setStatus("listening");
     } catch {
-      setErrorMessage("audio-capture");
-      setStatus("error");
+      if (mountedRef.current) {
+        setErrorMessage("audio-capture");
+        setStatus("error");
+      }
     }
   }, []);
 
   const stop = useCallback(() => {
     voiceTranscriptionService.stop();
+    if (!mountedRef.current) return;
     if (finalTranscriptRef.current.trim()) {
       setStatus("processing");
       setTimeout(() => {
+        if (!mountedRef.current) return;
         setStatus("preview");
       }, 600);
     } else {

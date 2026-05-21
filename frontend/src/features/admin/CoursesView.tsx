@@ -1,16 +1,32 @@
 import { useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import type { AdminCourseRow, AdminSubject, CourseStudentRow, AdminTeacher } from "../../types/api";
+import { useInstitution } from "../../app/InstitutionContext";
 import { api } from "../../lib/api";
 import { Modal } from "../../components/common/Modal";
 import { LoadingSpinner } from "../../components/common/LoadingSpinner";
+import { useToast } from "../../components/common/Toast";
 
-const GRADE_LEVELS = [1, 2, 3, 4, 5, 6, 7, 8];
+const GRADE_LEVELS = [
+  { value: 1, label: "1° básico" },
+  { value: 2, label: "2° básico" },
+  { value: 3, label: "3° básico" },
+  { value: 4, label: "4° básico" },
+  { value: 5, label: "5° básico" },
+  { value: 6, label: "6° básico" },
+  { value: 7, label: "7° básico" },
+  { value: 8, label: "8° básico" },
+  { value: 9, label: "1° medio" },
+  { value: 10, label: "2° medio" },
+  { value: 11, label: "3° medio" },
+  { value: 12, label: "4° medio" },
+];
 
 export function CoursesView() {
   const queryClient = useQueryClient();
-  const [message, setMessage] = useState("");
+  const { toast } = useToast();
   const [showInactive, setShowInactive] = useState(false);
+  const { selectedInstitution } = useInstitution();
 
   const [courseForm, setCourseForm] = useState({ name: "", gradeLevel: 1, section: "", maxStudents: 45 });
   const [editingCourseId, setEditingCourseId] = useState<string | null>(null);
@@ -18,23 +34,17 @@ export function CoursesView() {
   const [subjectForm, setSubjectForm] = useState({ name: "", code: "" });
   const [editingSubjectId, setEditingSubjectId] = useState<string | null>(null);
 
-  const institutions = useQuery({
-    queryKey: ["institutions-for-courses"],
-    queryFn: () => api.listInstitutions(),
-  });
-  const institutionId = institutions.data?.[0]?.id || "";
-
   const years = useQuery({
-    queryKey: ["active-year-for-courses", institutionId],
-    queryFn: () => api.listAcademicYears(institutionId),
-    enabled: Boolean(institutionId),
+    queryKey: ["active-year-for-courses", selectedInstitution?.id],
+    queryFn: () => api.listAcademicYears(selectedInstitution?.id || ""),
+    enabled: Boolean(selectedInstitution?.id),
   });
   const academicYearId = years.data?.find((y) => y.isActive)?.id || "";
 
   const coursesQuery = useQuery({
-    queryKey: ["courses", { institutionId, academicYearId }],
-    queryFn: () => api.listCourses({ institutionId: institutionId || undefined, academicYearId: academicYearId || undefined }),
-    enabled: Boolean(institutionId) && Boolean(academicYearId),
+    queryKey: ["courses", { institutionId: selectedInstitution?.id, academicYearId }],
+    queryFn: () => api.listCourses({ institutionId: selectedInstitution?.id, academicYearId: academicYearId || undefined }),
+    enabled: Boolean(selectedInstitution?.id) && Boolean(academicYearId),
   });
 
   const subjectsQuery = useQuery({
@@ -46,64 +56,64 @@ export function CoursesView() {
   const createCourse = useMutation({
     mutationFn: api.createCourse,
     onSuccess: () => {
-      setMessage("Curso creado.");
+      toast("Curso creado.", "warning");
       setCourseForm({ name: "", gradeLevel: 1, section: "", maxStudents: 45 });
       queryClient.invalidateQueries({ queryKey: ["courses"] });
       queryClient.invalidateQueries({ queryKey: ["admin-overview"] });
     },
-    onError: (e) => setMessage(e instanceof Error ? e.message : "Error al crear curso"),
+    onError: (e) => toast(e instanceof Error ? e.message : "Error al crear curso", "error"),
   });
 
   const updateCourse = useMutation({
     mutationFn: ({ id, data }: { id: string; data: Record<string, unknown> }) => api.updateCourse(id, data),
     onSuccess: () => {
-      setMessage("Curso actualizado.");
+      toast("Curso actualizado.", "warning");
       setEditingCourseId(null);
       queryClient.invalidateQueries({ queryKey: ["courses"] });
     },
-    onError: (e) => setMessage(e instanceof Error ? e.message : "Error al actualizar curso"),
+    onError: (e) => toast(e instanceof Error ? e.message : "Error al actualizar curso", "error"),
   });
 
   const deleteCourse = useMutation({
-    mutationFn: api.deleteCourse,
-    onSuccess: () => { setMessage("Curso desactivado."); queryClient.invalidateQueries({ queryKey: ["courses"] }); },
-    onError: (e) => setMessage(e instanceof Error ? e.message : "Error al desactivar curso"),
+    mutationFn: (id: string) => api.updateCourse(id, { isActive: false }),
+    onSuccess: () => { toast("Curso desactivado.", "warning"); queryClient.invalidateQueries({ queryKey: ["courses"] }); },
+    onError: (e) => toast(e instanceof Error ? e.message : "Error al desactivar curso", "error"),
   });
 
   const createSubject = useMutation({
     mutationFn: api.createSubject,
     onSuccess: () => {
-      setMessage("Asignatura creada.");
+      toast("Asignatura creada.", "warning");
       setSubjectForm({ name: "", code: "" });
       queryClient.invalidateQueries({ queryKey: ["subjects"] });
     },
-    onError: (e) => setMessage(e instanceof Error ? e.message : "Error al crear asignatura"),
+    onError: (e) => toast(e instanceof Error ? e.message : "Error al crear asignatura", "error"),
   });
 
   const updateSubject = useMutation({
     mutationFn: ({ id, data }: { id: string; data: Record<string, unknown> }) => api.updateSubject(id, data),
     onSuccess: () => {
-      setMessage("Asignatura actualizada.");
+      toast("Asignatura actualizada.", "success");
       setEditingSubjectId(null);
       queryClient.invalidateQueries({ queryKey: ["subjects"] });
     },
-    onError: (e) => setMessage(e instanceof Error ? e.message : "Error al actualizar asignatura"),
+    onError: (e) => toast(e instanceof Error ? e.message : "Error al actualizar asignatura", "error"),
   });
 
   const deleteSubject = useMutation({
     mutationFn: api.deleteSubject,
-    onSuccess: () => { setMessage("Asignatura desactivada."); queryClient.invalidateQueries({ queryKey: ["subjects"] }); },
-    onError: (e) => setMessage(e instanceof Error ? e.message : "Error al desactivar asignatura"),
+    onSuccess: () => { toast("Asignatura desactivada.", "success"); queryClient.invalidateQueries({ queryKey: ["subjects"] }); },
+    onError: (e) => toast(e instanceof Error ? e.message : "Error al desactivar asignatura", "error"),
   });
 
   function handleCreateCourse() {
-    if (!institutionId || !academicYearId) { setMessage("Se requiere institución y año académico activo."); return; }
-    if (!courseForm.name) { setMessage("El nombre del curso es obligatorio."); return; }
-    createCourse.mutate({ institutionId, academicYearId, name: courseForm.name, gradeLevel: Number(courseForm.gradeLevel), section: courseForm.section || undefined, maxStudents: Number(courseForm.maxStudents) });
+    if (!selectedInstitution?.id || !academicYearId) { toast("Se requiere institucion y ano academico activo.", "warning"); return; }
+    if (!courseForm.name) { toast("El nombre del curso es obligatorio.", "warning"); return; }
+    createCourse.mutate({ institutionId: selectedInstitution.id, academicYearId, name: courseForm.name, gradeLevel: Number(courseForm.gradeLevel), section: courseForm.section || undefined, maxStudents: Number(courseForm.maxStudents) });
   }
 
   function handleUpdateCourse(courseId: string) {
-    if (!courseForm.name) { setMessage("El nombre del curso es obligatorio."); return; }
+    if (!courseForm.name) { toast("El nombre del curso es obligatorio.", "warning"); return; }
     updateCourse.mutate({ id: courseId, data: { name: courseForm.name, gradeLevel: Number(courseForm.gradeLevel), section: courseForm.section || undefined, maxStudents: Number(courseForm.maxStudents) } });
   }
 
@@ -113,12 +123,12 @@ export function CoursesView() {
   }
 
   function handleCreateSubject() {
-    if (!subjectForm.name) { setMessage("El nombre de la asignatura es obligatorio."); return; }
+    if (!subjectForm.name) { toast("El nombre de la asignatura es obligatorio.", "warning"); return; }
     createSubject.mutate({ name: subjectForm.name, code: subjectForm.code || undefined });
   }
 
   function handleUpdateSubject(subjectId: string) {
-    if (!subjectForm.name) { setMessage("El nombre de la asignatura es obligatorio."); return; }
+    if (!subjectForm.name) { toast("El nombre de la asignatura es obligatorio.", "warning"); return; }
     updateSubject.mutate({ id: subjectId, data: { name: subjectForm.name, code: subjectForm.code || undefined } });
   }
 
@@ -132,7 +142,6 @@ export function CoursesView() {
 
   return (
     <>
-      {message ? <p className="form-message">{message}</p> : null}
 
       {/* ═══════ CURSOS ═══════ */}
       <section className="panel">
@@ -178,7 +187,7 @@ export function CoursesView() {
           <div className="form-field">
             <label>Nivel</label>
             <select value={courseForm.gradeLevel} onChange={(e) => setCourseForm((s) => ({ ...s, gradeLevel: Number(e.target.value) }))}>
-              {GRADE_LEVELS.map((l) => <option key={l} value={l}>{l}° básico</option>)}
+              {GRADE_LEVELS.map((l) => <option key={l.value} value={l.value}>{l.label}</option>)}
             </select>
           </div>
           <div className="form-field">

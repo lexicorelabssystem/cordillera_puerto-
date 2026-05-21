@@ -48,3 +48,55 @@ export class BulkGradeDto {
   @Type(() => BulkGradeItemDto)
   grades!: BulkGradeItemDto[];
 }
+
+/* ─── Direct Grade (Libro de Evaluaciones) ─── */
+
+export class DirectGradeDto {
+  @ApiProperty({ description: "ID de la evaluación" })
+  @IsUUID()
+  assessmentId!: string;
+
+  @ApiProperty({ description: "ID del estudiante" })
+  @IsUUID()
+  studentId!: string;
+
+  @ApiProperty({ description: "Nota entre 1.0 y 7.0" })
+  @IsNumber()
+  @Min(1.0)
+  @Max(7.0)
+  grade!: number;
+
+  @ApiPropertyOptional({ description: "Comentario u observación" })
+  @IsOptional()
+  @IsString()
+  comments?: string;
+}
+
+export class BulkDirectGradeItemDto {
+  @ApiProperty({ description: "ID de la evaluación" })
+  @IsUUID()
+  assessmentId!: string;
+
+  @ApiProperty({ description: "ID del estudiante" })
+  @IsUUID()
+  studentId!: string;
+
+  @ApiProperty({ description: "Nota entre 1.0 y 7.0" })
+  @IsNumber()
+  @Min(1.0)
+  @Max(7.0)
+  grade!: number;
+
+  @ApiPropertyOptional({ description: "Comentario u observación" })
+  @IsOptional()
+  @IsString()
+  comments?: string;
+}
+
+export class BulkDirectGradeDto {
+  @ApiProperty({ description: "Array de notas directas a crear/actualizar", type: [BulkDirectGradeItemDto] })
+  @IsArray()
+  @ValidateNested({ each: true })
+  @Type(() => BulkDirectGradeItemDto)
+  grades!: BulkDirectGradeItemDto[];
+}

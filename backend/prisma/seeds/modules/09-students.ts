@@ -3,6 +3,41 @@ import bcrypt from "bcryptjs";
 
 const BCRYPT_ROUNDS = 10;
 
+const COURSE_LAST_NAMES: Record<string, string> = {
+  "1° A":  "PrimerBasicoA",
+  "1° B":  "PrimerBasicoB",
+  "2° A":  "SegundoBasicoA",
+  "2° B":  "SegundoBasicoB",
+  "3° A":  "TercerBasicoA",
+  "3° B":  "TercerBasicoB",
+  "4° A":  "CuartoBasicoA",
+  "4° B":  "CuartoBasicoB",
+  "5° A":  "QuintoBasicoA",
+  "5° B":  "QuintoBasicoB",
+  "6° A":  "SextoBasicoA",
+  "6° B":  "SextoBasicoB",
+  "7° A":  "SeptimoBasicoA",
+  "7° B":  "SeptimoBasicoB",
+  "8° A":  "OctavoBasicoA",
+  "8° B":  "OctavoBasicoB",
+  "1°M A": "PrimerMedioA",
+  "1°M B": "PrimerMedioB",
+  "2°M A": "SegundoMedioA",
+  "2°M B": "SegundoMedioB",
+  "3°M A": "TercerMedioA",
+  "3°M B": "TercerMedioB",
+  "4°M A": "CuartoMedioA",
+  "4°M B": "CuartoMedioB",
+};
+
+function emailSlug(courseName: string): string {
+  return courseName
+    .toLowerCase()
+    .replace("°", "")
+    .replace(" ", "")
+    .replace("m", "m_");
+}
+
 export async function seed(
   prisma: PrismaClient,
   courses: Record<string, { id: string; gradeLevel: number }>,
@@ -10,60 +45,46 @@ export async function seed(
 ): Promise<number> {
   console.log("\n─── STUDENTS ───────────────────────────────");
 
-  const courseConfig: { name: string; gradeLevel: number; count: number }[] = [
-    { name: "1° A", gradeLevel: 1, count: 23 },
-    { name: "2° A", gradeLevel: 2, count: 24 },
-    { name: "3° A", gradeLevel: 3, count: 24 },
-    { name: "4° A", gradeLevel: 4, count: 24 },
-    { name: "5° A", gradeLevel: 5, count: 24 },
-    { name: "6° A", gradeLevel: 6, count: 30 },
-    { name: "7° A", gradeLevel: 7, count: 37 },
-    { name: "8° A", gradeLevel: 8, count: 29 },
-  ];
+  const studentHash = await bcrypt.hash("Alexis2026*", BCRYPT_ROUNDS);
+  let total = 0;
 
-  let studentSerial = 1;
-  const studentHash = await bcrypt.hash("Alumno2026*", BCRYPT_ROUNDS);
+  for (const [courseName, course] of Object.entries(courses)) {
+    const lastName = COURSE_LAST_NAMES[courseName] ?? courseName.replace(/[° ]/g, "");
+    const email = `alexis.${emailSlug(courseName)}@cordillera.cl`;
 
-  for (const c of courseConfig) {
-    const courseId = courses[c.name]!.id;
-    for (let i = 0; i < c.count; i++) {
-      const studentEmail = `alumno${String(studentSerial).padStart(3, "0")}@cordillera.cl`;
+    const user = await prisma.user.upsert({
+      where: { email },
+      update: {},
+      create: {
+        email,
+        passwordHash: studentHash,
+        firstName: "Alexis",
+        lastName,
+        role: "STUDENT",
+        institutionId,
+      },
+    });
 
-      const user = await prisma.user.upsert({
-        where: { email: studentEmail },
-        update: {},
-        create: {
-          email: studentEmail,
-          passwordHash: studentHash,
-          firstName: `Alumno${String(studentSerial).padStart(3, "0")}`,
-          lastName: c.name.replace("° ", "").replace(" ", ""),
-          role: "STUDENT",
-          institutionId,
+    let student = await prisma.student.findUnique({ where: { userId: user.id } });
+    if (!student) {
+      student = await prisma.student.create({
+        data: {
+          userId: user.id,
+          firstName: "Alexis",
+          lastName,
         },
       });
-
-      let student = await prisma.student.findUnique({ where: { userId: user.id } });
-      if (!student) {
-        student = await prisma.student.create({
-          data: {
-            userId: user.id,
-            firstName: `Alumno${String(studentSerial).padStart(3, "0")}`,
-            lastName: c.name.replace("° ", "").replace(" ", ""),
-          },
-        });
-      }
-
-      await prisma.enrollment.upsert({
-        where: { studentId_courseId: { studentId: student.id, courseId } },
-        update: {},
-        create: { studentId: student.id, courseId },
-      });
-
-      studentSerial++;
     }
-  }
-  const totalStudents = studentSerial - 1;
-  console.log(`  [✓] Students: ${totalStudents} enrolled`);
 
-  return totalStudents;
+    await prisma.enrollment.upsert({
+      where: { studentId_courseId: { studentId: student.id, courseId: course.id } },
+      update: {},
+      create: { studentId: student.id, courseId: course.id },
+    });
+
+    total++;
+  }
+
+  console.log(`  [✓] Students: ${total} (Alexis x24 cursos)`);
+  return total;
 }

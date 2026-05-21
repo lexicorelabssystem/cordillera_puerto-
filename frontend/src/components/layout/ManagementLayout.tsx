@@ -1,35 +1,31 @@
 import type { ReactNode } from "react";
-import { Sidebar, type SidebarItem } from "./Sidebar";
+import { Sidebar, type SidebarCategory } from "./Sidebar";
 import { ShellLayout } from "../common/ShellLayout";
 
 interface Props {
   title: string;
   subtitle: string;
   right?: ReactNode;
-  sidebarItems: SidebarItem[];
+  sidebarCategories: SidebarCategory[];
   sidebarTitle?: string;
   children: ReactNode;
-  currentLabel: string;
+  breadcrumbs?: { label: string; path?: string }[];
 }
 
 export function ManagementLayout({
   title,
   subtitle,
   right,
-  sidebarItems,
+  sidebarCategories,
   sidebarTitle,
   children,
-  currentLabel,
+  breadcrumbs,
 }: Props) {
   return (
-    <ShellLayout title={title} subtitle={subtitle} right={right}>
+    <ShellLayout title={title} subtitle={subtitle} right={right} breadcrumbs={breadcrumbs}>
       <div className="management-layout">
-        <Sidebar items={sidebarItems} title={sidebarTitle} />
+        <Sidebar categories={sidebarCategories} title={sidebarTitle} />
         <main className="management-content">
-          <div className="section-heading">
-            <span>Area activa</span>
-            <h2>{currentLabel}</h2>
-          </div>
           {children}
         </main>
       </div>

@@ -30,16 +30,26 @@ services:
       PORT: 4000
       HOST: 0.0.0.0
       DATABASE_URL: postgresql://${POSTGRES_USER:-cordillera}:${POSTGRES_PASSWORD:-cordillera_dev_2026}@postgres:5432/${POSTGRES_DB:-cordillera_dev}
-      JWT_SECRET: ${JWT_SECRET:-SsBGAtdu02uwk8MUkaggKpFiYVttIqynB7vHgLhiErI1H-gabA2SbJidRIoLV5pt}
+      JWT_SECRET: ${JWT_SECRET:?JWT_SECRET es requerido en produccion}
       JWT_ISSUER: cordillera-saas
       JWT_AUDIENCE: cordillera-app
       JWT_ACCESS_EXPIRES_IN: 15m
       JWT_REFRESH_EXPIRES_IN: 7d
       CORS_ORIGINS: ${CORS_ORIGINS:-http://localhost:80,http://localhost:5173}
+      SMTP_HOST: ${SMTP_HOST:-}
+      SMTP_PORT: ${SMTP_PORT:-587}
+      SMTP_USER: ${SMTP_USER:-}
+      SMTP_PASS: ${SMTP_PASS:-}
+      SMTP_FROM: ${SMTP_FROM:-noreply@cordillera.cl}
+      NOTIFICATION_EMAILS_ENABLED: ${NOTIFICATION_EMAILS_ENABLED:-false}
+      REDIS_URL: ${REDIS_URL:-redis://redis:6379}
+      FRONTEND_URL: ${FRONTEND_URL:-http://localhost}
     ports:
       - "4000:4000"
     depends_on:
       postgres:
+        condition: service_healthy
+      redis:
         condition: service_healthy
     healthcheck:
       test: ["CMD-SHELL", "wget -qO- http://localhost:4000/health || exit 1"]
@@ -47,6 +57,23 @@ services:
       timeout: 5s
       retries: 3
       start_period: 10s
+    networks:
+      - cordillera-net
+
+  redis:
+    image: redis:7-alpine
+    container_name: cordillera-redis
+    restart: unless-stopped
+    ports:
+      - "6379:6379"
+    volumes:
+      - redisdata:/data
+    command: redis-server --appendonly yes
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 5
     networks:
       - cordillera-net
 
@@ -114,6 +141,8 @@ volumes:
   pgdata:
     driver: local
   backups:
+    driver: local
+  redisdata:
     driver: local
 
 networks:

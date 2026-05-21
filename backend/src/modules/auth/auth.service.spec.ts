@@ -5,6 +5,7 @@ import { UnauthorizedException, ForbiddenException, BadRequestException } from "
 import { AuthService } from "./auth.service.js";
 import { PrismaService } from "../prisma/prisma.service.js";
 import { AuditLogsService } from "../audit-logs/audit-logs.service.js";
+import { EmailService } from "../notifications/email.service.js";
 import {
   mockConfig,
   MOCK_USER_ID,
@@ -17,11 +18,11 @@ import {
 
 describe("AuthService", () => {
   let service: AuthService;
-  let prismaUser: Record<string, jest.Mock>;
-  let prismaRt: Record<string, jest.Mock>;
-  let jwtSign: jest.Mock;
-  let jwtVerify: jest.Mock;
-  let auditLogMock: { log: jest.Mock };
+  let prismaUser: Record<string, jest.Mock<(...args: any[]) => any>>;
+  let prismaRt: Record<string, jest.Mock<(...args: any[]) => any>>;
+  let jwtSign: jest.Mock<(...args: any[]) => any>;
+  let jwtVerify: jest.Mock<(...args: any[]) => any>;
+  let auditLogMock: { log: jest.Mock<(...args: any[]) => any> };
 
   beforeEach(async () => {
     prismaUser = {
@@ -34,9 +35,9 @@ describe("AuthService", () => {
       update: jest.fn(),
       updateMany: jest.fn(),
     };
-    jwtSign = jest.fn().mockResolvedValue("mock-access-token");
-    jwtVerify = jest.fn();
-    auditLogMock = { log: jest.fn().mockResolvedValue(undefined) };
+    jwtSign = jest.fn<(...args: any[]) => any>().mockResolvedValue("mock-access-token");
+    jwtVerify = jest.fn<(...args: any[]) => any>();
+    auditLogMock = { log: jest.fn<(...args: any[]) => any>().mockResolvedValue(undefined) };
 
     const module: TestingModule = await Test.createTestingModule({
       providers: [
@@ -54,6 +55,7 @@ describe("AuthService", () => {
           useValue: { signAsync: jwtSign, verifyAsync: jwtVerify },
         },
         { provide: AuditLogsService, useValue: auditLogMock },
+        { provide: EmailService, useValue: { send: jest.fn<(...args: any[]) => any>(), sendPasswordReset: jest.fn<(...args: any[]) => any>().mockResolvedValue(true) } },
         { provide: "APP_CONFIG", useValue: mockConfig() },
       ],
     }).compile();
@@ -229,20 +231,20 @@ describe("AuthService", () => {
   });
 
   describe("forgotPassword", () => {
-    it("genera reset token si usuario existe", async () => {
+    it("retorna ok si usuario existe", async () => {
       prismaUser.findUnique.mockResolvedValue(mockUser);
 
       const result = await service.forgotPassword(MOCK_EMAIL);
 
       expect(result.ok).toBe(true);
-      expect(result.resetToken).toBeDefined();
+      expect(result.message).toBeDefined();
     });
 
     it("retorna ok sin token si no existe", async () => {
       prismaUser.findUnique.mockResolvedValue(null);
       const result = await service.forgotPassword("noexiste@test.cl");
       expect(result.ok).toBe(true);
-      expect(result.resetToken).toBeUndefined();
+      expect(result.message).toBeDefined();
     });
   });
 

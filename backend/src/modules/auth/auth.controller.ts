@@ -47,6 +47,7 @@ export class AuthController {
   @Public()
   @Post("refresh")
   @HttpCode(HttpStatus.OK)
+  @Throttle({ default: { limit: 10, ttl: 60_000 } })
   @ApiOperation({ summary: "Renovar access token", description: "Usa el refresh token de cookie o body para obtener nuevos tokens." })
   @ApiBody({ type: RefreshTokenDto, required: false })
   @ApiResponse({ status: 200, description: "Token renovado", type: LoginResponseDto })
@@ -79,6 +80,7 @@ export class AuthController {
   @Post("change-password")
   @HttpCode(HttpStatus.OK)
   @UseGuards(JwtAuthGuard)
+  @Throttle({ default: { limit: 5, ttl: 60_000 } })
   @ApiBearerAuth("access-token")
   @ApiOperation({ summary: "Cambiar contraseña", description: "Cambia la contraseña del usuario autenticado." })
   @ApiBody({ type: ChangePasswordDto })
@@ -120,6 +122,7 @@ export class AuthController {
   @Public()
   @Post("reset-password")
   @HttpCode(HttpStatus.OK)
+  @Throttle({ default: { limit: 3, ttl: 300_000 } })
   @ApiOperation({ summary: "Restablecer contraseña con token" })
   async resetPassword(@Body() dto: { token: string; newPassword: string }) {
     return this.authService.resetPassword(dto.token, dto.newPassword);

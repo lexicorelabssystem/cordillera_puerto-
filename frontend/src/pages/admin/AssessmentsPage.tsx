@@ -1,28 +1,31 @@
 import { useState } from "react";
+import { useNavigate } from "react-router-dom";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { api } from "../../lib/api";
 import { LoadingSpinner } from "../../components/common/LoadingSpinner";
 import { EmptyState } from "../../components/common/EmptyState";
 import { VoiceTextarea } from "../../components/voice/VoiceTextarea";
+import { useToast } from "../../components/common/Toast";
+import { useInstitution } from "../../app/InstitutionContext";
 
 type AssessmentType = "DIAGNOSTICA" | "PROCESO" | "CIERRE" | "PARCIAL" | "FINAL" | "SIMCE";
 
 export function AssessmentsPage() {
+  const navigate = useNavigate();
   const queryClient = useQueryClient();
-  const [message, setMessage] = useState("");
+  const { toast } = useToast();
   const [showCreate, setShowCreate] = useState(false);
   const [form, setForm] = useState({
     title: "", assessmentType: "PROCESO" as AssessmentType, semester: 1,
     courseId: "", subjectId: "", maxScore: 100, weight: 0,
   });
 
-  const institutionsQuery = useQuery({ queryKey: ["inst-assess"], queryFn: () => api.listInstitutions() });
-  const institutionId = institutionsQuery.data?.[0]?.id || "";
+  const { selectedInstitution } = useInstitution();
 
   const coursesQuery = useQuery({
-    queryKey: ["courses-assess", institutionId],
-    queryFn: () => api.listCourses({ institutionId }),
-    enabled: Boolean(institutionId),
+    queryKey: ["courses-assess", selectedInstitution?.id],
+    queryFn: () => api.listCourses({ institutionId: selectedInstitution?.id }),
+    enabled: Boolean(selectedInstitution?.id),
   });
 
   const subjectsQuery = useQuery({
@@ -37,12 +40,12 @@ export function AssessmentsPage() {
 
   const createMutation = useMutation({
     mutationFn: (payload: unknown) => api.createAssessment(payload),
-    onSuccess: () => { setMessage("Evaluación creada."); setShowCreate(false); setForm({ title: "", assessmentType: "PROCESO", semester: 1, courseId: "", subjectId: "", maxScore: 100, weight: 0 }); queryClient.invalidateQueries({ queryKey: ["assessments-list"] }); },
-    onError: (e) => setMessage(e instanceof Error ? e.message : "Error"),
+    onSuccess: () => { toast("Evaluacion creada correctamente.", "success"); setShowCreate(false); setForm({ title: "", assessmentType: "PROCESO", semester: 1, courseId: "", subjectId: "", maxScore: 100, weight: 0 }); queryClient.invalidateQueries({ queryKey: ["assessments-list"] }); },
+    onError: (e) => toast(e instanceof Error ? e.message : "Error al crear evaluacion.", "error"),
   });
 
   function handleCreate() {
-    if (!form.title || !form.courseId || !form.subjectId) { setMessage("Título, curso y asignatura son obligatorios."); return; }
+    if (!form.title || !form.courseId || !form.subjectId) { toast("Titulo, curso y asignatura son obligatorios.", "warning"); return; }
     createMutation.mutate({
       courseId: form.courseId, subjectId: form.subjectId, title: form.title,
       assessmentType: form.assessmentType, semester: form.semester,
@@ -55,8 +58,6 @@ export function AssessmentsPage() {
 
   return (
     <>
-      {message ? <p className="form-message">{message}</p> : null}
-
       <section className="panel">
         <h3>Evaluaciones</h3>
         <div className="form-actions">
@@ -115,7 +116,7 @@ export function AssessmentsPage() {
               <thead><tr><th>Título</th><th>Tipo</th><th>Curso</th><th>Asignatura</th><th>Estado</th><th>Fecha</th></tr></thead>
               <tbody>
                 {assessments.map((a: { assessment_id: string; title: string; assessment_type: string; status: string; course_name: string; subject_name: string; teacher_name: string; created_at: string }) => (
-                  <tr key={a.assessment_id}>
+                  <tr key={a.assessment_id} onClick={() => navigate(`/admin/evaluaciones/${a.assessment_id}`)} style={{ cursor: "pointer" }}>
                     <td><strong>{a.title}</strong></td>
                     <td><span className="badge badge--role">{a.assessment_type}</span></td>
                     <td>{a.course_name}</td>

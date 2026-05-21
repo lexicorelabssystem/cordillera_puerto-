@@ -6,7 +6,7 @@ interface Props {
 
 export function CurriculumCoveragePage({ overview }: Props) {
   const byGrade = new Map<number, { courses: string[] }>();
-  overview.courses.forEach((c) => {
+  (overview.courses || []).forEach((c) => {
     const entry = byGrade.get(c.grade_level) || { courses: [] };
     entry.courses.push(c.course_name);
     byGrade.set(c.grade_level, entry);
@@ -16,22 +16,30 @@ export function CurriculumCoveragePage({ overview }: Props) {
     <>
       <section className="panel">
         <h3>Cobertura Curricular por Nivel</h3>
+        <p style={{ color: "var(--muted)", fontSize: ".84rem", marginBottom: 12 }}>
+          Estructura curricular del establecimiento: cursos activos, asignaturas disponibles y cobertura por nivel.
+        </p>
         <div className="table-wrap">
           <table className="table">
             <thead>
               <tr>
                 <th>Nivel</th>
                 <th>Cursos</th>
-                <th>Asignaturas disponibles</th>
+                <th>Asignaturas</th>
                 <th>Estado</th>
               </tr>
             </thead>
             <tbody>
-              {Array.from(byGrade.entries()).sort(([a], [b]) => a - b).map(([grade, data]) => (
+              {Array.from(byGrade.entries()).sort(([a], [b]) => a - b).map(([grade, info]) => (
                 <tr key={grade}>
                   <td><strong>{grade}° Básico</strong></td>
-                  <td>{data.courses.join(", ")}</td>
-                  <td>{overview.subjects.length} asignaturas</td>
+                  <td>{info.courses.join(", ")}</td>
+                  <td>{overview.subjects.filter((s) => {
+                    if (grade <= 8) return s.name === "Lenguaje" || s.name === "Matemática";
+                    if (grade === 6) return true;
+                    if (grade === 8) return true;
+                    return s.name === "Lenguaje" || s.name === "Matemática";
+                  }).map((s) => s.name).join(", ")}</td>
                   <td><span className="badge badge--active">Activo</span></td>
                 </tr>
               ))}

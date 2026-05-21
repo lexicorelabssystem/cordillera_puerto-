@@ -1,30 +1,67 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef, useCallback } from "react";
 import type { AuthUser } from "../types/api";
-import { api } from "../lib/api";
+import { api, setSessionExpiredHandler } from "../lib/api";
 
-const USER_KEY = "auth_user";
+const USER_KEY = "cordillera_user";
 
 export function useAuth() {
   const [user, setUser] = useState<AuthUser | null>(() => {
-    const raw = localStorage.getItem(USER_KEY);
-    return raw ? (JSON.parse(raw) as AuthUser) : null;
+    try {
+      const raw = localStorage.getItem(USER_KEY);
+      return raw ? (JSON.parse(raw) as AuthUser) : null;
+    } catch {
+      return null;
+    }
   });
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string>("");
   const [validating, setValidating] = useState(true);
+  const mountedRef = useRef(true);
+
+  const forceLogout = useCallback(() => {
+    localStorage.removeItem(USER_KEY);
+    setUser(null);
+    setValidating(false);
+  }, []);
 
   useEffect(() => {
+    mountedRef.current = true;
+    setSessionExpiredHandler(forceLogout);
+
+    let refreshTimer: ReturnType<typeof setInterval> | undefined;
+
     api.me()
       .then(({ user: currentUser }) => {
+        if (!mountedRef.current) return;
         localStorage.setItem(USER_KEY, JSON.stringify(currentUser));
         setUser(currentUser);
+
+        refreshTimer = setInterval(async () => {
+          try {
+            await fetch(`${import.meta.env.VITE_API_BASE_URL || "/api/v1"}/auth/refresh`, {
+              method: "POST",
+              credentials: "include",
+              headers: { "Content-Type": "application/json" },
+            });
+          } catch {
+            // Silent fail — next API call will trigger refresh or force logout
+          }
+        }, 10 * 60 * 1000);
       })
       .catch(() => {
+        if (!mountedRef.current) return;
         localStorage.removeItem(USER_KEY);
         setUser(null);
       })
-      .finally(() => setValidating(false));
-  }, []);
+      .finally(() => {
+        if (mountedRef.current) setValidating(false);
+      });
+
+    return () => {
+      mountedRef.current = false;
+      if (refreshTimer) clearInterval(refreshTimer);
+    };
+  }, [forceLogout]);
 
   function storeUser(currentUser: AuthUser) {
     localStorage.setItem(USER_KEY, JSON.stringify(currentUser));

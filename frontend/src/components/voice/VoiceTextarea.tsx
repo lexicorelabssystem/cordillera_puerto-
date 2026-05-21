@@ -16,7 +16,7 @@ export function VoiceTextarea({
 }: Props) {
   const [mode, setMode] = useState<"write" | "speak">("write");
   const {
-    status, transcript, interimTranscript, isSupported,
+    status, transcript, interimTranscript, errorMessage, isSupported,
     start, stop, reset, insert, clearInserted,
   } = useVoiceRecorder();
 
@@ -97,7 +97,8 @@ export function VoiceTextarea({
             status={status}
             interimTranscript={interimTranscript}
             transcript={transcript}
-            label={`🎙️ Dictar ${label?.toLowerCase() ?? "texto"}`}
+            errorMessage={errorMessage}
+            label={`Dictar ${label?.toLowerCase() ?? "texto"}`}
             disabled={disabled}
             onStart={start}
             onStop={stop}

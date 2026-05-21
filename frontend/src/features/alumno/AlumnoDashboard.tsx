@@ -1,6 +1,7 @@
 import { useQuery } from "@tanstack/react-query";
 import { ShellLayout } from "../../components/common/ShellLayout";
 import { KpiCard } from "../../components/common/KpiCard";
+import { LoadingSpinner } from "../../components/common/LoadingSpinner";
 import { api } from "../../lib/api";
 import type { AuthUser } from "../../types/api";
 
@@ -12,6 +13,26 @@ interface Props {
 export function AlumnoDashboard({ user, onLogout }: Props) {
   const portalQuery = useQuery({ queryKey: ["student-portal"], queryFn: api.studentPortal });
   const portal = portalQuery.data;
+
+  if (portalQuery.isLoading) {
+    return (
+      <ShellLayout title="Pantalla Alumno" subtitle="Cargando tus datos..." right={null}>
+        <LoadingSpinner label="Cargando panel de estudiante..." size="lg" />
+      </ShellLayout>
+    );
+  }
+
+  if (portalQuery.isError) {
+    return (
+      <ShellLayout title="Pantalla Alumno" subtitle="Error al cargar tus datos" right={null}>
+        <section className="panel">
+          <p style={{ color: "var(--danger)" }}>
+            No se pudieron cargar tus datos academicos. Intenta recargar la pagina o contacta a tu profesor.
+          </p>
+        </section>
+      </ShellLayout>
+    );
+  }
 
   return (
     <ShellLayout
@@ -28,36 +49,40 @@ export function AlumnoDashboard({ user, onLogout }: Props) {
 
       <section className="panel">
         <h3>Cierre semestral</h3>
-        <div className="table-wrap">
-          <table className="table">
-            <thead>
-              <tr>
-                <th>Semestre</th>
-                <th>Promedio</th>
-                <th>Total notas</th>
-                <th>Cierre</th>
-                <th>Estado</th>
-              </tr>
-            </thead>
-            <tbody>
-              {portal?.semesters.map((s) => (
-                <tr key={s.semester}>
-                  <td>{s.semester}</td>
-                  <td>{s.avgGrade}</td>
-                  <td>{s.totalGrades}</td>
-                  <td>{s.closed ? "Cerrado" : "Abierto"}</td>
-                  <td>{s.status}</td>
+        {!portal?.semesters?.length ? (
+          <p style={{ color: "var(--muted)" }}>No hay datos de cierre semestral disponibles.</p>
+        ) : (
+          <div className="table-wrap">
+            <table className="table">
+              <thead>
+                <tr>
+                  <th>Semestre</th>
+                  <th>Promedio</th>
+                  <th>Total notas</th>
+                  <th>Cierre</th>
+                  <th>Estado</th>
                 </tr>
-              ))}
-            </tbody>
-          </table>
-        </div>
+              </thead>
+              <tbody>
+                {portal.semesters.map((s) => (
+                  <tr key={s.semester}>
+                    <td>{s.semester}</td>
+                    <td>{s.avgGrade}</td>
+                    <td>{s.totalGrades}</td>
+                    <td>{s.closed ? "Cerrado" : "Abierto"}</td>
+                    <td>{s.status}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        )}
       </section>
 
       <section className="panel">
         <h3>Alertas personales</h3>
-        {!portal?.alerts.length ? (
-          <p>Sin alertas academicas por ahora.</p>
+        {!portal?.alerts?.length ? (
+          <p style={{ color: "var(--muted)" }}>Sin alertas academicas por ahora.</p>
         ) : (
           <div className="alert-list">
             {portal.alerts.map((a, idx) => (
@@ -72,32 +97,36 @@ export function AlumnoDashboard({ user, onLogout }: Props) {
 
       <section className="panel">
         <h3>Seguimiento de evaluaciones</h3>
-        <div className="table-wrap">
-          <table className="table">
-            <thead>
-              <tr>
-                <th>Fecha</th>
-                <th>Semestre</th>
-                <th>Asignatura</th>
-                <th>Evaluacion</th>
-                <th>Tipo</th>
-                <th>Nota</th>
-              </tr>
-            </thead>
-            <tbody>
-              {portal?.grades.map((row) => (
-                <tr key={row.assessment_id}>
-                  <td>{row.applied_at}</td>
-                  <td>{row.semester ?? "-"}</td>
-                  <td>{row.subject}</td>
-                  <td>{row.title}</td>
-                  <td>{row.assessment_type}</td>
-                  <td>{row.grade}</td>
+        {!portal?.grades?.length ? (
+          <p style={{ color: "var(--muted)" }}>Aun no tienes evaluaciones registradas.</p>
+        ) : (
+          <div className="table-wrap">
+            <table className="table">
+              <thead>
+                <tr>
+                  <th>Fecha</th>
+                  <th>Semestre</th>
+                  <th>Asignatura</th>
+                  <th>Evaluacion</th>
+                  <th>Tipo</th>
+                  <th>Nota</th>
                 </tr>
-              ))}
-            </tbody>
-          </table>
-        </div>
+              </thead>
+              <tbody>
+                {portal.grades.map((row) => (
+                  <tr key={row.assessment_id}>
+                    <td>{row.applied_at}</td>
+                    <td>{row.semester ?? "-"}</td>
+                    <td>{row.subject}</td>
+                    <td>{row.title}</td>
+                    <td>{row.assessment_type}</td>
+                    <td>{row.grade}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        )}
       </section>
     </ShellLayout>
   );

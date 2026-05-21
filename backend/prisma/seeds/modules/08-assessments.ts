@@ -10,6 +10,11 @@ export async function seed(
 ): Promise<void> {
   console.log("\n─── DEMO ASSESSMENTS ───────────────────────");
 
+  if (Object.keys(teacherIds).length === 0) {
+    console.log("  [✓] Demo Assessments: skipped (no teachers)");
+    return;
+  }
+
   const course4A = courses["4° A"]!;
 
   const langQuestions = await prisma.question.findMany({

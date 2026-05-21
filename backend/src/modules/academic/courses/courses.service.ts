@@ -15,7 +15,7 @@ export class CoursesService {
     });
     if (existing) throw new ConflictException("El curso ya existe en este año académico");
 
-    return this.prisma.course.create({
+    const course = await this.prisma.course.create({
       data: {
         institutionId: dto.institutionId,
         academicYearId: dto.academicYearId,
@@ -25,6 +25,14 @@ export class CoursesService {
         maxStudents: dto.maxStudents ?? 45,
       },
     });
+
+    return {
+      course_id: course.id,
+      course_name: course.name,
+      grade_level: course.gradeLevel,
+      section: course.section,
+      students_count: 0,
+    };
   }
 
   async findAll(filters: { institutionId?: string; academicYearId?: string; gradeLevel?: number }) {
@@ -33,7 +41,7 @@ export class CoursesService {
     if (filters.academicYearId) where.academicYearId = filters.academicYearId;
     if (filters.gradeLevel) where.gradeLevel = filters.gradeLevel;
 
-    return this.prisma.course.findMany({
+    const courses = await this.prisma.course.findMany({
       where,
       orderBy: [{ gradeLevel: "asc" }, { name: "asc" }],
       include: {
@@ -41,6 +49,14 @@ export class CoursesService {
         _count: { select: { enrollments: true, assessments: true } },
       },
     });
+
+    return courses.map((c) => ({
+      course_id: c.id,
+      course_name: c.name,
+      grade_level: c.gradeLevel,
+      section: c.section,
+      students_count: c._count.enrollments,
+    }));
   }
 
   async findById(id: string) {
@@ -68,7 +84,17 @@ export class CoursesService {
 
   async update(id: string, dto: UpdateCourseDto) {
     await this.findById(id);
-    return this.prisma.course.update({ where: { id }, data: dto });
+    const course = await this.prisma.course.update({ where: { id }, data: dto });
+
+    const count = await this.prisma.enrollment.count({ where: { courseId: id, isActive: true } });
+
+    return {
+      course_id: course.id,
+      course_name: course.name,
+      grade_level: course.gradeLevel,
+      section: course.section,
+      students_count: count,
+    };
   }
 
   async getStudentsByCourse(courseId: string) {

@@ -8,17 +8,22 @@ import { StudentsModule } from "./students/students.module.js";
 import { TeachersModule } from "./teachers/teachers.module.js";
 import { EnrollmentsModule } from "./enrollments/enrollments.module.js";
 import { CalculationsModule } from "./calculations/calculations.module.js";
+import { AttendanceModule } from "./attendance/attendance.module.js";
+import { ObservationsModule } from "./observations/observations.module.js";
+import { ClassBookModule } from "./class-book/class-book.module.js";
 
 @Module({
   imports: [
     InstitutionsModule, AcademicYearsModule, PeriodsModule,
     CoursesModule, SubjectsModule, StudentsModule,
     TeachersModule, EnrollmentsModule, CalculationsModule,
+    AttendanceModule, ObservationsModule, ClassBookModule,
   ],
   exports: [
     InstitutionsModule, AcademicYearsModule, PeriodsModule,
     CoursesModule, SubjectsModule, StudentsModule,
     TeachersModule, EnrollmentsModule, CalculationsModule,
+    AttendanceModule, ObservationsModule, ClassBookModule,
   ],
 })
 export class AcademicModule {}

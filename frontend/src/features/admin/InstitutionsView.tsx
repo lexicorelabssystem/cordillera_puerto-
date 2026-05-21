@@ -2,10 +2,11 @@ import { useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import type { Institution } from "../../types/api";
 import { api } from "../../lib/api";
+import { useToast } from "../../components/common/Toast";
 
 export function InstitutionsView() {
   const queryClient = useQueryClient();
-  const [localMessage, setLocalMessage] = useState("");
+  const { toast } = useToast();
   const [editingId, setEditingId] = useState<string | null>(null);
   const [form, setForm] = useState({
     name: "",
@@ -28,35 +29,35 @@ export function InstitutionsView() {
   const createMutation = useMutation({
     mutationFn: api.createInstitution,
     onSuccess: () => {
-      setLocalMessage("Institución creada correctamente.");
+      toast("Institucion creada correctamente.", "success");
       setForm({ name: "", rbd: "", address: "", phone: "", email: "", logoUrl: "", sede: "", region: "", comuna: "", jornada: "" });
       queryClient.invalidateQueries({ queryKey: ["institutions"] });
       queryClient.invalidateQueries({ queryKey: ["admin-overview"] });
     },
     onError: (err) =>
-      setLocalMessage(err instanceof Error ? err.message : "Error al crear institución."),
+      toast(err instanceof Error ? err.message : "Error al crear institucion.", "error"),
   });
 
   const updateMutation = useMutation({
     mutationFn: ({ id, data }: { id: string; data: Record<string, unknown> }) =>
       api.updateInstitution(id, data),
     onSuccess: () => {
-      setLocalMessage("Institución actualizada correctamente.");
+      toast("Institucion actualizada correctamente.", "success");
       setEditingId(null);
       queryClient.invalidateQueries({ queryKey: ["institutions"] });
     },
     onError: (err) =>
-      setLocalMessage(err instanceof Error ? err.message : "Error al actualizar institución."),
+      toast(err instanceof Error ? err.message : "Error al actualizar institucion.", "error"),
   });
 
   const deleteMutation = useMutation({
     mutationFn: api.deleteInstitution,
     onSuccess: () => {
-      setLocalMessage("Institución desactivada correctamente.");
+      toast("Institucion desactivada correctamente.", "success");
       queryClient.invalidateQueries({ queryKey: ["institutions"] });
     },
     onError: (err) =>
-      setLocalMessage(err instanceof Error ? err.message : "Error al desactivar institución."),
+      toast(err instanceof Error ? err.message : "Error al desactivar institucion.", "error"),
   });
 
   function startEdit(inst: Institution) {
@@ -82,7 +83,7 @@ export function InstitutionsView() {
 
   function handleSave() {
     if (!form.name.trim()) {
-      setLocalMessage("El nombre de la institución es obligatorio.");
+      toast("El nombre de la institucion es obligatorio.", "warning");
       return;
     }
     if (editingId) {
@@ -221,7 +222,6 @@ export function InstitutionsView() {
             </button>
           ) : null}
         </div>
-        {localMessage ? <p className="form-message">{localMessage}</p> : null}
       </section>
 
       <section className="panel">

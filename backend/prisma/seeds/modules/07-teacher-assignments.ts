@@ -8,6 +8,11 @@ export async function seed(
 ): Promise<void> {
   console.log("\n─── TEACHER ASSIGNMENTS ────────────────────");
 
+  if (Object.keys(teacherIds).length === 0) {
+    console.log("  [✓] Teacher Assignments: skipped (no teachers)");
+    return;
+  }
+
   for (const [, course] of Object.entries(courses)) {
     await prisma.teacherCourseAssignment.upsert({
       where: { teacherId_courseId_subjectId: { teacherId: teacherIds["profesor@cordillera.cl"]!, courseId: course.id, subjectId: subjects["Lenguaje"]! } },

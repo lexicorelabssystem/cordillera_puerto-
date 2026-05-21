@@ -6,7 +6,6 @@ export function ForgotPasswordPage() {
   const [message, setMessage] = useState("");
   const [sent, setSent] = useState(false);
   const [loading, setLoading] = useState(false);
-  const [resetToken, setResetToken] = useState("");
 
   async function handleSubmit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
@@ -16,7 +15,6 @@ export function ForgotPasswordPage() {
       const result = await api.forgotPassword(email);
       setSent(true);
       setMessage(result.message);
-      if (result.resetToken) setResetToken(result.resetToken);
     } catch (err) {
       setMessage(err instanceof Error ? err.message : "Error al procesar la solicitud.");
     } finally {
@@ -44,11 +42,9 @@ export function ForgotPasswordPage() {
         ) : (
           <>
             <p>{message}</p>
-            {resetToken && (
-              <div style={{ background: "#e3f2fd", padding: 10, borderRadius: 8, fontSize: "0.78rem", wordBreak: "break-all", marginBottom: 8 }}>
-                <strong>Token (desarrollo):</strong><br/>{resetToken}
-              </div>
-            )}
+            <p style={{ fontSize: "0.85rem", color: "var(--muted)", marginTop: 8 }}>
+              El token de recuperacion se ha enviado a tu correo electronico.
+            </p>
             <a href="/reset-password" style={{ textAlign: "center", display: "block", fontWeight: 600, color: "var(--accent)" }}>
               Ir a restablecer clave
             </a>

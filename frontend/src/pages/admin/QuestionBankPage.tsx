@@ -5,6 +5,7 @@ import { LoadingSpinner } from "../../components/common/LoadingSpinner";
 import { Modal } from "../../components/common/Modal";
 import { EmptyState } from "../../components/common/EmptyState";
 import { VoiceTextarea } from "../../components/voice/VoiceTextarea";
+import { useToast } from "../../components/common/Toast";
 import type { AdminSubject } from "../../types/api";
 
 type QuestionType = "MULTIPLE_CHOICE" | "TRUE_FALSE" | "SHORT_ANSWER" | "ESSAY" | "MATCHING";
@@ -21,10 +22,11 @@ interface OptionForm { text: string; isCorrect: boolean }
 
 export function QuestionBankPage() {
   const queryClient = useQueryClient();
-  const [message, setMessage] = useState("");
+  const { toast } = useToast();
   const [selectedSubjectId, setSelectedSubjectId] = useState("");
   const [typeFilter, setTypeFilter] = useState("");
   const [page, setPage] = useState(1);
+  const [gradeLevel, setGradeLevel] = useState(1);
   const [editingId, setEditingId] = useState<string | null>(null);
   const [showCreate, setShowCreate] = useState(false);
 
@@ -51,25 +53,25 @@ export function QuestionBankPage() {
   const axesQuery = useQuery({ queryKey: ["axes-qb", subjectId], queryFn: () => api.listAxes(subjectId), enabled: Boolean(subjectId) });
   const skillsQuery = useQuery({ queryKey: ["skills-qb"], queryFn: api.listSkills, enabled: Boolean(subjectId) });
   const coverageQuery = useQuery({
-    queryKey: ["oa-coverage", subjectId],
-    queryFn: () => api.getOaCoverage(subjectId),
+    queryKey: ["oa-coverage", subjectId, gradeLevel],
+    queryFn: () => api.getOaCoverage(subjectId, gradeLevel),
     enabled: Boolean(subjectId),
   });
 
   const createMutation = useMutation({
     mutationFn: (payload: { subjectId: string; type: string; statement: string; difficulty?: number; points?: number; learningObjectiveId?: string; axisId?: string; skillId?: string; explanation?: string; options: { text: string; isCorrect: boolean; sortOrder?: number }[] }) => api.createQuestion(payload),
-    onSuccess: () => { setMessage("Pregunta creada."); resetForm(); queryClient.invalidateQueries({ queryKey: ["questions"] }); queryClient.invalidateQueries({ queryKey: ["oa-coverage"] }); },
-    onError: (e) => setMessage(e instanceof Error ? e.message : "Error"),
+    onSuccess: () => { toast("Pregunta creada.", "success"); resetForm(); queryClient.invalidateQueries({ queryKey: ["questions"] }); queryClient.invalidateQueries({ queryKey: ["oa-coverage"] }); },
+    onError: (e) => toast(e instanceof Error ? e.message : "Error", "error"),
   });
   const updateMutation = useMutation({
     mutationFn: ({ id, data }: { id: string; data: Record<string, unknown> }) => api.updateQuestion(id, data),
-    onSuccess: () => { setMessage("Pregunta actualizada."); setEditingId(null); resetForm(); queryClient.invalidateQueries({ queryKey: ["questions"] }); },
-    onError: (e) => setMessage(e instanceof Error ? e.message : "Error"),
+    onSuccess: () => { toast("Pregunta actualizada.", "success"); setEditingId(null); resetForm(); queryClient.invalidateQueries({ queryKey: ["questions"] }); },
+    onError: (e) => toast(e instanceof Error ? e.message : "Error", "error"),
   });
   const deleteMutation = useMutation({
     mutationFn: api.deleteQuestion,
-    onSuccess: () => { setMessage("Pregunta desactivada."); queryClient.invalidateQueries({ queryKey: ["questions"] }); },
-    onError: (e) => setMessage(e instanceof Error ? e.message : "Error"),
+    onSuccess: () => { toast("Pregunta desactivada.", "success"); queryClient.invalidateQueries({ queryKey: ["questions"] }); },
+    onError: (e) => toast(e instanceof Error ? e.message : "Error", "error"),
   });
 
   function resetForm() {
@@ -80,10 +82,10 @@ export function QuestionBankPage() {
   }
 
   function handleSave() {
-    if (!form.statement || !subjectId) { setMessage("Enunciado y asignatura son obligatorios."); return; }
+    if (!form.statement || !subjectId) { toast("Enunciado y asignatura son obligatorios.", "warning"); return; }
     const needOptions = ["MULTIPLE_CHOICE", "TRUE_FALSE", "MATCHING"].includes(form.type);
     const validOptions = options.filter((o) => o.text.trim());
-    if (needOptions && validOptions.length < 2) { setMessage("Mínimo 2 opciones con texto."); return; }
+    if (needOptions && validOptions.length < 2) { toast("Minimo 2 opciones con texto.", "warning"); return; }
 
     const payload = {
       subjectId,
@@ -116,7 +118,6 @@ export function QuestionBankPage() {
 
   return (
     <>
-      {message ? <p className="form-message">{message}</p> : null}
 
       <section className="panel">
         <h3>Banco de Preguntas</h3>

@@ -27,7 +27,7 @@ export class AssessmentsService {
   //  CRUD
   // ══════════════════════════════════════════════════════
 
-  async create(dto: CreateAssessmentDto, userId: string) {
+  async create(dto: CreateAssessmentDto, userId: string, userRole?: string) {
     const course = await this.prisma.course.findUnique({
       where: { id: dto.courseId },
       include: { academicYear: true },
@@ -47,14 +47,37 @@ export class AssessmentsService {
       );
     }
 
-    const teacher = await this.prisma.teacher.findFirst({
-      where: {
-        userId,
-        courseAssignments: { some: { courseId: dto.courseId, subjectId: dto.subjectId } },
-      },
-    });
-    if (!teacher) {
-      throw new ForbiddenException("No tienes asignado este curso/asignatura");
+    let teacherId: string;
+    if (userRole === "ADMIN" || userRole === "SUPER_ADMIN") {
+      const teacher = await this.prisma.teacher.findFirst({
+        where: {
+          courseAssignments: { some: { courseId: dto.courseId, subjectId: dto.subjectId } },
+        },
+      });
+      if (teacher) {
+        teacherId = teacher.id;
+      } else {
+        const anyTeacher = await this.prisma.teacher.findFirst({
+          where: {
+            courseAssignments: { some: { courseId: dto.courseId } },
+          },
+        });
+        if (!anyTeacher) {
+          throw new BadRequestException("No hay profesores asignados a este curso. Asigna un profesor primero.");
+        }
+        teacherId = anyTeacher.id;
+      }
+    } else {
+      const teacher = await this.prisma.teacher.findFirst({
+        where: {
+          userId,
+          courseAssignments: { some: { courseId: dto.courseId, subjectId: dto.subjectId } },
+        },
+      });
+      if (!teacher) {
+        throw new ForbiddenException("No tienes asignado este curso/asignatura");
+      }
+      teacherId = teacher.id;
     }
 
     if (dto.endDate && dto.startDate && new Date(dto.endDate) <= new Date(dto.startDate)) {
@@ -65,7 +88,7 @@ export class AssessmentsService {
       data: {
         courseId: dto.courseId,
         subjectId: dto.subjectId,
-        teacherId: teacher.id,
+        teacherId,
         periodId: dto.periodId ?? null,
         title: dto.title,
         description: dto.description ?? null,

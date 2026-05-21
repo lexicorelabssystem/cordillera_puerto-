@@ -14,6 +14,15 @@ export function mockConfig(overrides: Partial<AppConfig> = {}): AppConfig {
     corsOrigins: ["http://localhost:5173"],
     bcryptRounds: 4,
     enableDemoSeed: false,
+    smtp: {
+      host: "",
+      port: 587,
+      user: "",
+      pass: "",
+      from: "noreply@test.cl",
+    },
+    notificationsEnabled: false,
+    redisUrl: undefined,
     ...overrides,
   };
 }

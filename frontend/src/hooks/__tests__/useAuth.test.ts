@@ -9,6 +9,7 @@ vi.mock("../../lib/api", () => ({
     changePassword: vi.fn(),
     logout: vi.fn(),
   },
+  setSessionExpiredHandler: vi.fn(),
 }));
 
 import { api } from "../../lib/api";

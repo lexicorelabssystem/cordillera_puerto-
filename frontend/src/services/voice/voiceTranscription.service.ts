@@ -86,7 +86,7 @@ class VoiceTranscriptionService {
       if (event.error === "no-speech") {
         onResult({ transcript: "", isFinal: true });
       } else {
-        onError(event.error === "not-allowed" ? "not-allowed" : event.error || "unknown");
+        onError(event.error === "not-allowed" ? "not-allowed" : event.error === "network" ? "network" : event.error || "unknown");
       }
     };
 

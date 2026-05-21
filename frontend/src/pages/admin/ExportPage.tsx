@@ -3,6 +3,8 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { api } from "../../lib/api";
 import { LoadingSpinner } from "../../components/common/LoadingSpinner";
 import { EmptyState } from "../../components/common/EmptyState";
+import { useToast } from "../../components/common/Toast";
+import { useInstitution } from "../../app/InstitutionContext";
 
 const ENTITY_TYPES = [
   { value: "students", label: "Estudiantes" },
@@ -22,10 +24,9 @@ export function ExportPage() {
   const [entityType, setEntityType] = useState("students");
   const [format, setFormat] = useState("xlsx");
 
-  const institutionsQuery = useQuery({ queryKey: ["inst-for-exports"], queryFn: () => api.listInstitutions() });
-  const institutionId = institutionsQuery.data?.[0]?.id || "";
+  const { selectedInstitution } = useInstitution();
 
-  const [message, setMessage] = useState("");
+  const { toast } = useToast();
 
   const exportsQuery = useQuery({
     queryKey: ["export-jobs"],
@@ -35,17 +36,17 @@ export function ExportPage() {
   const exportMutation = useMutation({
     mutationFn: api.requestExport,
     onSuccess: (data: { exportJobId: string }) => {
-      setMessage(`Exportación solicitada: ${data.exportJobId}. El archivo estará disponible en breve.`);
+      toast("Exportacion solicitada. El archivo estara disponible en breve.", "success");
       queryClient.invalidateQueries({ queryKey: ["export-jobs"] });
     },
-    onError: (e) => setMessage(e instanceof Error ? e.message : "Error al solicitar exportación"),
+    onError: (e) => toast(e instanceof Error ? e.message : "Error al solicitar exportación", "error"),
   });
 
   function handleExport() {
     exportMutation.mutate({
       entityType,
       format,
-      institutionId: institutionId || undefined,
+      institutionId: selectedInstitution?.id || undefined,
     });
   }
 
@@ -79,7 +80,6 @@ export function ExportPage() {
             {exportMutation.isPending ? "Procesando..." : "Exportar"}
           </button>
         </div>
-        {message ? <p className="form-message">{message}</p> : null}
       </section>
 
       <section className="panel">

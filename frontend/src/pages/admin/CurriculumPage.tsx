@@ -4,13 +4,14 @@ import { api } from "../../lib/api";
 import { LoadingSpinner } from "../../components/common/LoadingSpinner";
 import { Modal } from "../../components/common/Modal";
 import { VoiceTextarea } from "../../components/voice/VoiceTextarea";
+import { useToast } from "../../components/common/Toast";
 import type { AdminSubject } from "../../types/api";
 
 export function CurriculumPage() {
   const queryClient = useQueryClient();
   const [selectedSubjectId, setSelectedSubjectId] = useState("");
   const [tab, setTab] = useState<"axes" | "objectives" | "skills">("objectives");
-  const [message, setMessage] = useState("");
+  const { toast } = useToast();
 
   const subjectsQuery = useQuery<AdminSubject[]>({
     queryKey: ["subjects-curriculum"],
@@ -23,7 +24,6 @@ export function CurriculumPage() {
 
   return (
     <>
-      {message ? <p className="form-message">{message}</p> : null}
 
       <section className="panel">
         <div className="form-row">
@@ -45,9 +45,9 @@ export function CurriculumPage() {
       </section>
 
       {subjectId ? (
-        tab === "axes" ? <AxesPanel subjectId={subjectId} onMessage={setMessage} />
-        : tab === "skills" ? <SkillsPanel onMessage={setMessage} />
-        : <ObjectivesPanel subjectId={subjectId} onMessage={setMessage} />
+        tab === "axes" ? <AxesPanel subjectId={subjectId} />
+        : tab === "skills" ? <SkillsPanel />
+        : <ObjectivesPanel subjectId={subjectId} />
       ) : (
         <section className="panel"><p>Selecciona una asignatura para gestionar su currículum.</p></section>
       )}
@@ -55,8 +55,9 @@ export function CurriculumPage() {
   );
 }
 
-function AxesPanel({ subjectId, onMessage }: { subjectId: string; onMessage: (m: string) => void }) {
+function AxesPanel({ subjectId }: { subjectId: string }) {
   const queryClient = useQueryClient();
+  const { toast } = useToast();
   const [editingId, setEditingId] = useState<string | null>(null);
   const [form, setForm] = useState({ name: "", description: "", sortOrder: 0 });
 
@@ -64,18 +65,18 @@ function AxesPanel({ subjectId, onMessage }: { subjectId: string; onMessage: (m:
 
   const createMutation = useMutation({
     mutationFn: api.createAxis,
-    onSuccess: () => { onMessage("Eje creado."); setForm({ name: "", description: "", sortOrder: 0 }); queryClient.invalidateQueries({ queryKey: ["axes"] }); },
-    onError: (e) => onMessage(e instanceof Error ? e.message : "Error"),
+    onSuccess: () => { ("Eje creado."); setForm({ name: "", description: "", sortOrder: 0 }); queryClient.invalidateQueries({ queryKey: ["axes"] }); },
+    onError: (e) => toast(e instanceof Error ? e.message : "Error", "error"),
   });
   const updateMutation = useMutation({
     mutationFn: ({ id, data }: { id: string; data: Record<string, unknown> }) => api.updateAxis(id, data),
-    onSuccess: () => { onMessage("Eje actualizado."); setEditingId(null); queryClient.invalidateQueries({ queryKey: ["axes"] }); },
-    onError: (e) => onMessage(e instanceof Error ? e.message : "Error"),
+    onSuccess: () => { ("Eje actualizado."); setEditingId(null); queryClient.invalidateQueries({ queryKey: ["axes"] }); },
+    onError: (e) => toast(e instanceof Error ? e.message : "Error", "error"),
   });
   const deleteMutation = useMutation({
     mutationFn: api.deleteAxis,
-    onSuccess: () => { onMessage("Eje eliminado."); queryClient.invalidateQueries({ queryKey: ["axes"] }); },
-    onError: (e) => onMessage(e instanceof Error ? e.message : "Error"),
+    onSuccess: () => { ("Eje eliminado."); queryClient.invalidateQueries({ queryKey: ["axes"] }); },
+    onError: (e) => toast(e instanceof Error ? e.message : "Error", "error"),
   });
 
   const axes = axesQuery.data || [];
@@ -107,7 +108,9 @@ function AxesPanel({ subjectId, onMessage }: { subjectId: string; onMessage: (m:
       <h4 style={{ marginTop: 12 }}>{editingId ? "Editar eje" : "Nuevo eje"}</h4>
       <div className="form-grid">
         <div className="form-field"><label>Nombre *</label><input value={form.name} onChange={(e) => setForm((s) => ({ ...s, name: e.target.value }))} /></div>
-        <div className="form-field"><label>Descripción</label><input value={form.description} onChange={(e) => setForm((s) => ({ ...s, description: e.target.value }))} /></div>
+        <div className="form-field" style={{ gridColumn: "1 / -1" }}><label>Descripción</label>
+          <VoiceTextarea value={form.description} onChange={(text) => setForm((s) => ({ ...s, description: text }))} placeholder="Describe el eje..." rows={2} label="Descripción del eje" />
+        </div>
         <div className="form-field"><label>Orden</label><input type="number" value={form.sortOrder} onChange={(e) => setForm((s) => ({ ...s, sortOrder: Number(e.target.value) }))} /></div>
       </div>
       <div className="form-actions">
@@ -122,8 +125,9 @@ function AxesPanel({ subjectId, onMessage }: { subjectId: string; onMessage: (m:
   );
 }
 
-function ObjectivesPanel({ subjectId, onMessage }: { subjectId: string; onMessage: (m: string) => void }) {
+function ObjectivesPanel({ subjectId }: { subjectId: string }) {
   const queryClient = useQueryClient();
+  const { toast } = useToast();
   const [gradeFilter, setGradeFilter] = useState(0);
   const [editingId, setEditingId] = useState<string | null>(null);
   const [form, setForm] = useState({ code: "", description: "", gradeLevel: 1, axisId: "" });
@@ -137,18 +141,18 @@ function ObjectivesPanel({ subjectId, onMessage }: { subjectId: string; onMessag
 
   const createMutation = useMutation({
     mutationFn: api.createLearningObjective,
-    onSuccess: () => { onMessage("OA creado."); setForm({ code: "", description: "", gradeLevel: 1, axisId: "" }); queryClient.invalidateQueries({ queryKey: ["learning-objectives"] }); },
-    onError: (e) => onMessage(e instanceof Error ? e.message : "Error"),
+    onSuccess: () => { ("OA creado."); setForm({ code: "", description: "", gradeLevel: 1, axisId: "" }); queryClient.invalidateQueries({ queryKey: ["learning-objectives"] }); },
+    onError: (e) => toast(e instanceof Error ? e.message : "Error", "error"),
   });
   const updateMutation = useMutation({
     mutationFn: ({ id, data }: { id: string; data: Record<string, unknown> }) => api.updateLearningObjective(id, data),
-    onSuccess: () => { onMessage("OA actualizado."); setEditingId(null); queryClient.invalidateQueries({ queryKey: ["learning-objectives"] }); },
-    onError: (e) => onMessage(e instanceof Error ? e.message : "Error"),
+    onSuccess: () => { ("OA actualizado."); setEditingId(null); queryClient.invalidateQueries({ queryKey: ["learning-objectives"] }); },
+    onError: (e) => toast(e instanceof Error ? e.message : "Error", "error"),
   });
   const deleteMutation = useMutation({
     mutationFn: api.deleteLearningObjective,
-    onSuccess: () => { onMessage("OA desactivado."); queryClient.invalidateQueries({ queryKey: ["learning-objectives"] }); },
-    onError: (e) => onMessage(e instanceof Error ? e.message : "Error"),
+    onSuccess: () => { ("OA desactivado."); queryClient.invalidateQueries({ queryKey: ["learning-objectives"] }); },
+    onError: (e) => toast(e instanceof Error ? e.message : "Error", "error"),
   });
 
   const objectives = objectivesQuery.data || [];
@@ -211,8 +215,9 @@ function ObjectivesPanel({ subjectId, onMessage }: { subjectId: string; onMessag
   );
 }
 
-function SkillsPanel({ onMessage }: { onMessage: (m: string) => void }) {
+function SkillsPanel() {
   const queryClient = useQueryClient();
+  const { toast } = useToast();
   const [editingId, setEditingId] = useState<string | null>(null);
   const [form, setForm] = useState({ name: "", description: "" });
 
@@ -220,18 +225,18 @@ function SkillsPanel({ onMessage }: { onMessage: (m: string) => void }) {
 
   const createMutation = useMutation({
     mutationFn: api.createSkill,
-    onSuccess: () => { onMessage("Habilidad creada."); setForm({ name: "", description: "" }); queryClient.invalidateQueries({ queryKey: ["skills"] }); },
-    onError: (e) => onMessage(e instanceof Error ? e.message : "Error"),
+    onSuccess: () => { ("Habilidad creada."); setForm({ name: "", description: "" }); queryClient.invalidateQueries({ queryKey: ["skills"] }); },
+    onError: (e) => toast(e instanceof Error ? e.message : "Error", "error"),
   });
   const updateMutation = useMutation({
     mutationFn: ({ id, data }: { id: string; data: Record<string, unknown> }) => api.updateSkill(id, data),
-    onSuccess: () => { onMessage("Habilidad actualizada."); setEditingId(null); queryClient.invalidateQueries({ queryKey: ["skills"] }); },
-    onError: (e) => onMessage(e instanceof Error ? e.message : "Error"),
+    onSuccess: () => { ("Habilidad actualizada."); setEditingId(null); queryClient.invalidateQueries({ queryKey: ["skills"] }); },
+    onError: (e) => toast(e instanceof Error ? e.message : "Error", "error"),
   });
   const deleteMutation = useMutation({
     mutationFn: api.deleteSkill,
-    onSuccess: () => { onMessage("Habilidad eliminada."); queryClient.invalidateQueries({ queryKey: ["skills"] }); },
-    onError: (e) => onMessage(e instanceof Error ? e.message : "Error"),
+    onSuccess: () => { ("Habilidad eliminada."); queryClient.invalidateQueries({ queryKey: ["skills"] }); },
+    onError: (e) => toast(e instanceof Error ? e.message : "Error", "error"),
   });
 
   const skills = skillsQuery.data || [];
@@ -262,7 +267,9 @@ function SkillsPanel({ onMessage }: { onMessage: (m: string) => void }) {
       <h4 style={{ marginTop: 12 }}>{editingId ? "Editar habilidad" : "Nueva habilidad"}</h4>
       <div className="form-grid">
         <div className="form-field"><label>Nombre *</label><input value={form.name} onChange={(e) => setForm((s) => ({ ...s, name: e.target.value }))} /></div>
-        <div className="form-field"><label>Descripción</label><input value={form.description} onChange={(e) => setForm((s) => ({ ...s, description: e.target.value }))} /></div>
+        <div className="form-field" style={{ gridColumn: "1 / -1" }}><label>Descripción</label>
+          <VoiceTextarea value={form.description} onChange={(text) => setForm((s) => ({ ...s, description: text }))} placeholder="Describe la habilidad..." rows={2} label="Descripción de la habilidad" />
+        </div>
       </div>
       <div className="form-actions">
         {editingId ? (

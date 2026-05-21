@@ -24,7 +24,7 @@ export class AssessmentsController {
   @Roles("ADMIN", "SUPER_ADMIN", "UTP", "TEACHER")
   @ApiOperation({ summary: "Crear evaluación en estado DRAFT" })
   create(@Body() dto: CreateAssessmentDto, @CurrentUser() user: JwtPayload) {
-    return this.service.create(dto, user.sub);
+    return this.service.create(dto, user.sub, user.role);
   }
 
   @Get()

@@ -42,7 +42,9 @@ export class AdminService {
       this.prisma.course.count({ where: { ...where, isActive: true } }),
       this.prisma.student.count({ where: { deletedAt: null } }),
       this.prisma.assessment.count({
-        where: { ...where, isActive: true },
+        where: institutionId
+          ? { course: { institutionId }, isActive: true }
+          : { isActive: true },
       }),
     ]);
 
@@ -178,84 +180,88 @@ export class AdminService {
   }
 
   private async getSemaforo(institutionId?: string) {
-    const where = institutionId
-      ? { course: { institutionId } }
-      : {};
+    const baseWhere: Record<string, unknown> = institutionId
+      ? { assessment: { course: { institutionId, isActive: true } } }
+      : { assessment: { course: { isActive: true } } };
+
+    const grades = await this.prisma.grade.findMany({
+      where: baseWhere,
+      select: {
+        grade: true,
+        assessment: {
+          select: { courseId: true, course: { select: { id: true, name: true } } },
+        },
+      },
+    });
+
+    const courseAgg: Record<string, { courseName: string; sum: number; count: number }> = {};
+    for (const g of grades) {
+      const courseId = g.assessment.courseId;
+      if (!courseAgg[courseId]) {
+        courseAgg[courseId] = { courseName: g.assessment.course.name, sum: 0, count: 0 };
+      }
+      courseAgg[courseId].sum += g.grade;
+      courseAgg[courseId].count++;
+    }
 
     const courses = await this.prisma.course.findMany({
       where: institutionId ? { institutionId, isActive: true } : { isActive: true },
       select: { id: true, name: true },
     });
 
-    const results: {
-      course_id: string;
-      course_name: string;
-      avg_grade: number | null;
-      total_grades: number;
-      level: string;
-    }[] = [];
-
-    for (const course of courses) {
-      const grades = await this.prisma.grade.aggregate({
-        where: { ...where, studentId: { not: undefined } },
-        _avg: { grade: true },
-        _count: { grade: true },
-      });
-
-      const avg = grades._avg.grade ? Math.round(grades._avg.grade * 100) / 100 : null;
+    return courses.map((course) => {
+      const agg = courseAgg[course.id];
+      const avg = agg && agg.count > 0 ? Math.round((agg.sum / agg.count) * 100) / 100 : null;
       let level = "Sin datos";
-
       if (avg !== null) {
         if (avg >= 5.5) level = "Alto";
         else if (avg >= 4.0) level = "Medio";
         else level = "Bajo";
       }
-
-      results.push({
+      return {
         course_id: course.id,
         course_name: course.name,
         avg_grade: avg,
-        total_grades: grades._count.grade,
+        total_grades: agg?.count ?? 0,
         level,
-      });
-    }
-
-    return results;
+      };
+    });
   }
 
   private async getAlerts(institutionId?: string) {
-    const where = institutionId
-      ? { course: { institutionId } }
-      : {};
+    const baseWhere: Record<string, unknown> = institutionId
+      ? { assessment: { course: { institutionId, isActive: true } } }
+      : { assessment: { course: { isActive: true } } };
 
-    const courses = await this.prisma.course.findMany({
-      where: institutionId ? { institutionId, isActive: true } : { isActive: true },
-      select: { id: true, name: true },
+    const grades = await this.prisma.grade.findMany({
+      where: baseWhere,
+      select: {
+        grade: true,
+        assessment: { select: { courseId: true, course: { select: { name: true } } } },
+      },
     });
 
-    const alerts: {
-      courseName: string;
-      avgGrade: number;
-      suggestion: string;
-    }[] = [];
-
-    for (const course of courses) {
-      const grades = await this.prisma.grade.aggregate({
-        where: { ...where, studentId: { not: undefined } },
-        _avg: { grade: true },
-      });
-
-      const avg = grades._avg.grade ? Math.round(grades._avg.grade * 100) / 100 : 0;
-
-      if (avg < 4.0) {
-        alerts.push({
-          courseName: course.name,
-          avgGrade: avg,
-          suggestion: `Implementar plan remedial urgente. Promedio bajo 4.0.`,
-        });
+    const courseAgg: Record<string, { courseName: string; sum: number; count: number }> = {};
+    for (const g of grades) {
+      const courseId = g.assessment.courseId;
+      if (!courseAgg[courseId]) {
+        courseAgg[courseId] = { courseName: g.assessment.course.name, sum: 0, count: 0 };
       }
+      courseAgg[courseId].sum += g.grade;
+      courseAgg[courseId].count++;
     }
 
-    return alerts;
+    return Object.values(courseAgg)
+      .filter((agg) => agg.count > 0)
+      .map((agg) => {
+        const avg = Math.round((agg.sum / agg.count) * 100) / 100;
+        return { courseName: agg.courseName, avgGrade: avg };
+      })
+      .filter((a) => a.avgGrade < 4.0)
+      .map((a) => ({
+        courseName: a.courseName,
+        avgGrade: a.avgGrade,
+        suggestion: "Implementar plan remedial urgente. Promedio bajo 4.0.",
+      }));
   }
 }

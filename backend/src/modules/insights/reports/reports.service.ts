@@ -234,7 +234,20 @@ export class ReportsService {
           where: { isActive: true, ...(academicYearId ? { academicYearId } : {}) },
           include: {
             academicYear: { select: { year: true } },
-            _count: { select: { enrollments: true, assessments: true } },
+            _count: { select: { enrollments: { where: { isActive: true } }, assessments: true } },
+            enrollments: {
+              where: { isActive: true },
+              include: { student: true },
+            },
+            assessments: {
+              where: { status: "GRADED" },
+              include: {
+                subject: { select: { id: true, name: true } },
+                grades: {
+                  select: { studentId: true, grade: true },
+                },
+              },
+            },
           },
         },
         _count: { select: { users: true } },
@@ -242,21 +255,40 @@ export class ReportsService {
     });
     if (!institution) throw new NotFoundException("Institución no encontrada");
 
-    const courseSummaries = [];
-    for (const course of institution.courses) {
-      const report = await this.generateCourseReport(course.id);
-      courseSummaries.push({
+    const courseSummaries = institution.courses.map((course) => {
+      const gradeMap: Record<string, number[]> = {};
+      for (const a of course.assessments) {
+        for (const g of a.grades) {
+          if (!gradeMap[g.studentId]) gradeMap[g.studentId] = [];
+          gradeMap[g.studentId].push(g.grade);
+        }
+      }
+
+      const studentsWithGrades = Object.keys(gradeMap).length;
+      const courseAvg = studentsWithGrades > 0
+        ? Number((Object.values(gradeMap)
+            .reduce((sum, grades) => sum + (grades.reduce((s, g) => s + g, 0) / grades.length), 0) / studentsWithGrades)
+            .toFixed(2))
+        : 0;
+
+      let atRiskCount = 0;
+      for (const grades of Object.values(gradeMap)) {
+        const studentAvg = grades.reduce((s, g) => s + g, 0) / grades.length;
+        if (studentAvg < 4) atRiskCount++;
+      }
+
+      return {
         courseId: course.id,
         courseName: course.name,
         gradeLevel: course.gradeLevel,
         year: course.academicYear.year,
         students: course._count.enrollments,
         assessments: course._count.assessments,
-        average: (report as { courseAverage: number }).courseAverage,
-        level: (report as { courseLevel: string }).courseLevel,
-        atRiskCount: (report as { atRiskCount: number }).atRiskCount,
-      });
-    }
+        average: courseAvg,
+        level: courseAvg < 4 ? "Crítico" : courseAvg < 5 ? "Básico" : courseAvg < 6 ? "Adecuado" : courseAvg === 0 ? "Sin datos" : "Avanzado",
+        atRiskCount,
+      };
+    });
 
     const totalStudents = courseSummaries.reduce((s, c) => s + c.students, 0);
     const totalAtRisk = courseSummaries.reduce((s, c) => s + c.atRiskCount, 0);
@@ -303,16 +335,25 @@ export class ReportsService {
     });
   }
 
-  async listReports(type?: string, entityId?: string) {
+  async listReports(type?: string, entityId?: string, page = 1, limit = 20) {
     const where: Record<string, unknown> = {};
     if (type) where.type = type;
     if (entityId) where.entityId = entityId;
 
-    return this.prisma.report.findMany({
-      where,
-      orderBy: { createdAt: "desc" },
-      take: 50,
-    });
+    const [data, total] = await Promise.all([
+      this.prisma.report.findMany({
+        where,
+        skip: (page - 1) * limit,
+        take: limit,
+        orderBy: { createdAt: "desc" },
+      }),
+      this.prisma.report.count({ where }),
+    ]);
+
+    return {
+      data,
+      meta: { page, limit, total, totalPages: Math.ceil(total / limit), hasNext: page * limit < total, hasPrevious: page > 1 },
+    };
   }
 
   async getReport(reportId: string) {

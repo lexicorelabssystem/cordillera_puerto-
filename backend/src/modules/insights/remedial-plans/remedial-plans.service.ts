@@ -65,7 +65,29 @@ export class RemedialPlansService {
       where: { studentId },
       orderBy: { createdAt: "desc" },
       include: {
-        learningObjective: { select: { code: true, description: true, subject: { select: { name: true } } } },
+        student: { select: { firstName: true, lastName: true } },
+        learningObjective: { select: { code: true, description: true } },
+      },
+    });
+  }
+
+  async findAll(courseId?: string, status?: string) {
+    const where: Record<string, unknown> = {};
+    if (courseId) where.courseId = courseId;
+    if (status) where.status = status;
+
+    return this.prisma.remedialPlan.findMany({
+      where,
+      orderBy: [{ status: "asc" }, { createdAt: "desc" }],
+      include: {
+        student: { select: { firstName: true, lastName: true } },
+        learningObjective: {
+          select: {
+            code: true,
+            description: true,
+            subject: { select: { name: true } },
+          },
+        },
       },
     });
   }

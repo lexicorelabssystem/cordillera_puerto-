@@ -6,7 +6,7 @@ import type { JwtPayload } from "../../common/decorators/current-user.decorator.
 
 describe("RolesGuard", () => {
   let guard: RolesGuard;
-  let reflector: { getAllAndOverride: ReturnType<typeof jest.fn> };
+  let reflector: jest.Mocked<Pick<Reflector, 'getAllAndOverride'>>;
 
   function mockContext(user?: JwtPayload | null): ExecutionContext {
     return {
@@ -21,8 +21,8 @@ describe("RolesGuard", () => {
   beforeEach(() => {
     reflector = {
       getAllAndOverride: jest.fn().mockReturnValue(null),
-    } as unknown as jest.Mocked<Reflector>;
-    guard = new RolesGuard(reflector);
+    };
+    guard = new RolesGuard(reflector as unknown as Reflector);
   });
 
   it("debe permitir si no hay roles requeridos", () => {
