@@ -1,4 +1,4 @@
-import { PrismaClient } from "@prisma/client";
+import { PrismaClient, PermissionAction } from "@prisma/client";
 
 export async function seed(prisma: PrismaClient): Promise<void> {
   console.log("\n─── PERMISSIONS ────────────────────────────");
@@ -63,9 +63,9 @@ export async function seed(prisma: PrismaClient): Promise<void> {
   const permissionIds: Record<string, string> = {};
   for (const p of permissionCatalog) {
     const perm = await prisma.permission.upsert({
-      where: { action: p.action as any },
+      where: { action: p.action as PermissionAction },
       update: { description: p.description, module: p.module },
-      create: { action: p.action as any, description: p.description, module: p.module },
+      create: { action: p.action as PermissionAction, description: p.description, module: p.module },
     });
     permissionIds[p.action] = perm.id;
   }

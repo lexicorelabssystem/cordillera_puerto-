@@ -66,6 +66,9 @@ const RemedialRoutesPage = lazy(() =>
 const CorreccionPruebasPage = lazy(() =>
   import("../pages/admin/CorreccionPruebasPage").then((m) => ({ default: m.CorreccionPruebasPage }))
 );
+const FastCorrectionPage = lazy(() =>
+  import("../pages/admin/FastCorrectionPage").then((m) => ({ default: m.FastCorrectionPage }))
+);
 const ProfesoresPage = lazy(() =>
   import("../pages/admin/ProfesoresPage").then((m) => ({ default: m.ProfesoresPage }))
 );
@@ -166,6 +169,7 @@ function adminRoutes() {
       <Route path="materiales" element={<Lazy><LearningResourcesPage /></Lazy>} />
       <Route path="promedios" element={<Lazy><CalculationsPage /></Lazy>} />
       {ff.online_assessments && <Route path="correccion" element={<Lazy><CorreccionPruebasPage /></Lazy>} />}
+      <Route path="correccion-rapida" element={<Lazy><FastCorrectionPage /></Lazy>} />
       <Route path="alertas" element={<Lazy><AlertsPageWrapper /></Lazy>} />
       <Route path="auditoria" element={<Lazy><AuditLogsPage /></Lazy>} />
       <Route path="importar" element={<Lazy><ImportPage /></Lazy>} />

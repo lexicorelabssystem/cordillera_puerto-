@@ -113,6 +113,6 @@ export class GradingController {
   @Roles("TEACHER", "ADMIN", "SUPER_ADMIN", "UTP")
   @ApiOperation({ summary: "Crear o actualizar multiples notas directamente (carga masiva desde el libro)" })
   bulkDirectGrades(@Body() dto: BulkDirectGradeDto, @CurrentUser() user: JwtPayload) {
-    return this.service.bulkDirectGrades(dto.grades as any[], user.sub);
+    return this.service.bulkDirectGrades(dto.grades, user.sub);
   }
 }

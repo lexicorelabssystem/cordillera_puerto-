@@ -21,7 +21,7 @@ async function bootstrap() {
 
   await app.register(multipart as never);
   await app.register(cookie as never, {
-    secret: process.env.COOKIE_SECRET || process.env.JWT_SECRET || "dev-cookie-secret-change-me",
+    secret: process.env.COOKIE_SECRET || process.env.JWT_SECRET || "",
     parseOptions: {},
   });
 

@@ -70,6 +70,7 @@ function buildCategories(basePath: string, mode: "admin" | "direction"): Sidebar
       { id: "simce", label: "Ensayos SIMCE", description: "Banco de ensayos tipo", path: `${basePath}/simce` },
       { id: "promedios", label: "Promedios Ponderados", description: "Calculo por periodo", path: `${basePath}/promedios` },
       { id: "correccion", label: "Correccion Rapida", description: "Preguntas pendientes", path: `${basePath}/correccion` },
+      { id: "correccion-rapida", label: "Correccion Masiva", description: "Carga rapida de respuestas", path: `${basePath}/correccion-rapida` },
     ],
   };
 
