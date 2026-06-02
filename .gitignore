@@ -9,3 +9,6 @@ backend/node_modules/
 *.log
 coverage/
 backups/
+*.tsbuildinfo
+backend/uploads/
+exel con usuaros/credenciales.xlsx
