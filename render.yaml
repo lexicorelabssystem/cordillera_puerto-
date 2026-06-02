@@ -1,0 +1,34 @@
+services:
+  - type: web
+    name: cordillera-backend
+    env: docker
+    plan: starter
+    dockerfilePath: ./backend/Dockerfile
+    healthCheckPath: /health
+    envVars:
+      - key: NODE_ENV
+        value: production
+      - key: HOST
+        value: 0.0.0.0
+      - key: DATABASE_URL
+        fromDatabase:
+          name: cordillera-db
+          property: connectionString
+      - key: JWT_SECRET
+        generateValue: true
+      - key: COOKIE_SECRET
+        generateValue: true
+      - key: CORS_ORIGINS
+        sync: false
+      - key: FRONTEND_URL
+        sync: false
+      - key: ENABLE_DEMO_SEED
+        value: "false"
+      - key: NOTIFICATION_EMAILS_ENABLED
+        value: "false"
+
+databases:
+  - name: cordillera-db
+    plan: starter
+    databaseName: cordillera
+    user: cordillera

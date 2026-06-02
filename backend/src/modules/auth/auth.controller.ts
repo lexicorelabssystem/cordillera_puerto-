@@ -130,7 +130,8 @@ export class AuthController {
 
   private setAuthCookies(reply: FastifyReply, accessToken: string, refreshToken: string) {
     const isProd = process.env.NODE_ENV === "production";
-    const cookieBase = { httpOnly: true, secure: isProd, sameSite: "lax" as const, path: "/" as const };
+    const sameSite: "none" | "lax" = isProd ? "none" : "lax";
+    const cookieBase = { httpOnly: true, secure: isProd, sameSite, path: "/" as const };
     reply.setCookie("access_token", accessToken, { ...cookieBase, maxAge: 900 });
     reply.setCookie("refresh_token", refreshToken, {
       ...cookieBase,
@@ -140,7 +141,9 @@ export class AuthController {
   }
 
   private clearAuthCookies(reply: FastifyReply) {
-    const cookieBase = { httpOnly: true, secure: process.env.NODE_ENV === "production", sameSite: "lax" as const, path: "/" as const };
+    const isProd = process.env.NODE_ENV === "production";
+    const sameSite: "none" | "lax" = isProd ? "none" : "lax";
+    const cookieBase = { httpOnly: true, secure: isProd, sameSite, path: "/" as const };
     reply.setCookie("access_token", "", { ...cookieBase, maxAge: 0 });
     reply.setCookie("refresh_token", "", { ...cookieBase, maxAge: 0, path: "/api/v1/auth" });
   }

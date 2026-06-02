@@ -8,7 +8,12 @@
     "strict": true,
     "skipLibCheck": true,
     "resolveJsonModule": true,
-    "noEmit": true
+    "noEmit": true,
+    "baseUrl": ".",
+    "paths": {
+      "@cordillera/shared": ["../shared/src/index.ts"],
+      "@cordillera/shared/features.js": ["../shared/src/features.ts"]
+    }
   },
   "include": ["src"]
 }

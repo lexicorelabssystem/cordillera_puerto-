@@ -1,5 +1,11 @@
 {
   "installCommand": "npm install --include=dev",
   "buildCommand": "npm run build:shared && npm run build:frontend",
-  "outputDirectory": "frontend/dist"
+  "outputDirectory": "frontend/dist",
+  "rewrites": [
+    {
+      "source": "/((?!assets/|manifest.webmanifest|sw.js|workbox-|icons/|screenshots/).*)",
+      "destination": "/index.html"
+    }
+  ]
 }
