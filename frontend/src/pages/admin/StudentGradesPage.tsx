@@ -11,6 +11,8 @@ interface Props {
   overview: AdminOverview;
 }
 
+type OverviewStudentRow = AdminOverview["students"][number];
+
 export function StudentGradesPage({ overview }: Props) {
   const students = overview.students?.length ? overview.students : [];
   const [studentId, setStudentId] = useState(students[0]?.student_id || "");
@@ -96,7 +98,7 @@ export function StudentGradesPage({ overview }: Props) {
         <h3>Detalle de notas por alumno y semestre</h3>
         <div className="form-row">
           <select value={studentId} onChange={(e) => setStudentId(e.target.value)}>
-            {students.map((student) => (
+            {students.map((student: OverviewStudentRow) => (
               <option key={student.student_id} value={student.student_id}>
                 {student.first_name} {student.last_name} - {student.course_name || "Sin curso"}
               </option>

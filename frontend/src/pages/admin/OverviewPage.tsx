@@ -5,6 +5,10 @@ interface Props {
   overview: AdminOverview;
 }
 
+type SemaforoCursoRow = AdminOverview["semaforoCursos"][number];
+type RecentAssessmentRow = AdminOverview["recentAssessments"][number];
+type PedagogicalAlertRow = AdminOverview["alertas"][number];
+
 function levelBadgeClass(level: string) {
   if (level === "Alto") return "badge--active";
   if (level === "Medio") return "badge--warning";
@@ -19,17 +23,17 @@ function statusBadgeClass(status: string) {
 
 export function OverviewPage({ overview }: Props) {
   const totals = overview.totals;
-  const cursosConNotas = overview.semaforoCursos.filter((row) => row.total_grades > 0);
+  const cursosConNotas = overview.semaforoCursos.filter((row: SemaforoCursoRow) => row.total_grades > 0);
   const promedioGeneral =
     cursosConNotas.length > 0
       ? (
-          cursosConNotas.reduce((sum, row) => sum + (row.avg_grade ?? 0), 0) /
+          cursosConNotas.reduce((sum: number, row: SemaforoCursoRow) => sum + (row.avg_grade ?? 0), 0) /
           cursosConNotas.length
         ).toFixed(1)
       : "-";
-  const cursosEnRiesgo = overview.semaforoCursos.filter((row) => row.level === "Bajo").length;
+  const cursosEnRiesgo = overview.semaforoCursos.filter((row: SemaforoCursoRow) => row.level === "Bajo").length;
   const evaluacionesActivas = overview.recentAssessments.filter(
-    (assessment) => assessment.status === "PUBLISHED" || assessment.status === "ACTIVE"
+    (assessment: RecentAssessmentRow) => assessment.status === "PUBLISHED" || assessment.status === "ACTIVE"
   ).length;
 
   return (
@@ -78,7 +82,7 @@ export function OverviewPage({ overview }: Props) {
                 </tr>
               </thead>
               <tbody>
-                {overview.semaforoCursos.map((row) => (
+                {overview.semaforoCursos.map((row: SemaforoCursoRow) => (
                   <tr key={row.course_id}>
                     <td>
                       <strong>{row.course_name}</strong>
@@ -109,7 +113,7 @@ export function OverviewPage({ overview }: Props) {
             </div>
           ) : (
             <div className="alert-list">
-              {overview.alertas.map((alerta) => (
+              {overview.alertas.map((alerta: PedagogicalAlertRow) => (
                 <article key={alerta.courseName} className="alert-card">
                   <strong>{alerta.courseName}</strong>
                   <span>Promedio {alerta.avgGrade}</span>
@@ -143,7 +147,7 @@ export function OverviewPage({ overview }: Props) {
               </tr>
             </thead>
             <tbody>
-              {overview.recentAssessments.map((assessment) => (
+              {overview.recentAssessments.map((assessment: RecentAssessmentRow) => (
                 <tr key={assessment.assessment_id}>
                   <td>
                     <strong>{assessment.title}</strong>
