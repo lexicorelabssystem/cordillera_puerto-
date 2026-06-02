@@ -3,6 +3,11 @@ import {
 } from "@nestjs/common";
 import { PrismaService } from "../../prisma/prisma.service.js";
 import { AnswerStatus } from "@prisma/client";
+import {
+  assertAssessmentScope,
+  assertStudentScope,
+  resolveUserScope,
+} from "../../../common/authz/access-scope.js";
 
 @Injectable()
 export class AttemptsService {
@@ -93,17 +98,20 @@ export class AttemptsService {
 
   async saveAnswers(
     attemptId: string,
-    studentId: string,
+    userId: string,
     answers: { questionId: string; selectedOptionId?: string; textAnswer?: string }[],
     timeSpentSec?: number,
   ) {
+    const scope = await resolveUserScope(this.prisma, userId);
+    if (!scope.studentId) throw new ForbiddenException("Perfil de estudiante no encontrado");
+
     const attempt = await this.prisma.assessmentAttempt.findUnique({
       where: { id: attemptId },
       include: { assessment: { include: { questions: { include: { question: true } } } } },
     });
     if (!attempt) throw new NotFoundException("Intento no encontrado");
 
-    if (attempt.studentId !== studentId) throw new ForbiddenException("Este intento no te pertenece");
+    if (attempt.studentId !== scope.studentId) throw new ForbiddenException("Este intento no te pertenece");
 
     if (attempt.status !== "IN_PROGRESS") {
       throw new BadRequestException(`No se pueden guardar respuestas: el intento está ${attempt.status}`);
@@ -202,7 +210,10 @@ export class AttemptsService {
   //  SUBMIT ATTEMPT
   // ══════════════════════════════════════════════════════
 
-  async submitAttempt(attemptId: string, studentId: string, timeSpentSec?: number, confirmEmpty?: boolean) {
+  async submitAttempt(attemptId: string, userId: string, timeSpentSec?: number, confirmEmpty?: boolean) {
+    const scope = await resolveUserScope(this.prisma, userId);
+    if (!scope.studentId) throw new ForbiddenException("Perfil de estudiante no encontrado");
+
     const attempt = await this.prisma.assessmentAttempt.findUnique({
       where: { id: attemptId },
       include: {
@@ -217,7 +228,7 @@ export class AttemptsService {
     });
     if (!attempt) throw new NotFoundException("Intento no encontrado");
 
-    if (attempt.studentId !== studentId) throw new ForbiddenException("Este intento no te pertenece");
+    if (attempt.studentId !== scope.studentId) throw new ForbiddenException("Este intento no te pertenece");
 
     if (attempt.status !== "IN_PROGRESS") {
       throw new BadRequestException(`El intento ya fue ${attempt.status === "COMPLETED" ? "enviado" : attempt.status}`);
@@ -292,7 +303,7 @@ export class AttemptsService {
         grade: this.percentageToGrade(percentage),
         score: totalScore,
         percentage,
-        recordedBy: studentId,
+        recordedBy: userId,
       },
       update: {
         grade: this.percentageToGrade(percentage),
@@ -342,7 +353,7 @@ export class AttemptsService {
     if (!attempt) throw new NotFoundException("Intento no encontrado");
 
     if (attempt.userId !== userId) {
-      throw new ForbiddenException("No tienes acceso a este intento");
+      await assertAssessmentScope(this.prisma, userId, attempt.assessmentId);
     }
 
     // Check time expiration
@@ -383,9 +394,7 @@ export class AttemptsService {
     });
     if (!assessment) throw new NotFoundException("Evaluación no encontrada");
 
-    if (assessment.teacher.userId !== teacherUserId) {
-      throw new ForbiddenException("Solo el profesor a cargo puede cerrar intentos");
-    }
+    await assertAssessmentScope(this.prisma, teacherUserId, assessmentId);
 
     const openAttempts = await this.prisma.assessmentAttempt.findMany({
       where: { assessmentId, status: "IN_PROGRESS" },
@@ -408,9 +417,7 @@ export class AttemptsService {
     });
     if (!attempt) throw new NotFoundException("Intento no encontrado");
 
-    if (attempt.assessment.teacher.userId !== teacherUserId) {
-      throw new ForbiddenException("Solo el profesor a cargo puede cancelar intentos");
-    }
+    await assertAssessmentScope(this.prisma, teacherUserId, attempt.assessmentId);
 
     if (!["IN_PROGRESS", "COMPLETED"].includes(attempt.status)) {
       throw new BadRequestException(`Solo se pueden cancelar intentos en progreso o completados`);
@@ -433,6 +440,8 @@ export class AttemptsService {
     });
     if (!assessment) throw new NotFoundException("Evaluación no encontrada");
 
+    await assertAssessmentScope(this.prisma, teacherUserId, assessmentId);
+
     // Teacher must own the assessment OR be admin/direction
     return this.prisma.assessmentAttempt.findMany({
       where: { assessmentId },
@@ -445,12 +454,7 @@ export class AttemptsService {
   }
 
   async listByStudent(studentId: string, userId: string) {
-    const student = await this.prisma.student.findUnique({ where: { id: studentId } });
-    if (!student) throw new NotFoundException("Estudiante no encontrado");
-
-    if (student.userId !== userId) {
-      throw new ForbiddenException("No tienes acceso a este historial");
-    }
+    await assertStudentScope(this.prisma, userId, studentId);
 
     return this.prisma.assessmentAttempt.findMany({
       where: { studentId },

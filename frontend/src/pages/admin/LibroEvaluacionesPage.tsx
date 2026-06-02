@@ -37,7 +37,7 @@ function getNivelLogro(promedio: number | null): string {
 }
 
 interface CourseRow { course_id: string; course_name: string; grade_level?: number; }
-interface SubjectRow { subject_id: string; subject_name: string; }
+interface SubjectRow { id: string; name: string; }
 
 type CeldaEditando = { estudianteId: string; evaluacionId: string } | null;
 
@@ -59,6 +59,19 @@ export function LibroEvaluacionesPage() {
   const [showNewAssessment, setShowNewAssessment] = useState(false);
   const [savingCells, setSavingCells] = useState<Set<string>>(new Set());
 
+  // Reason dialog state
+  type PendingSave = {
+    estudianteId: string;
+    evaluacionId: string;
+    gradeId: string | null;
+    nota: number;
+    assessmentId: string;
+    oldNota: number | null;
+  };
+  const [pendingSave, setPendingSave] = useState<PendingSave | null>(null);
+  const [reasonText, setReasonText] = useState("");
+  const reasonRef = useRef<HTMLTextAreaElement>(null);
+
   // New assessment form state
   const [newEvalTitle, setNewEvalTitle] = useState("");
   const [newEvalType, setNewEvalType] = useState("PROCESO");
@@ -74,7 +87,7 @@ export function LibroEvaluacionesPage() {
 
   const subjectsQuery = useQuery<SubjectRow[]>({
     queryKey: ["subjects-libro"],
-    queryFn: () => api.listSubjects(true) as unknown as Promise<SubjectRow[]>,
+    queryFn: () => api.listSubjects(true) as Promise<SubjectRow[]>,
   });
 
   const gradeBookQuery = useQuery({
@@ -84,8 +97,8 @@ export function LibroEvaluacionesPage() {
   });
 
   const updateGradeMutation = useMutation({
-    mutationFn: ({ gradeId, grade, comments }: { gradeId: string; grade: number; comments?: string }) =>
-      api.updateGrade(gradeId, { grade, comments }),
+    mutationFn: ({ gradeId, grade, comments, reason }: { gradeId: string; grade: number; comments?: string; reason?: string }) =>
+      api.updateGrade(gradeId, { grade, comments, reason }),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["grade-book", courseId, subjectId] });
     },
@@ -93,7 +106,7 @@ export function LibroEvaluacionesPage() {
   });
 
   const directGradeMutation = useMutation({
-    mutationFn: (payload: { assessmentId: string; studentId: string; grade: number; comments?: string }) =>
+    mutationFn: (payload: { assessmentId: string; studentId: string; grade: number; comments?: string; reason?: string }) =>
       api.createDirectGrade(payload),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["grade-book", courseId, subjectId] });
@@ -116,7 +129,10 @@ export function LibroEvaluacionesPage() {
   });
 
   const courses = coursesQuery.data || [];
-  const subjects = subjectsQuery.data || [];
+  const subjects = useMemo(
+    () => (subjectsQuery.data || []).filter((subject) => subject.id && subject.name?.trim()),
+    [subjectsQuery.data]
+  );
   const book = gradeBookQuery.data;
 
   const allStudents = book?.students || [];
@@ -131,7 +147,7 @@ export function LibroEvaluacionesPage() {
     }
     if (soloRiesgo) pool = pool.filter((s) => s.atRisk);
     if (soloPendientes) pool = pool.filter((s) => s.hasPending);
-    if (soloBajo4) pool = pool.filter((s) => s.grades.some((g) => g.grade !== null && g.grade < 4.0));
+    if (soloBajo4) pool = pool.filter((s) => s.average < 4.0);
     return pool;
   }, [allStudents, searchLower, soloRiesgo, soloPendientes, soloBajo4]);
 
@@ -146,6 +162,12 @@ export function LibroEvaluacionesPage() {
     }
   }, [courses, courseId]);
 
+  useEffect(() => {
+    if (subjectId && !subjects.some((subject) => subject.id === subjectId)) {
+      setSubjectId("");
+    }
+  }, [subjectId, subjects]);
+
   const handleCeldaClick = useCallback((estudianteId: string, evaluacionId: string, notaActual: number | null) => {
     setCeldaEditando({ estudianteId, evaluacionId });
     setEditingValue(notaActual !== null && notaActual !== undefined ? notaActual.toFixed(1).replace(".", ",") : "");
@@ -156,7 +178,6 @@ export function LibroEvaluacionesPage() {
     const cellKey = `${estudianteId}|${evaluacionId}`;
 
     if (trimmed === "" || trimmed === "-") {
-      // Clear = ignore (backend doesn't support clearing via this flow)
       setCeldaEditando(null);
       return;
     }
@@ -170,29 +191,52 @@ export function LibroEvaluacionesPage() {
     const nota = Math.round(parsed * 10) / 10;
     const student = allStudents.find((s) => s.studentId === estudianteId);
     const gradeEntry = student?.grades.find((g) => g.assessmentId === evaluacionId);
-    const gradeId = gradeEntry?.gradeId;
+    const gradeId = gradeEntry?.gradeId || null;
+    const oldNota = gradeEntry?.grade ?? null;
+
+    if (oldNota === nota) {
+      setCeldaEditando(null);
+      return;
+    }
+
+    setCeldaEditando(null);
+    setPendingSave({ estudianteId, evaluacionId, gradeId, nota, assessmentId: evaluacionId, oldNota });
+    setReasonText("");
+    setTimeout(() => reasonRef.current?.focus(), 100);
+  }, [editingValue, allStudents]);
+
+  const handleConfirmSave = useCallback(() => {
+    if (!pendingSave || !reasonText.trim()) return;
+    const { estudianteId, evaluacionId, gradeId, nota, assessmentId } = pendingSave;
+    const cellKey = `${estudianteId}|${evaluacionId}`;
+    const reason = reasonText.trim();
 
     setSavingCells((prev) => new Set(prev).add(cellKey));
 
     if (gradeId) {
       updateGradeMutation.mutate(
-        { gradeId, grade: nota },
-        { onSettled: () => setSavingCells((prev) => { const n = new Set(prev); n.delete(cellKey); return n; }) },
+        { gradeId, grade: nota, reason },
+        { onSettled: () => { setSavingCells((prev) => { const n = new Set(prev); n.delete(cellKey); return n; }); } },
       );
     } else {
       directGradeMutation.mutate(
-        { assessmentId: evaluacionId, studentId: estudianteId, grade: nota },
-        { onSettled: () => setSavingCells((prev) => { const n = new Set(prev); n.delete(cellKey); return n; }) },
+        { assessmentId, studentId: estudianteId, grade: nota, reason },
+        { onSettled: () => { setSavingCells((prev) => { const n = new Set(prev); n.delete(cellKey); return n; }); } },
       );
     }
 
-    setCeldaEditando(null);
-  }, [editingValue, allStudents, updateGradeMutation, directGradeMutation]);
+    toast("Nota guardada. UTP sera notificado del cambio.", "success");
+    setPendingSave(null);
+  }, [pendingSave, reasonText, updateGradeMutation, directGradeMutation, toast]);
+
+  const handleCancelReason = useCallback(() => {
+    setPendingSave(null);
+  }, []);
 
   const handleCreateAssessment = useCallback(() => {
     if (!courseId || !newEvalTitle.trim()) return;
 
-    const activeSubjectId = subjectId || (subjects.length > 0 ? subjects[0].subject_id : "");
+    const activeSubjectId = subjectId || (subjects.length > 0 ? subjects[0].id : "");
     if (!activeSubjectId) {
       toast("No hay asignaturas disponibles.", "error");
       return;
@@ -205,7 +249,7 @@ export function LibroEvaluacionesPage() {
       assessmentType: newEvalType,
       weight: newEvalWeight,
       semester: newEvalSemester,
-      deliveryMode: "PAPER",
+      deliveryMode: "PRINTED",
     });
   }, [courseId, subjectId, newEvalTitle, newEvalType, newEvalWeight, newEvalSemester, subjects, createAssessmentMutation, toast]);
 
@@ -371,7 +415,7 @@ export function LibroEvaluacionesPage() {
             <label>Asignatura</label>
             <select value={subjectId} onChange={(e) => setSubjectId(e.target.value)}>
               <option value="">Todas</option>
-              {subjects.map((s) => <option key={s.subject_id} value={s.subject_id}>{s.subject_name}</option>)}
+              {subjects.map((s) => <option key={s.id} value={s.id}>{s.name}</option>)}
             </select>
           </div>
           <div className="form-field" style={{ flex: 2 }}>
@@ -421,7 +465,7 @@ export function LibroEvaluacionesPage() {
         <section className="panel libro-tabla-panel-v2">
           <div className="libro-tabla-header-v2">
             <div>
-              <h3>Libro de Clases &mdash; {book?.course?.name}{subjectId ? ` | ${subjects.find((s) => s.subject_id === subjectId)?.subject_name || ""}` : ""}</h3>
+              <h3>Libro de Clases &mdash; {book?.course?.name}{subjectId ? ` | ${subjects.find((s) => s.id === subjectId)?.name || ""}` : ""}</h3>
               <span className="libro-tabla-header-v2__meta">{filteredStudents.length} estudiantes &middot; {evTodas.length} evaluaciones</span>
             </div>
             <button className="btn btn--ghost libro-add-col-btn" onClick={() => setShowNewAssessment(true)} title="Agregar columna de evaluacion">
@@ -471,7 +515,7 @@ export function LibroEvaluacionesPage() {
                 {filteredStudents.map((est, idx) => {
                   const avg = est.average;
                   const nivelLogro = getNivelLogro(avg);
-                  const notaRoja = est.grades.some((g) => g.grade !== null && g.grade < 4.0);
+                  const notaRoja = avg < 4.0;
                   const pendiente = est.hasPending;
 
                   return (
@@ -662,7 +706,7 @@ export function LibroEvaluacionesPage() {
               </div>
               <div className="libro-modal__info">
                 <p>Curso: <strong>{book?.course?.name || "\u2014"}</strong></p>
-                <p>Asignatura: <strong>{subjectId ? subjects.find((s) => s.subject_id === subjectId)?.subject_name || "\u2014" : "Todas"}</strong></p>
+                <p>Asignatura: <strong>{subjectId ? subjects.find((s) => s.id === subjectId)?.name || "\u2014" : "Todas"}</strong></p>
                 <p style={{ fontSize: ".78rem", color: "var(--muted)", marginTop: 8 }}>La evaluacion se creara en estado DRAFT. Luego podras ingresar las notas directamente desde el libro.</p>
               </div>
             </div>
@@ -671,6 +715,51 @@ export function LibroEvaluacionesPage() {
               <button className="btn btn--primary" onClick={handleCreateAssessment}
                 disabled={createAssessmentMutation.isPending || !newEvalTitle.trim()}>
                 {createAssessmentMutation.isPending ? "Creando..." : "Crear Evaluacion"}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* ─── REASON DIALOG — Al modificar nota ─── */}
+      {pendingSave && (
+        <div className="libro-modal-overlay" onClick={handleCancelReason}>
+          <div className="libro-modal" onClick={(e) => e.stopPropagation()} style={{ maxWidth: 480 }}>
+            <div className="libro-modal__header">
+              <h2>Motivo del cambio de nota</h2>
+              <button className="libro-modal__close" onClick={handleCancelReason}>&times;</button>
+            </div>
+            <div className="libro-modal__body">
+              {pendingSave.oldNota !== null ? (
+                <p style={{ marginBottom: 12 }}>
+                  Cambio de <strong style={{ color: colorNota(pendingSave.oldNota) }}>{formatearNota(pendingSave.oldNota)}</strong> a{" "}
+                  <strong style={{ color: colorNota(pendingSave.nota) }}>{formatearNota(pendingSave.nota)}</strong>
+                </p>
+              ) : (
+                <p style={{ marginBottom: 12 }}>
+                  Nueva nota: <strong style={{ color: colorNota(pendingSave.nota) }}>{formatearNota(pendingSave.nota)}</strong>
+                </p>
+              )}
+              <p style={{ fontSize: ".82rem", color: "var(--warning)", marginBottom: 16 }}>
+                Debes indicar el motivo del cambio. Esta informacion sera enviada a UTP.
+              </p>
+              <div className="form-field">
+                <label>Motivo del cambio <span style={{ color: "var(--danger)" }}>*</span></label>
+                <textarea
+                  ref={reasonRef}
+                  placeholder="Ej: Error en la correccion de decimas, ajuste de puntaje por pregunta anulada, recalculo por OA..."
+                  value={reasonText}
+                  onChange={(e) => setReasonText(e.target.value)}
+                  onKeyDown={(e) => { if (e.key === "Enter" && !e.shiftKey && reasonText.trim()) { e.preventDefault(); handleConfirmSave(); } }}
+                  style={{ minHeight: 80, resize: "vertical" }}
+                />
+              </div>
+            </div>
+            <div className="libro-modal__footer">
+              <button className="btn btn--ghost" onClick={handleCancelReason}>Cancelar</button>
+              <button className="btn btn--primary" onClick={handleConfirmSave}
+                disabled={!reasonText.trim() || updateGradeMutation.isPending || directGradeMutation.isPending}>
+                {updateGradeMutation.isPending || directGradeMutation.isPending ? "Guardando..." : "Guardar Cambio"}
               </button>
             </div>
           </div>

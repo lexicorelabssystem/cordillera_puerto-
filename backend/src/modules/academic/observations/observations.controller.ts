@@ -31,32 +31,33 @@ export class ObservationsController {
   @ApiQuery({ name: "courseId", required: false })
   @ApiQuery({ name: "type", required: false })
   findAll(
+    @CurrentUser() user: JwtPayload,
     @Query("studentId") studentId?: string,
     @Query("courseId") courseId?: string,
     @Query("type") type?: string,
   ) {
-    return this.service.findAll({ studentId, courseId, type });
+    return this.service.findAll({ studentId, courseId, type }, user);
   }
 
   @Get(":id")
   @Roles("TEACHER", "ADMIN", "SUPER_ADMIN", "DIRECTION", "UTP", "STUDENT")
   @ApiOperation({ summary: "Obtener observación por ID" })
-  findOne(@Param("id", ParseUUIDPipe) id: string) {
-    return this.service.findById(id);
+  findOne(@Param("id", ParseUUIDPipe) id: string, @CurrentUser() user: JwtPayload) {
+    return this.service.findById(id, user);
   }
 
   @Patch(":id")
   @Roles("TEACHER", "ADMIN", "SUPER_ADMIN", "UTP")
   @ApiOperation({ summary: "Actualizar observación" })
-  update(@Param("id", ParseUUIDPipe) id: string, @Body() dto: UpdateObservationDto) {
-    return this.service.update(id, dto);
+  update(@Param("id", ParseUUIDPipe) id: string, @Body() dto: UpdateObservationDto, @CurrentUser() user: JwtPayload) {
+    return this.service.update(id, dto, user);
   }
 
   @Delete(":id")
   @HttpCode(HttpStatus.NO_CONTENT)
   @Roles("ADMIN", "SUPER_ADMIN")
   @ApiOperation({ summary: "Eliminar observación" })
-  remove(@Param("id", ParseUUIDPipe) id: string) {
-    return this.service.remove(id);
+  remove(@Param("id", ParseUUIDPipe) id: string, @CurrentUser() user: JwtPayload) {
+    return this.service.remove(id, user);
   }
 }

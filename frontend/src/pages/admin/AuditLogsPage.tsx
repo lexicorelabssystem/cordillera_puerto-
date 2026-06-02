@@ -1,5 +1,6 @@
 import { useState } from "react";
 import { useQuery } from "@tanstack/react-query";
+import { useLocation } from "react-router-dom";
 import { api } from "../../lib/api";
 import { LoadingSpinner } from "../../components/common/LoadingSpinner";
 
@@ -15,6 +16,7 @@ interface AuditLogRow {
 }
 
 export function AuditLogsPage() {
+  const location = useLocation();
   const [page, setPage] = useState(1);
   const [actionFilter, setActionFilter] = useState("");
   const [entityTypeFilter, setEntityTypeFilter] = useState("");
@@ -41,11 +43,12 @@ export function AuditLogsPage() {
   const logs = (logsQuery.data as { data: AuditLogRow[] })?.data || [];
   const meta = (logsQuery.data as { meta: { page: number; total: number; totalPages: number; hasNext: boolean; hasPrevious: boolean } })?.meta;
   const summary = summaryQuery.data;
+  const isInstitutionalView = location.pathname.startsWith("/utp") || location.pathname.startsWith("/direction");
 
   return (
     <>
       <section className="panel">
-        <h3>Registro de Auditoría</h3>
+        <h3>{isInstitutionalView ? "Auditoria institucional" : "Registro de Auditoria"}</h3>
 
         <div className="form-row" style={{ marginBottom: 12 }}>
           <input

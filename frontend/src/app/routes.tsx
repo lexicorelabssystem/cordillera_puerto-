@@ -72,6 +72,9 @@ const FastCorrectionPage = lazy(() =>
 const ProfesoresPage = lazy(() =>
   import("../pages/admin/ProfesoresPage").then((m) => ({ default: m.ProfesoresPage }))
 );
+const AlumnosPorCursoPage = lazy(() =>
+  import("../pages/admin/AlumnosPorCursoPage").then((m) => ({ default: m.AlumnosPorCursoPage }))
+);
 const AlertsPage = lazy(() =>
   import("../pages/admin/AlertsPage").then((m) => ({ default: m.AlertsPage }))
 );
@@ -102,6 +105,10 @@ const LibroEvaluacionesPage = lazy(() =>
 
 const GradebookPage = lazy(() =>
   import("../pages/admin/GradebookPage").then((m) => ({ default: m.GradebookPage }))
+);
+
+const BandejaPage = lazy(() =>
+  import("../pages/admin/BandejaPage").then((m) => ({ default: m.BandejaPage }))
 );
 
 const AssessmentDetailPage = lazy(() =>
@@ -141,16 +148,19 @@ function AlertsPageWrapper() {
   return <AlertsPage alerts={alertsQuery.data} overview={overview} />;
 }
 
-function adminRoutes() {
+function adminRoutes(mode: "admin" | "direction" | "utp" = "admin") {
   const ff = DEFAULT_FEATURES;
+  const includeAdminOnly = mode === "admin";
+  const includeUsers = mode === "admin" || mode === "utp";
 
   return (
     <>
       <Route index element={<Lazy><OverviewWrapper /></Lazy>} />
       <Route path="instituciones" element={<Lazy><InstitutionsView /></Lazy>} />
-      <Route path="usuarios" element={<Lazy><UsersView /></Lazy>} />
+      {includeUsers && <Route path="usuarios" element={<Lazy><UsersView /></Lazy>} />}
       <Route path="academico" element={<Lazy><AcademicYearsView /></Lazy>} />
       <Route path="cursos" element={<Lazy><CoursesView /></Lazy>} />
+      <Route path="alumnos" element={<Lazy><AlumnosPorCursoPage /></Lazy>} />
       <Route path="profesores" element={<Lazy><ProfesoresPage /></Lazy>} />
       <Route path="curriculum" element={<Lazy><CurriculumPage /></Lazy>} />
       <Route path="cobertura-curricular" element={<Lazy><CurriculumCoverageWrapper /></Lazy>} />
@@ -172,14 +182,19 @@ function adminRoutes() {
       <Route path="correccion-rapida" element={<Lazy><FastCorrectionPage /></Lazy>} />
       <Route path="alertas" element={<Lazy><AlertsPageWrapper /></Lazy>} />
       <Route path="auditoria" element={<Lazy><AuditLogsPage /></Lazy>} />
-      <Route path="importar" element={<Lazy><ImportPage /></Lazy>} />
-      <Route path="exportar" element={<Lazy><ExportPage /></Lazy>} />
+      <Route path="bandeja" element={<Lazy><BandejaPage /></Lazy>} />
+      {includeAdminOnly && <Route path="importar" element={<Lazy><ImportPage /></Lazy>} />}
+      {includeAdminOnly && <Route path="exportar" element={<Lazy><ExportPage /></Lazy>} />}
     </>
   );
 }
 
 function directionRoutes() {
-  return adminRoutes();
+  return adminRoutes("direction");
 }
 
-export { adminRoutes, directionRoutes };
+function utpRoutes() {
+  return adminRoutes("utp");
+}
+
+export { adminRoutes, directionRoutes, utpRoutes };

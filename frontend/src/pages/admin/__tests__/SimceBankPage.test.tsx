@@ -1,260 +1,154 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
 import { render, screen, waitFor } from "@testing-library/react";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
+import { BrowserRouter } from "react-router-dom";
+import { ToastProvider } from "../../../components/common/Toast";
 
 vi.mock("../../../lib/api", () => ({
   api: {
-    listAssessments: vi.fn(),
+    listSimceAssessments: vi.fn(),
+    listCourses: vi.fn().mockResolvedValue([]),
+    listSubjects: vi.fn().mockResolvedValue([]),
   },
 }));
 
 import { api } from "../../../lib/api";
 import { SimceBankPage } from "../SimceBankPage";
 
-const mockAssessments = [
-  {
-    assessment_id: "a1",
-    title: "Ensayo SIMCE Matematica 4° - Numeros",
-    assessment_type: "SIMCE",
-    status: "PUBLISHED",
-    course_name: "4° Basico A",
-    subject_name: "Matem\u00e1tica",
-    attempts_count: 25,
-    grades_count: 20,
-  },
-  {
-    assessment_id: "a2",
-    title: "Ensayo SIMCE Lenguaje 4° - Comprension Lectora",
-    assessment_type: "SIMCE",
-    status: "ACTIVE",
-    course_name: "4° Basico B",
-    subject_name: "Lenguaje",
-    attempts_count: 30,
-    grades_count: 28,
-  },
-  {
-    assessment_id: "a3",
-    title: "Ensayo SIMCE Matematica 6° - Geometria",
-    assessment_type: "SIMCE",
-    status: "PUBLISHED",
-    course_name: "6° Basico A",
-    subject_name: "Matem\u00e1tica",
-    attempts_count: 15,
-    grades_count: 12,
-  },
-  {
-    assessment_id: "a4",
-    title: "Ensayo SIMCE Lenguaje 6° - Textos Informativos",
-    assessment_type: "SIMCE",
-    status: "DRAFT",
-    course_name: "6° Basico B",
-    subject_name: "Lenguaje",
-    attempts_count: 5,
-    grades_count: 3,
-  },
-];
+const mockSimceAssessments = {
+  data: [
+    {
+      id: "s1",
+      title: "Ensayo SIMCE Matemática 4°",
+      status: "DRAFT",
+      gradeLevel: 4,
+      date: "2026-05-20",
+      course: { id: "c1", name: "4° Básico A", gradeLevel: 4 },
+      subject: { id: "sub1", name: "Matemática" },
+      _count: { answerKeys: 0, responses: 0 },
+    },
+    {
+      id: "s2",
+      title: "Ensayo SIMCE Lenguaje 4°",
+      status: "KEY_PENDING",
+      gradeLevel: 4,
+      date: "2026-05-18",
+      course: { id: "c2", name: "4° Básico B", gradeLevel: 4 },
+      subject: { id: "sub2", name: "Lenguaje" },
+      _count: { answerKeys: 15, responses: 0 },
+    },
+    {
+      id: "s3",
+      title: "Ensayo SIMCE Matemática 6°",
+      status: "CORRECTED",
+      gradeLevel: 6,
+      date: "2026-05-10",
+      course: { id: "c3", name: "6° Básico A", gradeLevel: 6 },
+      subject: { id: "sub1", name: "Matemática" },
+      _count: { answerKeys: 30, responses: 90 },
+    },
+  ],
+  meta: { total: 3, page: 1, limit: 20, totalPages: 1, hasNext: false, hasPrevious: false },
+};
 
-function renderWithQueryClient(ui: React.ReactElement) {
+function renderWithProviders(ui: React.ReactElement) {
   const queryClient = new QueryClient({
     defaultOptions: { queries: { retry: false } },
   });
   return render(
     <QueryClientProvider client={queryClient}>
-      {ui}
+      <BrowserRouter>
+        <ToastProvider>
+          {ui}
+        </ToastProvider>
+      </BrowserRouter>
     </QueryClientProvider>,
   );
 }
 
 beforeEach(() => {
   vi.clearAllMocks();
-  (api.listAssessments as ReturnType<typeof vi.fn>).mockResolvedValue(mockAssessments);
+  (api.listSimceAssessments as ReturnType<typeof vi.fn>).mockResolvedValue(mockSimceAssessments);
 });
 
 describe("SimceBankPage", () => {
-  it("renderiza el titulo 'Banco de Ensayos SIMCE'", async () => {
-    renderWithQueryClient(<SimceBankPage />);
+  it("renderiza el título 'Módulo SIMCE'", async () => {
+    renderWithProviders(<SimceBankPage />);
 
     await waitFor(() => {
-      expect(screen.getByText("Banco de Ensayos SIMCE")).toBeInTheDocument();
+      expect(screen.getByText("Módulo SIMCE")).toBeInTheDocument();
     });
   });
 
-  it("muestra la descripcion del banco de ensayos", async () => {
-    renderWithQueryClient(<SimceBankPage />);
+  it("muestra la descripción del módulo", async () => {
+    renderWithProviders(<SimceBankPage />);
 
     await waitFor(() => {
-      expect(screen.getByText(/Banco de ensayos tipo SIMCE/)).toBeInTheDocument();
+      expect(screen.getByText(/Sube pruebas PDF/)).toBeInTheDocument();
     });
   });
 
-  it("muestra la tarjeta KPI de total ensayos con la cantidad correcta", async () => {
-    renderWithQueryClient(<SimceBankPage />);
+  it("muestra tarjetas KPI con totales correctos", async () => {
+    renderWithProviders(<SimceBankPage />);
 
     await waitFor(() => {
-      const kpiCards = document.querySelectorAll(".kpi-card");
-      const totalCard = kpiCards[0];
-      expect(totalCard).toBeInTheDocument();
-      expect(totalCard.querySelector("strong")!.textContent).toBe("4");
+      expect(screen.getByText("Total")).toBeInTheDocument();
+    });
+
+    const kpiCards = document.querySelectorAll(".kpi-card strong");
+    const values = Array.from(kpiCards).slice(0, 5).map((el) => el.textContent);
+    expect(values).toEqual(["3", "1", "1", "0", "1"]);
+  });
+
+  it("muestra la tabla con las pruebas SIMCE", async () => {
+    renderWithProviders(<SimceBankPage />);
+
+    await waitFor(() => {
+      expect(screen.getByText("Ensayo SIMCE Matemática 4°")).toBeInTheDocument();
+    });
+
+    expect(screen.getByText("Ensayo SIMCE Lenguaje 4°")).toBeInTheDocument();
+    expect(screen.getByText("Ensayo SIMCE Matemática 6°")).toBeInTheDocument();
+  });
+
+  it("muestra el botón 'Nueva prueba'", async () => {
+    renderWithProviders(<SimceBankPage />);
+
+    await waitFor(() => {
+      expect(screen.getByText("+ Nueva prueba")).toBeInTheDocument();
     });
   });
 
-  it("muestra KPI de Matem\u00e1tica 4\u00b0 con filtro correcto", async () => {
-    renderWithQueryClient(<SimceBankPage />);
+  it("muestra mensaje de selección cuando no hay prueba seleccionada", async () => {
+    renderWithProviders(<SimceBankPage />);
 
     await waitFor(() => {
-      const kpiCards = document.querySelectorAll(".kpi-card");
-      const mat4Card = Array.from(kpiCards).find(
-        (c) => c.querySelector("span")?.textContent === "Matem\u00e1tica 4\u00b0",
-      );
-      expect(mat4Card).toBeDefined();
-      expect(mat4Card!.querySelector("strong")!.textContent).toBe("1");
+      expect(screen.getByText("Selecciona una prueba SIMCE")).toBeInTheDocument();
     });
   });
 
-  it("muestra KPI de Lectura 4\u00b0 con filtro correcto", async () => {
-    renderWithQueryClient(<SimceBankPage />);
+  it("muestra tabla vacía cuando no hay pruebas", async () => {
+    (api.listSimceAssessments as ReturnType<typeof vi.fn>).mockResolvedValue({ data: [], meta: { total: 0, page: 1, limit: 20, totalPages: 0, hasNext: false, hasPrevious: false } });
+    renderWithProviders(<SimceBankPage />);
 
     await waitFor(() => {
-      const kpiCards = document.querySelectorAll(".kpi-card");
-      const lect4Card = Array.from(kpiCards).find(
-        (c) => c.querySelector("span")?.textContent === "Lectura 4\u00b0",
-      );
-      expect(lect4Card).toBeDefined();
-      expect(lect4Card!.querySelector("strong")!.textContent).toBe("1");
+      expect(screen.getByText("Sin pruebas SIMCE")).toBeInTheDocument();
     });
   });
 
-  it("muestra KPI de Matem\u00e1tica 6\u00b0 con filtro correcto", async () => {
-    renderWithQueryClient(<SimceBankPage />);
+  it("renderiza los encabezados de tabla correctos", async () => {
+    renderWithProviders(<SimceBankPage />);
 
     await waitFor(() => {
-      const kpiCards = document.querySelectorAll(".kpi-card");
-      const mat6Card = Array.from(kpiCards).find(
-        (c) => c.querySelector("span")?.textContent === "Matem\u00e1tica 6\u00b0",
-      );
-      expect(mat6Card).toBeDefined();
-      expect(mat6Card!.querySelector("strong")!.textContent).toBe("1");
-    });
-  });
-
-  it("muestra KPI de Lectura 6\u00b0 con filtro correcto", async () => {
-    renderWithQueryClient(<SimceBankPage />);
-
-    await waitFor(() => {
-      const kpiCards = document.querySelectorAll(".kpi-card");
-      const lect6Card = Array.from(kpiCards).find(
-        (c) => c.querySelector("span")?.textContent === "Lectura 6\u00b0",
-      );
-      expect(lect6Card).toBeDefined();
-      expect(lect6Card!.querySelector("strong")!.textContent).toBe("1");
-    });
-  });
-
-  it("renderiza la tabla con las filas de ensayos", async () => {
-    renderWithQueryClient(<SimceBankPage />);
-
-    await waitFor(() => {
-      expect(screen.getByText("Ensayo SIMCE Matematica 4° - Numeros")).toBeInTheDocument();
-    });
-
-    const table = document.querySelector(".table");
-    expect(table).toBeInTheDocument();
-
-    const rows = table!.querySelectorAll("tbody tr");
-    expect(rows.length).toBe(4);
-  });
-
-  it("muestra los datos correctos en cada fila de la tabla", async () => {
-    renderWithQueryClient(<SimceBankPage />);
-
-    await waitFor(() => {
-      expect(screen.getByText("Ensayo SIMCE Matematica 4° - Numeros")).toBeInTheDocument();
-    });
-
-    expect(screen.getByText("4° Basico A")).toBeInTheDocument();
-    expect(screen.getByText("25")).toBeInTheDocument();
-    expect(screen.getByText("20")).toBeInTheDocument();
-  });
-
-  it("muestra badges de estado PUBLISHED/ACTIVE con clase correcta", async () => {
-    renderWithQueryClient(<SimceBankPage />);
-
-    await waitFor(() => {
-      const badges = screen.getAllByText("PUBLISHED");
-      expect(badges.length).toBeGreaterThanOrEqual(1);
-    });
-
-    const publishedBadges = screen.getAllByText("PUBLISHED");
-    publishedBadges.forEach((b) => {
-      expect(b.classList.contains("badge--active")).toBe(true);
-    });
-  });
-
-  it("muestra badge de estado DRAFT con clase warning", async () => {
-    renderWithQueryClient(<SimceBankPage />);
-
-    await waitFor(() => {
-      expect(screen.getByText("DRAFT")).toBeInTheDocument();
-    });
-
-    const draftBadge = screen.getByText("DRAFT");
-    expect(draftBadge.classList.contains("badge--warning")).toBe(true);
-  });
-
-  it("muestra tabla vacia cuando no hay ensayos SIMCE", async () => {
-    (api.listAssessments as ReturnType<typeof vi.fn>).mockResolvedValue([]);
-    renderWithQueryClient(<SimceBankPage />);
-
-    await waitFor(() => {
-      const kpiCard = document.querySelector(".kpi-card strong");
-      expect(kpiCard).toBeInTheDocument();
-    });
-
-    const totalCard = document.querySelector(".kpi-card strong");
-    expect(totalCard!.textContent).toBe("0");
-
-    const rows = document.querySelectorAll("tbody tr");
-    expect(rows.length).toBe(0);
-  });
-
-  it("llama a listAssessments con assessmentType SIMCE al montar", async () => {
-    renderWithQueryClient(<SimceBankPage />);
-
-    await waitFor(() => {
-      expect(api.listAssessments).toHaveBeenCalledWith({ assessmentType: "SIMCE" });
-    });
-  });
-
-  it("muestra mensaje de error cuando la API falla", async () => {
-    const consoleError = vi.spyOn(console, "error").mockImplementation(() => {});
-    (api.listAssessments as ReturnType<typeof vi.fn>).mockRejectedValue(new Error("Error de red"));
-    renderWithQueryClient(<SimceBankPage />);
-
-    await waitFor(() => {
-      expect(screen.getByText("Banco de Ensayos SIMCE")).toBeInTheDocument();
-    });
-
-    const rows = document.querySelectorAll("tbody tr");
-    expect(rows.length).toBe(0);
-
-    consoleError.mockRestore();
-  });
-
-  it("renderiza las cabeceras de tabla correctas", async () => {
-    renderWithQueryClient(<SimceBankPage />);
-
-    await waitFor(() => {
-      const headers = document.querySelectorAll("thead th");
+      const headers = document.querySelectorAll(".simce-table-wrap thead th");
       expect(headers.length).toBe(6);
     });
 
-    const headers = document.querySelectorAll("thead th");
-    const headerTexts = Array.from(headers).map((h) => h.textContent);
-    expect(headerTexts).toContain("Ensayo");
+    const headerTexts = Array.from(document.querySelectorAll(".simce-table-wrap thead th")).map((h) => h.textContent);
+    expect(headerTexts).toContain("Prueba");
     expect(headerTexts).toContain("Curso");
     expect(headerTexts).toContain("Asignatura");
-    expect(headerTexts).toContain("Intentos");
-    expect(headerTexts).toContain("Notas");
+    expect(headerTexts).toContain("Preguntas");
     expect(headerTexts).toContain("Estado");
   });
 });

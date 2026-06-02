@@ -1,7 +1,8 @@
 import {
   Controller, Get, Post, Patch, Body, Param, Query, HttpCode, HttpStatus, UseGuards, ParseUUIDPipe,
 } from "@nestjs/common";
-import { ApiTags, ApiOperation, ApiBearerAuth, ApiQuery } from "@nestjs/swagger";
+import { ApiTags, ApiOperation, ApiBearerAuth, ApiQuery, ApiProperty, ApiPropertyOptional } from "@nestjs/swagger";
+import { IsNumber, IsString, IsOptional, Min, Max } from "class-validator";
 import { GradingService } from "./grading.service.js";
 import { GradeAnswerDto, BulkGradeDto, DirectGradeDto, BulkDirectGradeDto } from "./dto/grade.dto.js";
 import { JwtAuthGuard } from "../../auth/jwt-auth.guard.js";
@@ -10,8 +11,21 @@ import { Roles } from "../../../common/decorators/roles.decorator.js";
 import { CurrentUser, JwtPayload } from "../../../common/decorators/current-user.decorator.js";
 
 class UpdateGradeDto {
+  @ApiProperty({ description: "Nota entre 1.0 y 7.0" })
+  @IsNumber()
+  @Min(1.0)
+  @Max(7.0)
   grade!: number;
+
+  @ApiPropertyOptional({ description: "Comentario u observacion" })
+  @IsOptional()
+  @IsString()
   comments?: string;
+
+  @ApiPropertyOptional({ description: "Motivo del cambio de nota" })
+  @IsOptional()
+  @IsString()
+  reason?: string;
 }
 
 @ApiTags("Grading")
@@ -84,7 +98,7 @@ export class GradingController {
     @Body() dto: UpdateGradeDto,
     @CurrentUser() user: JwtPayload,
   ) {
-    return this.service.updateGradeRecord(gradeId, dto.grade, dto.comments, user.sub);
+    return this.service.updateGradeRecord(gradeId, dto.grade, dto.comments, user.sub, dto.reason);
   }
 
   @Get("course-book/:courseId")
@@ -93,9 +107,10 @@ export class GradingController {
   @ApiQuery({ name: "subjectId", required: false })
   getCourseGradeBook(
     @Param("courseId", ParseUUIDPipe) courseId: string,
+    @CurrentUser() user: JwtPayload,
     @Query("subjectId") subjectId?: string,
   ) {
-    return this.service.getCourseGradeBook(courseId, subjectId);
+    return this.service.getCourseGradeBook(courseId, subjectId, user.sub);
   }
 
   // ══════════════════════════════════════════════════════
@@ -106,7 +121,7 @@ export class GradingController {
   @Roles("TEACHER", "ADMIN", "SUPER_ADMIN", "UTP")
   @ApiOperation({ summary: "Crear o actualizar una nota directamente (sin intento previo)" })
   directGrade(@Body() dto: DirectGradeDto, @CurrentUser() user: JwtPayload) {
-    return this.service.directGradeRecord(dto.assessmentId, dto.studentId, dto.grade, user.sub, dto.comments);
+    return this.service.directGradeRecord(dto.assessmentId, dto.studentId, dto.grade, user.sub, dto.comments, dto.reason);
   }
 
   @Post("direct-grades/bulk")

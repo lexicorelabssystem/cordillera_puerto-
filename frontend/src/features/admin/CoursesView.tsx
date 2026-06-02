@@ -42,8 +42,8 @@ export function CoursesView() {
   const academicYearId = years.data?.find((y) => y.isActive)?.id || "";
 
   const coursesQuery = useQuery({
-    queryKey: ["courses", { institutionId: selectedInstitution?.id, academicYearId }],
-    queryFn: () => api.listCourses({ institutionId: selectedInstitution?.id, academicYearId: academicYearId || undefined }),
+    queryKey: ["courses", { institutionId: selectedInstitution?.id, academicYearId, showInactive }],
+    queryFn: () => api.listCourses({ institutionId: selectedInstitution?.id, academicYearId: academicYearId || undefined, includeInactive: showInactive }),
     enabled: Boolean(selectedInstitution?.id) && Boolean(academicYearId),
   });
 
@@ -80,6 +80,18 @@ export function CoursesView() {
     onError: (e) => toast(e instanceof Error ? e.message : "Error al desactivar curso", "error"),
   });
 
+  const restoreCourse = useMutation({
+    mutationFn: (id: string) => api.updateCourse(id, { isActive: true }),
+    onSuccess: () => { toast("Curso reactivado.", "success"); queryClient.invalidateQueries({ queryKey: ["courses"] }); },
+    onError: (e) => toast(e instanceof Error ? e.message : "Error al reactivar curso", "error"),
+  });
+
+  const deleteCoursePermanent = useMutation({
+    mutationFn: api.deleteCoursePermanent,
+    onSuccess: () => { toast("Curso eliminado definitivamente.", "success"); queryClient.invalidateQueries({ queryKey: ["courses"] }); },
+    onError: (e) => toast(e instanceof Error ? e.message : "Error al eliminar definitivamente curso", "error"),
+  });
+
   const createSubject = useMutation({
     mutationFn: api.createSubject,
     onSuccess: () => {
@@ -106,6 +118,18 @@ export function CoursesView() {
     onError: (e) => toast(e instanceof Error ? e.message : "Error al desactivar asignatura", "error"),
   });
 
+  const restoreSubject = useMutation({
+    mutationFn: (id: string) => api.updateSubject(id, { isActive: true }),
+    onSuccess: () => { toast("Asignatura reactivada.", "success"); queryClient.invalidateQueries({ queryKey: ["subjects"] }); },
+    onError: (e) => toast(e instanceof Error ? e.message : "Error al reactivar asignatura", "error"),
+  });
+
+  const deleteSubjectPermanent = useMutation({
+    mutationFn: api.deleteSubjectPermanent,
+    onSuccess: () => { toast("Asignatura eliminada definitivamente.", "success"); queryClient.invalidateQueries({ queryKey: ["subjects"] }); },
+    onError: (e) => toast(e instanceof Error ? e.message : "Error al eliminar definitivamente asignatura", "error"),
+  });
+
   function handleCreateCourse() {
     if (!selectedInstitution?.id || !academicYearId) { toast("Se requiere institucion y ano academico activo.", "warning"); return; }
     if (!courseForm.name) { toast("El nombre del curso es obligatorio.", "warning"); return; }
@@ -119,7 +143,7 @@ export function CoursesView() {
 
   function startEditCourse(c: AdminCourseRow) {
     setEditingCourseId(c.course_id);
-    setCourseForm({ name: c.course_name, gradeLevel: c.grade_level, section: c.section || "", maxStudents: 45 });
+    setCourseForm({ name: c.course_name, gradeLevel: c.grade_level, section: c.section || "", maxStudents: c.max_students ?? 45 });
   }
 
   function handleCreateSubject() {
@@ -146,6 +170,12 @@ export function CoursesView() {
       {/* ═══════ CURSOS ═══════ */}
       <section className="panel">
         <h3>Cursos ({courseList.length})</h3>
+        <div className="form-actions" style={{ marginBottom: 8 }}>
+          <label style={{ display: "flex", alignItems: "center", gap: 8, cursor: "pointer" }}>
+            <input type="checkbox" checked={showInactive} onChange={(e) => setShowInactive(e.target.checked)} style={{ width: "auto" }} />
+            Mostrar inactivos
+          </label>
+        </div>
         {coursesQuery.isLoading ? <LoadingSpinner label="Cargando cursos..." size="sm" /> : null}
         {courseList.length === 0 && !coursesQuery.isLoading ? (
           <div className="empty-state"><strong>No hay cursos creados</strong><p>Crea tu primer curso abajo.</p></div>
@@ -153,26 +183,41 @@ export function CoursesView() {
           <div className="table-wrap">
             <table className="table">
               <thead>
-                <tr><th>Curso</th><th>Nivel</th><th>Sección</th><th>Alumnos</th><th>Acciones</th></tr>
+                <tr><th>Curso</th><th>Nivel</th><th>Sección</th><th>Alumnos</th><th>Estado</th><th>Acciones</th></tr>
               </thead>
               <tbody>
-                {courseList.map((c) => (
-                  <tr key={c.course_id}>
-                    <td><strong>{c.course_name}</strong></td>
-                    <td>{c.grade_level}°</td>
-                    <td>{c.section || "A"}</td>
-                    <td>{c.students_count}</td>
-                    <td>
-                      <div className="action-buttons">
-                        <button className="btn-small" onClick={() => startEditCourse(c)}>Editar</button>
-                        <CourseDetailButton courseId={c.course_id} courseName={c.course_name} />
-                        <button className="btn-small btn-danger" onClick={() => {
-                          if (window.confirm(`¿Desactivar ${c.course_name}?`)) deleteCourse.mutate(c.course_id);
-                        }}>Desactivar</button>
-                      </div>
-                    </td>
-                  </tr>
-                ))}
+                {courseList.map((c) => {
+                  const isActive = c.is_active !== false;
+                  return (
+                    <tr key={c.course_id}>
+                      <td><strong>{c.course_name}</strong></td>
+                      <td>{c.grade_level}°</td>
+                      <td>{c.section || "A"}</td>
+                      <td>{c.students_count}</td>
+                      <td><span className={`badge ${isActive ? "badge--active" : "badge--inactive"}`}>{isActive ? "Activo" : "Inactivo"}</span></td>
+                      <td>
+                        <div className="action-buttons">
+                          <button className="btn-small" onClick={() => startEditCourse(c)}>Editar</button>
+                          <CourseDetailButton courseId={c.course_id} courseName={c.course_name} />
+                          {isActive ? (
+                            <button className="btn-small btn-danger" onClick={() => {
+                              if (window.confirm(`¿Desactivar ${c.course_name}?`)) deleteCourse.mutate(c.course_id);
+                            }}>Desactivar</button>
+                          ) : (
+                            <>
+                              <button className="btn-small" onClick={() => restoreCourse.mutate(c.course_id)}>Reactivar</button>
+                              <button className="btn-small btn-danger" onClick={() => {
+                                if (window.confirm(`¿Eliminar definitivamente ${c.course_name}? Esta acción no se puede deshacer.`)) {
+                                  deleteCoursePermanent.mutate(c.course_id);
+                                }
+                              }}>Eliminar definitivo</button>
+                            </>
+                          )}
+                        </div>
+                      </td>
+                    </tr>
+                  );
+                })}
               </tbody>
             </table>
           </div>
@@ -232,21 +277,35 @@ export function CoursesView() {
             <table className="table">
               <thead><tr><th>Nombre</th><th>Código</th><th>Estado</th><th>Acciones</th></tr></thead>
               <tbody>
-                {subjectList.map((s) => (
-                  <tr key={s.id}>
-                    <td><strong>{s.name}</strong></td>
-                    <td>{s.code || "-"}</td>
-                    <td><span className={`badge ${(s as { isActive?: boolean }).isActive !== false ? "badge--active" : "badge--inactive"}`}>{(s as { isActive?: boolean }).isActive !== false ? "Activo" : "Inactivo"}</span></td>
-                    <td>
-                      <div className="action-buttons">
-                        <button className="btn-small" onClick={() => startEditSubject(s)}>Editar</button>
-                        <button className="btn-small btn-danger" onClick={() => {
-                          if (window.confirm(`¿Desactivar ${s.name}?`)) deleteSubject.mutate(s.id);
-                        }}>Desactivar</button>
-                      </div>
-                    </td>
-                  </tr>
-                ))}
+                {subjectList.map((s) => {
+                  const isActive = s.isActive !== false;
+                  return (
+                    <tr key={s.id}>
+                      <td><strong>{s.name}</strong></td>
+                      <td>{s.code || "-"}</td>
+                      <td><span className={`badge ${isActive ? "badge--active" : "badge--inactive"}`}>{isActive ? "Activo" : "Inactivo"}</span></td>
+                      <td>
+                        <div className="action-buttons">
+                          <button className="btn-small" onClick={() => startEditSubject(s)}>Editar</button>
+                          {isActive ? (
+                            <button className="btn-small btn-danger" onClick={() => {
+                              if (window.confirm(`¿Desactivar ${s.name}?`)) deleteSubject.mutate(s.id);
+                            }}>Desactivar</button>
+                          ) : (
+                            <>
+                              <button className="btn-small" onClick={() => restoreSubject.mutate(s.id)}>Reactivar</button>
+                              <button className="btn-small btn-danger" onClick={() => {
+                                if (window.confirm(`¿Eliminar definitivamente ${s.name}? Esta acción no se puede deshacer.`)) {
+                                  deleteSubjectPermanent.mutate(s.id);
+                                }
+                              }}>Eliminar definitivo</button>
+                            </>
+                          )}
+                        </div>
+                      </td>
+                    </tr>
+                  );
+                })}
               </tbody>
             </table>
           </div>
@@ -283,6 +342,8 @@ export function CoursesView() {
 }
 
 function CourseDetailButton({ courseId, courseName }: { courseId: string; courseName: string }) {
+  const queryClient = useQueryClient();
+  const { selectedInstitution } = useInstitution();
   const [open, setOpen] = useState(false);
 
   const detailQuery = useQuery({
@@ -292,8 +353,8 @@ function CourseDetailButton({ courseId, courseName }: { courseId: string; course
   });
 
   const teachersQuery = useQuery<AdminTeacher[]>({
-    queryKey: ["teachers-list"],
-    queryFn: () => api.listTeachers() as unknown as Promise<AdminTeacher[]>,
+    queryKey: ["teachers-list", selectedInstitution?.id],
+    queryFn: () => api.listTeachers(undefined, { institutionId: selectedInstitution?.id }) as unknown as Promise<AdminTeacher[]>,
     enabled: open,
   });
 
@@ -306,6 +367,15 @@ function CourseDetailButton({ courseId, courseName }: { courseId: string; course
   const [assignMsg, setAssignMsg] = useState("");
   const [selectedTeacherId, setSelectedTeacherId] = useState("");
   const [selectedSubjectId, setSelectedSubjectId] = useState("");
+  const [studentForm, setStudentForm] = useState({
+    firstName: "",
+    lastName: "",
+    email: "",
+    temporaryPassword: "",
+    rut: "",
+    gender: "",
+    birthDate: "",
+  });
 
   const assignMutation = useMutation({
     mutationFn: api.assignTeacher,
@@ -317,6 +387,26 @@ function CourseDetailButton({ courseId, courseName }: { courseId: string; course
     mutationFn: api.removeAssignment,
     onSuccess: () => { setAssignMsg("Asignación removida."); detailQuery.refetch(); },
     onError: (e) => setAssignMsg(e instanceof Error ? e.message : "Error al remover asignación"),
+  });
+
+  const createStudentMutation = useMutation({
+    mutationFn: () => api.createStudent({
+      firstName: studentForm.firstName,
+      lastName: studentForm.lastName,
+      courseId,
+      email: studentForm.email || undefined,
+      temporaryPassword: studentForm.temporaryPassword || undefined,
+      rut: studentForm.rut || undefined,
+      gender: studentForm.gender || undefined,
+      birthDate: studentForm.birthDate || undefined,
+    }),
+    onSuccess: () => {
+      setAssignMsg("Alumno creado y matriculado.");
+      setStudentForm({ firstName: "", lastName: "", email: "", temporaryPassword: "", rut: "", gender: "", birthDate: "" });
+      detailQuery.refetch();
+      queryClient.invalidateQueries({ queryKey: ["courses"] });
+    },
+    onError: (e) => setAssignMsg(e instanceof Error ? e.message : "Error al crear alumno"),
   });
 
   const data = detailQuery.data;
@@ -399,6 +489,41 @@ function CourseDetailButton({ courseId, courseName }: { courseId: string; course
                   </table>
                 </div>
               )}
+              <h4 style={{ margin: "16px 0 8px" }}>Agregar alumno al curso</h4>
+              <div className="form-grid">
+                <div className="form-field">
+                  <label>Nombre *</label>
+                  <input value={studentForm.firstName} onChange={(e) => setStudentForm((s) => ({ ...s, firstName: e.target.value }))} />
+                </div>
+                <div className="form-field">
+                  <label>Apellido *</label>
+                  <input value={studentForm.lastName} onChange={(e) => setStudentForm((s) => ({ ...s, lastName: e.target.value }))} />
+                </div>
+                <div className="form-field">
+                  <label>Email</label>
+                  <input value={studentForm.email} onChange={(e) => setStudentForm((s) => ({ ...s, email: e.target.value }))} />
+                </div>
+                <div className="form-field">
+                  <label>Clave temporal</label>
+                  <input type="password" value={studentForm.temporaryPassword} onChange={(e) => setStudentForm((s) => ({ ...s, temporaryPassword: e.target.value }))} />
+                </div>
+                <div className="form-field">
+                  <label>RUT</label>
+                  <input value={studentForm.rut} onChange={(e) => setStudentForm((s) => ({ ...s, rut: e.target.value }))} />
+                </div>
+                <div className="form-field">
+                  <label>Fecha nacimiento</label>
+                  <input type="date" value={studentForm.birthDate} onChange={(e) => setStudentForm((s) => ({ ...s, birthDate: e.target.value }))} />
+                </div>
+              </div>
+              <div className="form-actions">
+                <button
+                  onClick={() => createStudentMutation.mutate()}
+                  disabled={createStudentMutation.isPending || !studentForm.firstName.trim() || !studentForm.lastName.trim()}
+                >
+                  {createStudentMutation.isPending ? "Creando..." : "Crear alumno"}
+                </button>
+              </div>
             </div>
           </div>
         )}

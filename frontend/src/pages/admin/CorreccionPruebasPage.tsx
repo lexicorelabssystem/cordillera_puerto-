@@ -1,4 +1,4 @@
-import { useState, useMemo } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { api } from "../../lib/api";
 import { LoadingSpinner } from "../../components/common/LoadingSpinner";
@@ -51,7 +51,15 @@ export function CorreccionPruebasPage() {
 
   const assessmentsQuery = useQuery<AssessmentItem[]>({
     queryKey: ["assessments-correccion"],
-    queryFn: () => api.listAssessments({ status: "IN_GRADING" }) as Promise<AssessmentItem[]>,
+    queryFn: async () => {
+      const data = (await api.listAssessments()) as AssessmentItem[];
+      return data
+        .filter((assessment) => ["IN_GRADING", "CLOSED", "GRADED"].includes(assessment.status))
+        .sort((a, b) => {
+          const statusOrder: Record<string, number> = { IN_GRADING: 0, CLOSED: 1, GRADED: 2 };
+          return (statusOrder[a.status] ?? 9) - (statusOrder[b.status] ?? 9) || a.course_name.localeCompare(b.course_name) || a.title.localeCompare(b.title);
+        });
+    },
   });
 
   const attemptsQuery = useQuery<AttemptRow[]>({
@@ -75,7 +83,7 @@ export function CorreccionPruebasPage() {
     ? attempts.reduce((max, attempt) => {
         const maxPerStudent = attempt.answers.length; 
         return maxPerStudent > max ? maxPerStudent : max;
-      }, 0) * 10
+      }, 0)
     : 100;
 
   const stats = useMemo(() => {
@@ -126,9 +134,9 @@ export function CorreccionPruebasPage() {
 
   function getNotaRapida(intentoId: string): string {
     const raw = puntajesRapidos[intentoId];
-    if (!raw) return "—";
+    if (!raw) return "-";
     const pts = parseFloat(raw.replace(",", "."));
-    if (isNaN(pts) || pts < 0) return "—";
+    if (isNaN(pts) || pts < 0) return "-";
     const nota = calcularNota(pts, puntajeMaximo);
     return nota.toFixed(1).replace(".", ",");
   }
@@ -143,6 +151,22 @@ export function CorreccionPruebasPage() {
     return grupos;
   }, [assessments]);
 
+  useEffect(() => {
+    if (!evaluacionId && assessments.length > 0) {
+      setEvaluacionId(assessments[0]!.assessment_id);
+    }
+  }, [assessments, evaluacionId]);
+
+  const resumenEvaluaciones = useMemo(() => {
+    return {
+      total: assessments.length,
+      enCorreccion: assessments.filter((ev) => ev.status === "IN_GRADING" || ev.status === "CLOSED").length,
+      corregidas: assessments.filter((ev) => ev.status === "GRADED").length,
+      totalIntentos: assessments.reduce((total, ev) => total + (ev.attempts_count || 0), 0),
+      totalNotas: assessments.reduce((total, ev) => total + (ev.grades_count || 0), 0),
+    };
+  }, [assessments]);
+
   return (
     <div className="correccion-module">
       <header className="libro-header" style={{ marginBottom: 16 }}>
@@ -153,10 +177,18 @@ export function CorreccionPruebasPage() {
       </header>
 
       <section className="panel">
-        <h3>Seleccionar evaluacion para corregir</h3>
+        <h3>Evaluaciones disponibles para correccion y visualizacion</h3>
         {assessmentsQuery.isLoading ? <LoadingSpinner label="Cargando evaluaciones..." /> : assessments.length === 0 ? (
-          <p style={{ color: "var(--muted)" }}>No hay evaluaciones pendientes de correccion.</p>
+          <p style={{ color: "var(--muted)" }}>No hay evaluaciones con intentos o notas para revisar.</p>
         ) : (
+        <>
+        <section className="correccion-stats-grid" style={{ marginTop: 0, marginBottom: 16 }}>
+          <div className="libro-card"><span className="libro-card__label">Evaluaciones</span><strong className="libro-card__value">{resumenEvaluaciones.total}</strong></div>
+          <div className="libro-card libro-card--warning"><span className="libro-card__label">Por revisar</span><strong className="libro-card__value">{resumenEvaluaciones.enCorreccion}</strong></div>
+          <div className="libro-card"><span className="libro-card__label">Corregidas</span><strong className="libro-card__value" style={{ color: "var(--success)" }}>{resumenEvaluaciones.corregidas}</strong></div>
+          <div className="libro-card"><span className="libro-card__label">Intentos online</span><strong className="libro-card__value">{resumenEvaluaciones.totalIntentos}</strong></div>
+          <div className="libro-card"><span className="libro-card__label">Notas registradas</span><strong className="libro-card__value">{resumenEvaluaciones.totalNotas}</strong></div>
+        </section>
         <div className="form-grid">
           {Object.entries(evaluacionesPorAsignatura).map(([grupo, evs]) => (
             <div key={grupo} style={{ display: "grid", gap: 4 }}>
@@ -170,13 +202,14 @@ export function CorreccionPruebasPage() {
                 >
                   <div>
                     <strong style={{ display: "block", fontSize: ".86rem" }}>{ev.title}</strong>
-                    <small style={{ opacity: .7 }}>{ev.assessment_type} · {ev.attempts_count} intentos · <span className="badge badge--warning" style={{ fontSize: ".68rem" }}>{ev.status}</span></small>
+                    <small style={{ opacity: .7 }}>{ev.assessment_type} - {ev.attempts_count} intentos - <span className="badge badge--warning" style={{ fontSize: ".68rem" }}>{ev.status}</span></small>
                   </div>
                 </button>
               ))}
             </div>
           ))}
         </div>
+        </>
         )}
       </section>
 
@@ -199,7 +232,7 @@ export function CorreccionPruebasPage() {
           {modoRapido ? (
             <section className="panel">
               <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 14, flexWrap: "wrap", gap: 8 }}>
-                <h3 style={{ margin: 0, padding: 0, border: 0 }}>Correccion rapida — {evaluacion.title}</h3>
+                <h3 style={{ margin: 0, padding: 0, border: 0 }}>Correccion rapida - {evaluacion.title}</h3>
                 <span style={{ fontSize: ".84rem", color: "var(--muted)" }}>Puntaje maximo: {puntajeMaximo} pts | Escala: 1.0 a 7.0</span>
               </div>
               <div className="table-wrap">
@@ -222,7 +255,7 @@ export function CorreccionPruebasPage() {
                           />
                         </td>
                         <td style={{ fontWeight: 700, fontSize: "1rem", color: (() => { const n = puntajesRapidos[int.id]; if (!n) return "var(--muted)"; const pts = parseFloat(n.replace(",", ".")); if (isNaN(pts)) return "var(--muted)"; const nota = calcularNota(pts, puntajeMaximo); return nota < 4.0 ? "var(--danger)" : nota >= 6.0 ? "var(--success)" : "var(--ink)"; })() }}>
-                          {getNotaRapida(int.id) !== "—" ? getNotaRapida(int.id) : int.percentage !== null ? calcularNota(int.totalScore || 0, puntajeMaximo).toFixed(1).replace(".", ",") : "—"}
+                          {getNotaRapida(int.id) !== "-" ? getNotaRapida(int.id) : int.percentage !== null ? calcularNota(int.totalScore || 0, puntajeMaximo).toFixed(1).replace(".", ",") : "-"}
                         </td>
                         <td><span className={`badge ${int.status === "COMPLETED" ? "badge--active" : int.status === "TIMED_OUT" ? "badge--inactive" : "badge--warning"}`}>{int.status}</span></td>
                       </tr>
@@ -271,7 +304,7 @@ export function CorreccionPruebasPage() {
 
               {intentoActual && (
                 <section className="panel">
-                  <h3>Revision de respuestas — {intentoActual.student.firstName} {intentoActual.student.lastName}</h3>
+                  <h3>Revision de respuestas - {intentoActual.student.firstName} {intentoActual.student.lastName}</h3>
                   <div className="correccion-preguntas">
                     {intentoActual.answers.map((respuesta, idx) => {
                       const esMC = respuesta.question?.type === "MULTIPLE_CHOICE" || respuesta.question?.type === "TRUE_FALSE";
@@ -324,7 +357,7 @@ export function CorreccionPruebasPage() {
               )}
 
               <section className="panel">
-                <h3>Resumen de estudiantes — {evaluacion.title}</h3>
+                <h3>Resumen de estudiantes - {evaluacion.title}</h3>
                 <div className="table-wrap">
                   <table className="table">
                     <thead><tr><th>#</th><th>Estudiante</th><th>Correctas</th><th>Incorrectas</th><th>Pendientes</th><th>Puntaje</th><th>Nota</th><th>Estado</th></tr></thead>
@@ -333,7 +366,7 @@ export function CorreccionPruebasPage() {
                         const correctas = int.answers.filter((r) => r.isCorrect === true).length;
                         const incorrectas = int.answers.filter((r) => r.isCorrect === false).length;
                         const pendientes = int.answers.filter((r) => r.status === "MANUAL_REVIEW" || r.status === "PENDING").length;
-                        const puntajeMax = int.answers.length * 10;
+                        const puntajeMax = int.answers.length;
                         const nota = int.totalScore !== null ? calcularNota(int.totalScore, puntajeMax > 0 ? puntajeMax : 100) : null;
                         return (
                           <tr key={int.id} onClick={() => setEstudianteIdx(i)} style={{ cursor: "pointer", background: i === estudianteIdx ? "var(--accent-light)" : undefined }}>
@@ -342,7 +375,7 @@ export function CorreccionPruebasPage() {
                             <td><span style={{ color: "var(--success)", fontWeight: 600 }}>{correctas}</span></td>
                             <td><span style={{ color: "var(--danger)", fontWeight: 600 }}>{incorrectas}</span></td>
                             <td><span style={{ color: "var(--warning)", fontWeight: 600 }}>{pendientes}</span></td>
-                            <td><strong>{int.totalScore !== null ? `${int.totalScore}/${puntajeMax}` : "—"}</strong></td>
+                            <td><strong>{int.totalScore !== null ? `${int.totalScore}/${puntajeMax}` : "-"}</strong></td>
                             <td>{nota !== null ? <span className={`badge ${nota >= 4.0 ? "badge--active" : "badge--inactive"}`}>{nota.toFixed(1).replace(".", ",")}</span> : <span className="badge badge--warning">Pendiente</span>}</td>
                             <td><span className={`badge ${int.status !== "IN_PROGRESS" ? "badge--active" : "badge--warning"}`}>{int.status}</span></td>
                           </tr>
@@ -371,3 +404,4 @@ export function CorreccionPruebasPage() {
     </div>
   );
 }
+

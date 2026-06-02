@@ -87,11 +87,60 @@ export interface GradeRecordRow {
   assessment_id: string;
   title: string;
   subject: string;
+  course?: string;
+  teacher?: string;
   assessment_type: AssessmentType;
+  status?: string;
   semester?: number;
   applied_at: string;
   grade: number;
   comments: string | null;
+  period?: string | null;
+}
+
+export interface StudentEvaluationRow {
+  assessment_id: string;
+  title: string;
+  subject: string;
+  subject_id: string;
+  course: string;
+  course_id: string;
+  teacher: string;
+  assessment_type: AssessmentType;
+  raw_status: string;
+  status: "pendiente" | "calificada" | "corregida" | "publicada";
+  semester: number;
+  applied_at: string;
+  grade: number | null;
+  grade_id: string | null;
+  comments: string | null;
+  period: string | null;
+  updated_at: string;
+}
+
+export interface StudentMaterialFileRow {
+  id: string;
+  fileName: string;
+  originalName: string;
+  mimeType: string;
+  size: number;
+  downloadUrl: string;
+  viewUrl: string;
+}
+
+export interface StudentMaterialRow {
+  id: string;
+  title: string;
+  description: string | null;
+  type: string;
+  status: string;
+  subject: string;
+  subject_id: string | null;
+  course: string | null;
+  course_id: string | null;
+  teacher: string;
+  updated_at: string;
+  files: StudentMaterialFileRow[];
 }
 
 export interface StudentPortal {
@@ -100,6 +149,8 @@ export interface StudentPortal {
   semesters: { semester: number; avgGrade: number; totalGrades: number; closed: boolean; status: string }[];
   alerts: { type: string; message: string }[];
   grades: GradeRecordRow[];
+  evaluations: StudentEvaluationRow[];
+  materials: StudentMaterialRow[];
 }
 
 export interface TeacherAssignment {

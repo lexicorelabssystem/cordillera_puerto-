@@ -41,7 +41,6 @@ export function useAuth() {
             await fetch(`${import.meta.env.VITE_API_BASE_URL || "/api/v1"}/auth/refresh`, {
               method: "POST",
               credentials: "include",
-              headers: { "Content-Type": "application/json" },
             });
           } catch {
             // Silent fail — next API call will trigger refresh or force logout

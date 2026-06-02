@@ -16,7 +16,12 @@ export async function seed(prisma: PrismaClient, institutionId: string): Promise
 
   const admin = await prisma.user.upsert({
     where: { email: "admin@cordillera.cl" },
-    update: {},
+    update: {
+      passwordHash: defaultHash,
+      isActive: true,
+      deletedAt: null,
+      mustChangePassword: false,
+    },
     create: {
       email: "admin@cordillera.cl",
       passwordHash: defaultHash,
@@ -42,7 +47,12 @@ export async function seed(prisma: PrismaClient, institutionId: string): Promise
   for (const def of teacherDefs) {
     const user = await prisma.user.upsert({
       where: { email: def.email },
-      update: {},
+      update: {
+        passwordHash: teacherHash,
+        isActive: true,
+        deletedAt: null,
+        mustChangePassword: false,
+      },
       create: {
         email: def.email,
         passwordHash: teacherHash,

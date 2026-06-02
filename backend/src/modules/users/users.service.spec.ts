@@ -11,6 +11,8 @@ const MOCK_USER_ID = "user-001";
 const MOCK_EMAIL = "test@cordillera.cl";
 const MOCK_PASSWORD = "ValidPass123!";
 const MOCK_HASH = "$2a$04$mockhash";
+const MOCK_COURSE_ID = "course-001";
+const MOCK_NEW_COURSE_ID = "course-002";
 
 const mockUser = {
   id: MOCK_USER_ID,
@@ -24,7 +26,16 @@ const mockUser = {
   lastLoginAt: null,
   createdAt: new Date("2026-01-01"),
   updatedAt: new Date("2026-01-01"),
-  student: { id: "student-001" },
+  student: {
+    id: "student-001",
+    enrollments: [
+      {
+        id: "enrollment-001",
+        courseId: MOCK_COURSE_ID,
+        course: { name: "4° A" },
+      },
+    ],
+  },
   teacher: null,
   passwordHash: MOCK_HASH,
   deletedAt: null,
@@ -45,6 +56,9 @@ describe("UsersService", () => {
   let service: UsersService;
   let prismaUser: Record<string, jest.Mock<(...args: any[]) => any>>;
   let prismaTeacher: Record<string, jest.Mock<(...args: any[]) => any>>;
+  let prismaCourse: Record<string, jest.Mock<(...args: any[]) => any>>;
+  let prismaStudent: Record<string, jest.Mock<(...args: any[]) => any>>;
+  let prismaEnrollment: Record<string, jest.Mock<(...args: any[]) => any>>;
   let auditLogMock: { log: jest.Mock<(...args: any[]) => any> };
 
   beforeEach(async () => {
@@ -58,6 +72,23 @@ describe("UsersService", () => {
     prismaTeacher = {
       create: jest.fn(),
     };
+    prismaCourse = {
+      findUnique: jest.fn<(...args: any[]) => any>().mockImplementation(({ where }: any) => Promise.resolve({
+        id: where.id,
+        institutionId: MOCK_INSTITUTION_ID,
+        isActive: true,
+      })),
+    };
+    prismaStudent = {
+      create: jest.fn<(...args: any[]) => any>().mockResolvedValue({ id: "student-002", userId: "user-002" }),
+      update: jest.fn<(...args: any[]) => any>().mockResolvedValue({ id: "student-001" }),
+    };
+    prismaEnrollment = {
+      create: jest.fn<(...args: any[]) => any>().mockResolvedValue({ id: "enrollment-001" }),
+      updateMany: jest.fn<(...args: any[]) => any>().mockResolvedValue({ count: 1 }),
+      findUnique: jest.fn<(...args: any[]) => any>().mockResolvedValue(null),
+      update: jest.fn<(...args: any[]) => any>().mockResolvedValue({ id: "enrollment-001" }),
+    };
     auditLogMock = { log: jest.fn<(...args: any[]) => any>().mockResolvedValue(undefined) };
 
     const module: TestingModule = await Test.createTestingModule({
@@ -68,6 +99,17 @@ describe("UsersService", () => {
           useValue: {
             user: prismaUser,
             teacher: prismaTeacher,
+            course: prismaCourse,
+            student: prismaStudent,
+            enrollment: prismaEnrollment,
+            $transaction: jest.fn(async (callback: any) =>
+              callback({
+                user: prismaUser,
+                teacher: prismaTeacher,
+                student: prismaStudent,
+                enrollment: prismaEnrollment,
+              }),
+            ),
           },
         },
         { provide: AuditLogsService, useValue: auditLogMock },
@@ -86,6 +128,7 @@ describe("UsersService", () => {
       role: "STUDENT" as const,
       temporaryPassword: "ValidPass123!",
       institutionId: MOCK_INSTITUTION_ID,
+      courseId: MOCK_COURSE_ID,
     };
 
     const createdUser = {
@@ -383,6 +426,28 @@ describe("UsersService", () => {
           data: expect.objectContaining({ firstName: "Juan" }),
         }),
       );
+    });
+
+    it("debe transferir el curso activo de un estudiante al actualizar courseId", async () => {
+      prismaUser.findUnique.mockResolvedValueOnce(mockUser);
+      prismaUser.update.mockResolvedValueOnce({ ...mockUser, role: "STUDENT" });
+      prismaUser.findUnique.mockResolvedValueOnce({
+        ...mockUser,
+        student: {
+          ...mockUser.student,
+          enrollments: [{ id: "enrollment-002", courseId: MOCK_NEW_COURSE_ID, course: { name: "4° B" } }],
+        },
+      });
+
+      await service.update(MOCK_USER_ID, { courseId: MOCK_NEW_COURSE_ID });
+
+      expect(prismaEnrollment.updateMany).toHaveBeenCalledWith({
+        where: { studentId: "student-001", isActive: true },
+        data: { isActive: false },
+      });
+      expect(prismaEnrollment.create).toHaveBeenCalledWith({
+        data: { studentId: "student-001", courseId: MOCK_NEW_COURSE_ID },
+      });
     });
   });
 

@@ -16,7 +16,7 @@ export class SubjectsController {
   constructor(private readonly service: SubjectsService) {}
 
   @Post()
-  @Roles("ADMIN", "SUPER_ADMIN")
+  @Roles("ADMIN", "SUPER_ADMIN", "DIRECTION", "UTP")
   @ApiOperation({ summary: "Crear asignatura" })
   create(@Body() dto: CreateSubjectDto) {
     return this.service.create(dto);
@@ -38,7 +38,7 @@ export class SubjectsController {
   }
 
   @Patch(":id")
-  @Roles("ADMIN", "SUPER_ADMIN")
+  @Roles("ADMIN", "SUPER_ADMIN", "DIRECTION", "UTP")
   @ApiOperation({ summary: "Actualizar asignatura" })
   update(@Param("id", ParseUUIDPipe) id: string, @Body() dto: UpdateSubjectDto) {
     return this.service.update(id, dto);
@@ -46,9 +46,17 @@ export class SubjectsController {
 
   @Delete(":id")
   @HttpCode(HttpStatus.OK)
-  @Roles("ADMIN", "SUPER_ADMIN")
+  @Roles("ADMIN", "SUPER_ADMIN", "DIRECTION", "UTP")
   @ApiOperation({ summary: "Desactivar asignatura (soft delete)" })
   remove(@Param("id", ParseUUIDPipe) id: string) {
     return this.service.softDelete(id);
+  }
+
+  @Delete(":id/permanent")
+  @HttpCode(HttpStatus.OK)
+  @Roles("ADMIN", "SUPER_ADMIN", "DIRECTION", "UTP")
+  @ApiOperation({ summary: "Eliminar asignatura definitivamente si no tiene dependencias" })
+  removePermanent(@Param("id", ParseUUIDPipe) id: string) {
+    return this.service.deletePermanent(id);
   }
 }

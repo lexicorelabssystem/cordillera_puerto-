@@ -257,6 +257,7 @@ model AcademicYear {
   courses     Course[]
   periods     Period[]
   lessons     Lesson[]
+  simceAssessments SimceAssessment[]
 
   @@unique([institutionId, year])
   @@index([institutionId, isActive])
@@ -317,8 +318,9 @@ model User {
   userPermissions       UserPermission[]
   requestedGradeChanges GradeChangeRequest[] @relation("GradeChangeRequester")
   reviewedGradeChanges  GradeChangeRequest[] @relation("GradeChangeReviewer")
-  notifications         Notification[]
-  attendances           Attendance[]
+  notifications           Notification[]
+  attendances             Attendance[]
+  createdSimceAssessments SimceAssessment[]
 
   @@index([email, isActive])
   @@index([institutionId, role])
@@ -381,6 +383,7 @@ model Teacher {
   lessons           Lesson[]
   observations      Observation[]
   classBookEntries  ClassBookEntry[]
+  simceAssessments  SimceAssessment[]
 
   @@map("teachers")
 }
@@ -406,6 +409,7 @@ model Student {
   remedialPlans RemedialPlan[]
   attendances   Attendance[]
   observations  Observation[]
+  simceResponses SimceStudentResponse[]
 
   @@index([lastName, firstName])
   @@map("students")
@@ -435,6 +439,7 @@ model Course {
   attendances        Attendance[]
   observations       Observation[]
   classBookEntries   ClassBookEntry[]
+  simceAssessments   SimceAssessment[]
 
   @@unique([academicYearId, name])
   @@index([institutionId, gradeLevel])
@@ -489,6 +494,7 @@ model Subject {
   learningResources  LearningResource[]
   lessons            Lesson[]
   classBookEntries   ClassBookEntry[]
+  simceAssessments   SimceAssessment[]
 
   @@map("subjects")
 }
@@ -518,6 +524,7 @@ model Axis {
   learningObjectives LearningObjective[]
   questions          Question[]
   learningResources  LearningResource[]
+  simceAnswerKeys    SimceAnswerKey[]
 
   @@unique([subjectId, name])
   @@map("axes")
@@ -547,6 +554,7 @@ model Skill {
   learningObjectiveSkills LearningObjectiveSkill[]
   questions               Question[]
   learningResources       LearningResource[]
+  simceAnswerKeys         SimceAnswerKey[]
 
   @@map("skills")
 }
@@ -571,6 +579,7 @@ model LearningObjective {
   questions         Question[]
   remedialPlans     RemedialPlan[]
   learningResources LearningResource[]
+  simceAnswerKeys   SimceAnswerKey[]
 
   @@index([subjectId, gradeLevel])
   @@map("learning_objectives")
@@ -975,8 +984,9 @@ model FileAsset {
   createdAt    DateTime  @default(now()) @db.Timestamptz()
   expiresAt    DateTime? @db.Timestamptz()
 
-  presentations Presentation[]
-  lessons       Lesson[]
+  presentations     Presentation[]
+  lessons           Lesson[]
+  simceAssessments  SimceAssessment[]
 
   @@index([entityType, entityId])
   @@map("file_assets")
@@ -1172,4 +1182,88 @@ model ClassBookEntry {
   @@index([courseId, subjectId, date])
   @@index([teacherId])
   @@map("class_book_entries")
+}
+
+// ─── SIMCE ────────────────────────────────────────────
+
+enum SimceStatus {
+  DRAFT
+  KEY_PENDING
+  READY_TO_CORRECT
+  CORRECTED
+}
+
+model SimceAssessment {
+  id              String      @id @default(uuid()) @db.Uuid
+  title           String
+  courseId        String      @db.Uuid
+  subjectId       String      @db.Uuid
+  teacherId       String      @db.Uuid
+  creatorId       String      @db.Uuid
+  academicYearId  String?     @db.Uuid
+  pdfFileId       String?     @db.Uuid
+  gradeLevel      Int
+  date            DateTime    @db.Date
+  description     String?
+  status          SimceStatus @default(DRAFT)
+  createdAt       DateTime    @default(now()) @db.Timestamptz()
+  updatedAt       DateTime    @updatedAt @db.Timestamptz()
+
+  course       Course               @relation(fields: [courseId], references: [id])
+  subject      Subject              @relation(fields: [subjectId], references: [id])
+  teacher      Teacher              @relation(fields: [teacherId], references: [id])
+  creator      User                 @relation(fields: [creatorId], references: [id])
+  academicYear AcademicYear?        @relation(fields: [academicYearId], references: [id], onDelete: SetNull)
+  pdfFile      FileAsset?           @relation(fields: [pdfFileId], references: [id])
+  answerKeys   SimceAnswerKey[]
+  responses    SimceStudentResponse[]
+
+  @@index([courseId, subjectId])
+  @@index([teacherId, status])
+  @@index([status])
+  @@index([academicYearId])
+  @@map("simce_assessments")
+}
+
+model SimceAnswerKey {
+  id             String   @id @default(uuid()) @db.Uuid
+  assessmentId   String   @db.Uuid
+  questionNumber Int
+  correctOption  String
+  score          Float    @default(1.0)
+  axisId         String?  @db.Uuid
+  skillId        String?  @db.Uuid
+  oaId           String?  @db.Uuid
+  observation    String?
+  createdAt      DateTime @default(now()) @db.Timestamptz()
+  updatedAt      DateTime @updatedAt @db.Timestamptz()
+
+  assessment SimceAssessment    @relation(fields: [assessmentId], references: [id], onDelete: Cascade)
+  axis       Axis?              @relation(fields: [axisId], references: [id], onDelete: SetNull)
+  skill      Skill?             @relation(fields: [skillId], references: [id], onDelete: SetNull)
+  oa         LearningObjective? @relation(fields: [oaId], references: [id], onDelete: SetNull)
+
+  @@unique([assessmentId, questionNumber])
+  @@index([assessmentId])
+  @@map("simce_answer_keys")
+}
+
+model SimceStudentResponse {
+  id             String   @id @default(uuid()) @db.Uuid
+  assessmentId   String   @db.Uuid
+  studentId      String   @db.Uuid
+  questionNumber Int
+  selectedOption String?
+  isCorrect      Boolean?
+  scoreObtained  Float    @default(0)
+  createdAt      DateTime @default(now()) @db.Timestamptz()
+  updatedAt      DateTime @updatedAt @db.Timestamptz()
+
+  assessment SimceAssessment @relation(fields: [assessmentId], references: [id], onDelete: Cascade)
+  student    Student         @relation(fields: [studentId], references: [id], onDelete: Cascade)
+
+  @@unique([assessmentId, studentId, questionNumber])
+  @@index([assessmentId, studentId])
+  @@index([assessmentId])
+  @@map("simce_student_responses")
 }

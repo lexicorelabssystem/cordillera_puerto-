@@ -1,19 +1,51 @@
 ﻿import { Injectable, NotFoundException, ConflictException, Inject } from "@nestjs/common";
 import bcrypt from "bcryptjs";
+import { BadRequestException } from "@nestjs/common";
+import { ResourceStatus } from "@prisma/client";
 import { PrismaService } from "../../prisma/prisma.service.js";
 import type { AppConfig } from "../../../config/config.module.js";
 import type { CreateStudentDto, UpdateStudentDto } from "./dto/create-student.dto.js";
+import type { JwtPayload } from "../../../common/decorators/current-user.decorator.js";
+import {
+  assertAcademicManagementInstitutionScope,
+  assertCourseScope,
+  assertStudentScope,
+  resolveUserScope,
+} from "../../../common/authz/access-scope.js";
+import { AuditLogsService } from "../../audit-logs/audit-logs.service.js";
 
 @Injectable()
 export class StudentsService {
   constructor(
     private readonly prisma: PrismaService,
+    private readonly auditLog: AuditLogsService,
     @Inject("APP_CONFIG") private readonly config: AppConfig,
   ) {}
 
-  async create(dto: CreateStudentDto) {
-    const course = await this.prisma.course.findUnique({ where: { id: dto.courseId } });
+  private async assertManagementCourseScope(courseId: string, user?: JwtPayload) {
+    const course = await this.prisma.course.findUnique({ where: { id: courseId } });
     if (!course) throw new NotFoundException("Curso no encontrado");
+    if (!user) return course;
+
+    const scope = await resolveUserScope(this.prisma, user);
+    if (["DIRECTION", "UTP"].includes(scope.role)) {
+      await assertAcademicManagementInstitutionScope(this.prisma, user, course.institutionId);
+    } else {
+      await assertCourseScope(this.prisma, user, courseId);
+    }
+    return course;
+  }
+
+  async create(dto: CreateStudentDto, user?: JwtPayload) {
+    const course = await this.assertManagementCourseScope(dto.courseId, user);
+    const email = dto.email?.trim().toLowerCase();
+    const temporaryPassword = dto.temporaryPassword?.trim();
+    const hasEmail = Boolean(email);
+    const hasTemporaryPassword = Boolean(temporaryPassword);
+
+    if (hasEmail !== hasTemporaryPassword) {
+      throw new BadRequestException("Para crear acceso del alumno debes enviar email y clave temporal.");
+    }
 
     if (dto.rut) {
       const existingRut = await this.prisma.student.findFirst({ where: { rut: dto.rut } });
@@ -34,14 +66,14 @@ export class StudentsService {
       data: { studentId: student.id, courseId: dto.courseId },
     });
 
-    if (dto.email && dto.temporaryPassword) {
-      const existingEmail = await this.prisma.user.findUnique({ where: { email: dto.email } });
+    if (email && temporaryPassword) {
+      const existingEmail = await this.prisma.user.findUnique({ where: { email } });
       if (existingEmail) throw new ConflictException("El correo ya está registrado");
 
-      const passwordHash = await bcrypt.hash(dto.temporaryPassword, this.config.bcryptRounds);
+      const passwordHash = await bcrypt.hash(temporaryPassword, this.config.bcryptRounds);
       await this.prisma.user.create({
         data: {
-          email: dto.email.toLowerCase().trim(),
+          email,
           passwordHash,
           firstName: dto.firstName.trim(),
           lastName: dto.lastName.trim(),
@@ -53,21 +85,61 @@ export class StudentsService {
       });
     }
 
+    await this.auditLog.log({
+      actorId: user?.sub ?? null,
+      institutionId: course.institutionId,
+      action: "STUDENT_CREATED",
+      entityType: "student",
+      entityId: student.id,
+      metadata: JSON.stringify({
+        studentId: student.id,
+        courseId: course.id,
+        courseName: course.name,
+        name: `${dto.firstName.trim()} ${dto.lastName.trim()}`,
+        accessCreated: Boolean(email && temporaryPassword),
+      }),
+    });
+
     return this.findById(student.id);
   }
 
-  async findAll(search?: string, courseId?: string, page = 1, limit = 20) {
-    const where: Record<string, unknown> = { deletedAt: null };
+  async findAll(search?: string, courseId?: string, page = 1, limit = 20, user?: JwtPayload, includeInactive = false) {
+    const where: Record<string, unknown> = {};
+    const andFilters: Record<string, unknown>[] = [];
+    let canIncludeInactive = !user;
+
+    if (user) {
+      const scope = await resolveUserScope(this.prisma, user);
+      canIncludeInactive = ["ADMIN", "SUPER_ADMIN", "DIRECTION", "UTP"].includes(scope.role);
+      if (scope.role === "TEACHER") {
+        const assignedCourseIds = scope.assignments.map((a) => a.courseId);
+        where.enrollments = { some: { isActive: true, courseId: { in: assignedCourseIds } } };
+      } else if (["ADMIN", "DIRECTION", "UTP"].includes(scope.role) && !scope.isGlobalAdmin) {
+        if (!scope.institutionId) where.id = "00000000-0000-0000-0000-000000000000";
+        else {
+          andFilters.push({ OR: [
+            { user: { institutionId: scope.institutionId } },
+            { enrollments: { some: { isActive: true, course: { institutionId: scope.institutionId } } } },
+          ] });
+        }
+      }
+    }
+
+    if (!includeInactive || !canIncludeInactive) where.deletedAt = null;
+
     if (search) {
-      where.OR = [
+      andFilters.push({ OR: [
         { firstName: { contains: search, mode: "insensitive" } },
         { lastName: { contains: search, mode: "insensitive" } },
         { rut: { contains: search } },
-      ];
+        { user: { email: { contains: search, mode: "insensitive" } } },
+      ] });
     }
     if (courseId) {
+      if (user) await this.assertManagementCourseScope(courseId, user);
       where.enrollments = { some: { courseId, isActive: true } };
     }
+    if (andFilters.length > 0) where.AND = andFilters;
 
     const [data, total] = await Promise.all([
       this.prisma.student.findMany({
@@ -93,7 +165,8 @@ export class StudentsService {
     };
   }
 
-  async findById(id: string) {
+  async findById(id: string, user?: JwtPayload) {
+    if (user) await assertStudentScope(this.prisma, user, id);
     const student = await this.prisma.student.findUnique({
       where: { id },
       include: {
@@ -109,13 +182,13 @@ export class StudentsService {
     return student;
   }
 
-  async update(id: string, dto: UpdateStudentDto) {
-    await this.findById(id);
+  async update(id: string, dto: UpdateStudentDto, user?: JwtPayload) {
+    const studentBefore = await this.findById(id, user);
     if (dto.rut) {
-      const existing = await this.prisma.student.findFirst({ where: { rut: dto.rut, id: { not: id } } });
-      if (existing) throw new ConflictException("El RUT ya está registrado");
+      const existingRut = await this.prisma.student.findFirst({ where: { rut: dto.rut, id: { not: id } } });
+      if (existingRut) throw new ConflictException("El RUT ya está registrado");
     }
-    return this.prisma.student.update({
+    const updated = await this.prisma.student.update({
       where: { id },
       data: {
         ...(dto.firstName !== undefined && { firstName: dto.firstName.trim() }),
@@ -125,9 +198,31 @@ export class StudentsService {
         ...(dto.birthDate !== undefined && { birthDate: new Date(dto.birthDate) }),
       },
     });
+
+    const scope = user ? await resolveUserScope(this.prisma, user) : null;
+    await this.auditLog.log({
+      actorId: user?.sub ?? null,
+      institutionId: scope?.institutionId ?? null,
+      action: "STUDENT_UPDATED",
+      entityType: "student",
+      entityId: id,
+      metadata: JSON.stringify({
+        studentId: id,
+        courses: studentBefore.enrollments.map((enrollment) => ({
+          courseId: enrollment.course.id,
+          courseName: enrollment.course.name,
+        })),
+        changed: dto,
+      }),
+    });
+
+    return updated;
   }
 
   async getMyPortal(userId: string) {
+    const visibleAssessmentStatuses = ["PUBLISHED", "ACTIVE", "CLOSED", "IN_GRADING", "GRADED", "REPORTED"];
+    const visibleResourceStatuses = [ResourceStatus.PUBLISHED, ResourceStatus.USED_IN_CLASS];
+
     const student = await this.prisma.student.findUnique({
       where: { userId },
       include: {
@@ -140,23 +235,88 @@ export class StudentsService {
     });
     if (!student || student.deletedAt) throw new NotFoundException("Estudiante no encontrado");
 
-    const grades = await this.prisma.grade.findMany({
-      where: { studentId: student.id },
-      include: {
-        assessment: {
-          select: {
-            id: true,
-            title: true,
-            assessmentType: true,
-            semester: true,
-            startDate: true,
-            subject: { select: { id: true, name: true } },
-            period: { select: { id: true, name: true, status: true } },
+    const courseIds = student.enrollments.map((enrollment) => enrollment.course.id);
+
+    const grades = courseIds.length
+      ? await this.prisma.grade.findMany({
+          where: {
+            studentId: student.id,
+            assessment: {
+              courseId: { in: courseIds },
+              isActive: true,
+              status: { in: visibleAssessmentStatuses },
+            },
           },
-        },
-      },
-      orderBy: { assessment: { startDate: "desc" } },
-    });
+          include: {
+            assessment: {
+              select: {
+                id: true,
+                title: true,
+                assessmentType: true,
+                semester: true,
+                startDate: true,
+                status: true,
+                course: { select: { id: true, name: true } },
+                subject: { select: { id: true, name: true } },
+                teacher: { select: { user: { select: { firstName: true, lastName: true } } } },
+                period: { select: { id: true, name: true, status: true } },
+              },
+            },
+          },
+          orderBy: { assessment: { startDate: "desc" } },
+        })
+      : [];
+
+    const assessments = courseIds.length
+      ? await this.prisma.assessment.findMany({
+          where: {
+            courseId: { in: courseIds },
+            isActive: true,
+            status: { in: visibleAssessmentStatuses },
+          },
+          include: {
+            course: { select: { id: true, name: true } },
+            subject: { select: { id: true, name: true } },
+            teacher: { select: { user: { select: { firstName: true, lastName: true } } } },
+            period: { select: { id: true, name: true, status: true } },
+            grades: {
+              where: { studentId: student.id },
+              select: { id: true, grade: true, comments: true, updatedAt: true },
+            },
+          },
+          orderBy: [{ startDate: "desc" }, { updatedAt: "desc" }],
+        })
+      : [];
+
+    const resources = courseIds.length
+      ? await this.prisma.learningResource.findMany({
+          where: {
+            courseId: { in: courseIds },
+            status: { in: visibleResourceStatuses },
+          },
+          include: {
+            course: { select: { id: true, name: true } },
+            subject: { select: { id: true, name: true } },
+            createdByUser: { select: { firstName: true, lastName: true, role: true } },
+          },
+          orderBy: { updatedAt: "desc" },
+        })
+      : [];
+
+    const resourceIds = resources.map((resource) => resource.id);
+    const files = resourceIds.length
+      ? await this.prisma.fileAsset.findMany({
+          where: { entityType: "resource", entityId: { in: resourceIds } },
+          orderBy: { createdAt: "desc" },
+        })
+      : [];
+    const filesByResource = new Map<string, typeof files>();
+    for (const file of files) {
+      if (!file.entityId) continue;
+      const current = filesByResource.get(file.entityId) ?? [];
+      current.push(file);
+      filesByResource.set(file.entityId, current);
+    }
 
     const allGrades = grades.map((g) => g.grade);
     const avgGrade = allGrades.length
@@ -191,12 +351,62 @@ export class StudentsService {
       assessment_id: g.assessment.id,
       title: g.assessment.title,
       subject: g.assessment.subject.name,
+      course: g.assessment.course.name,
+      teacher: `${g.assessment.teacher.user.firstName} ${g.assessment.teacher.user.lastName}`,
       assessment_type: g.assessment.assessmentType,
+      status: g.assessment.status,
       semester: g.assessment.semester,
       applied_at: g.assessment.startDate.toISOString().slice(0, 10),
       grade: g.grade,
       grade_id: g.id,
       comments: g.comments,
+      period: g.assessment.period?.name ?? null,
+    }));
+
+    const evaluationRows = assessments.map((assessment) => {
+      const grade = assessment.grades[0] ?? null;
+      return {
+        assessment_id: assessment.id,
+        title: assessment.title,
+        subject: assessment.subject.name,
+        subject_id: assessment.subject.id,
+        course: assessment.course.name,
+        course_id: assessment.course.id,
+        teacher: `${assessment.teacher.user.firstName} ${assessment.teacher.user.lastName}`,
+        assessment_type: assessment.assessmentType,
+        raw_status: assessment.status,
+        status: grade ? "calificada" : "pendiente",
+        semester: assessment.semester,
+        applied_at: assessment.startDate.toISOString().slice(0, 10),
+        grade: grade?.grade ?? null,
+        grade_id: grade?.id ?? null,
+        comments: grade?.comments ?? null,
+        period: assessment.period?.name ?? null,
+        updated_at: assessment.updatedAt.toISOString(),
+      };
+    });
+
+    const materialRows = resources.map((resource) => ({
+      id: resource.id,
+      title: resource.title,
+      description: resource.description,
+      type: resource.type,
+      status: resource.status,
+      subject: resource.subject?.name ?? "General",
+      subject_id: resource.subjectId,
+      course: resource.course?.name ?? null,
+      course_id: resource.courseId,
+      teacher: `${resource.createdByUser.firstName} ${resource.createdByUser.lastName}`,
+      updated_at: resource.updatedAt.toISOString(),
+      files: (filesByResource.get(resource.id) ?? []).map((file) => ({
+        id: file.id,
+        fileName: file.fileName,
+        originalName: file.originalName,
+        mimeType: file.mimeType,
+        size: file.size,
+        downloadUrl: `/api/v1/files/download/${file.fileName}`,
+        viewUrl: `/api/v1/files/view/${file.fileName}`,
+      })),
     }));
 
     return {
@@ -205,11 +415,58 @@ export class StudentsService {
       semesters: [...semesterMap.values()].sort((a, b) => a.semester - b.semester),
       alerts,
       grades: gradeRows,
+      evaluations: evaluationRows,
+      materials: materialRows,
     };
   }
 
-  async softDelete(id: string) {
-    await this.findById(id);
-    return this.prisma.student.update({ where: { id }, data: { deletedAt: new Date() } });
+  async softDelete(id: string, user?: JwtPayload) {
+    const studentBefore = await this.findById(id, user);
+    const student = await this.prisma.student.update({ where: { id }, data: { deletedAt: new Date() } });
+    if (student.userId) {
+      await this.prisma.user.update({ where: { id: student.userId }, data: { isActive: false } });
+    }
+    const scope = user ? await resolveUserScope(this.prisma, user) : null;
+    await this.auditLog.log({
+      actorId: user?.sub ?? null,
+      institutionId: scope?.institutionId ?? null,
+      action: "STUDENT_RETIRED",
+      entityType: "student",
+      entityId: id,
+      metadata: JSON.stringify({
+        studentId: id,
+        userId: student.userId,
+        courses: studentBefore.enrollments.map((enrollment) => ({
+          courseId: enrollment.course.id,
+          courseName: enrollment.course.name,
+        })),
+      }),
+    });
+    return student;
+  }
+
+  async restore(id: string, user?: JwtPayload) {
+    if (user) await assertStudentScope(this.prisma, user, id);
+    else {
+      const student = await this.prisma.student.findUnique({ where: { id } });
+      if (!student) throw new NotFoundException("Estudiante no encontrado");
+    }
+    const student = await this.prisma.student.update({ where: { id }, data: { deletedAt: null } });
+    if (student.userId) {
+      await this.prisma.user.update({ where: { id: student.userId }, data: { isActive: true } });
+    }
+    const scope = user ? await resolveUserScope(this.prisma, user) : null;
+    await this.auditLog.log({
+      actorId: user?.sub ?? null,
+      institutionId: scope?.institutionId ?? null,
+      action: "STUDENT_REACTIVATED",
+      entityType: "student",
+      entityId: id,
+      metadata: JSON.stringify({
+        studentId: id,
+        userId: student.userId,
+      }),
+    });
+    return this.findById(id, user);
   }
 }

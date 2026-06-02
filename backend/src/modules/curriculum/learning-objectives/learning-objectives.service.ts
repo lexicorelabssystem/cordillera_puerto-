@@ -91,6 +91,7 @@ export class LearningObjectivesService {
       data: {
         ...(dto.code !== undefined && { code: dto.code }),
         ...(dto.description !== undefined && { description: dto.description }),
+        ...(dto.gradeLevel !== undefined && { gradeLevel: dto.gradeLevel }),
         ...(dto.axisId !== undefined && { axisId: dto.axisId }),
         ...(dto.unitId !== undefined && { unitId: dto.unitId }),
         ...(dto.isActive !== undefined && { isActive: dto.isActive }),

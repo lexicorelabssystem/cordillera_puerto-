@@ -70,6 +70,11 @@ export class DirectGradeDto {
   @IsOptional()
   @IsString()
   comments?: string;
+
+  @ApiPropertyOptional({ description: "Motivo del cambio de nota (requerido al modificar)" })
+  @IsOptional()
+  @IsString()
+  reason?: string;
 }
 
 export class BulkDirectGradeItemDto {

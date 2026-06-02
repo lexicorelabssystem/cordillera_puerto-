@@ -8,6 +8,7 @@ import { CreateRemedialPlanDto, UpdateRemedialPlanDto, DetectAndSuggestDto } fro
 import { JwtAuthGuard } from "../../auth/jwt-auth.guard.js";
 import { RolesGuard } from "../../../common/guards/roles.guard.js";
 import { Roles } from "../../../common/decorators/roles.decorator.js";
+import { CurrentUser, JwtPayload } from "../../../common/decorators/current-user.decorator.js";
 
 @ApiTags("Remedial Plans")
 @Controller("remedial-plans")
@@ -19,8 +20,8 @@ export class RemedialPlansController {
   @Post()
   @Roles("ADMIN", "SUPER_ADMIN", "DIRECTION", "UTP", "TEACHER")
   @ApiOperation({ summary: "Crear plan remedial manual" })
-  create(@Body() dto: CreateRemedialPlanDto) {
-    return this.service.create(dto);
+  create(@Body() dto: CreateRemedialPlanDto, @CurrentUser() user: JwtPayload) {
+    return this.service.create(dto, user);
   }
 
   @Get()
@@ -28,37 +29,41 @@ export class RemedialPlansController {
   @ApiOperation({ summary: "Listar todos los planes remediales" })
   @ApiQuery({ name: "courseId", required: false })
   @ApiQuery({ name: "status", required: false })
-  findAll(@Query("courseId") courseId?: string, @Query("status") status?: string) {
-    return this.service.findAll(courseId, status);
+  findAll(@CurrentUser() user: JwtPayload, @Query("courseId") courseId?: string, @Query("status") status?: string) {
+    return this.service.findAll(courseId, status, user);
   }
 
   @Get("course/:courseId")
   @Roles("ADMIN", "SUPER_ADMIN", "DIRECTION", "UTP", "TEACHER")
   @ApiOperation({ summary: "Listar planes remediales de un curso" })
   @ApiQuery({ name: "status", required: false })
-  findByCourse(@Param("courseId", ParseUUIDPipe) courseId: string, @Query("status") status?: string) {
-    return this.service.findByCourse(courseId, status);
+  findByCourse(
+    @Param("courseId", ParseUUIDPipe) courseId: string,
+    @CurrentUser() user: JwtPayload,
+    @Query("status") status?: string,
+  ) {
+    return this.service.findByCourse(courseId, status, user);
   }
 
   @Get("student/:studentId")
   @Roles("ADMIN", "SUPER_ADMIN", "DIRECTION", "UTP", "TEACHER", "STUDENT")
   @ApiOperation({ summary: "Listar planes remediales de un estudiante" })
-  findByStudent(@Param("studentId", ParseUUIDPipe) studentId: string) {
-    return this.service.findByStudent(studentId);
+  findByStudent(@Param("studentId", ParseUUIDPipe) studentId: string, @CurrentUser() user: JwtPayload) {
+    return this.service.findByStudent(studentId, user);
   }
 
   @Get(":id")
   @Roles("ADMIN", "SUPER_ADMIN", "DIRECTION", "UTP", "TEACHER")
   @ApiOperation({ summary: "Obtener plan remedial por ID" })
-  findOne(@Param("id", ParseUUIDPipe) id: string) {
-    return this.service.findById(id);
+  findOne(@Param("id", ParseUUIDPipe) id: string, @CurrentUser() user: JwtPayload) {
+    return this.service.findById(id, user);
   }
 
   @Patch(":id")
   @Roles("ADMIN", "SUPER_ADMIN", "UTP", "TEACHER")
   @ApiOperation({ summary: "Actualizar plan remedial" })
-  update(@Param("id", ParseUUIDPipe) id: string, @Body() dto: UpdateRemedialPlanDto) {
-    return this.service.update(id, dto);
+  update(@Param("id", ParseUUIDPipe) id: string, @Body() dto: UpdateRemedialPlanDto, @CurrentUser() user: JwtPayload) {
+    return this.service.update(id, dto, user);
   }
 
   // ─── STATUS ACTIONS ──────────────────────────────────
@@ -67,24 +72,24 @@ export class RemedialPlansController {
   @HttpCode(HttpStatus.OK)
   @Roles("ADMIN", "SUPER_ADMIN", "DIRECTION", "UTP")
   @ApiOperation({ summary: "Asignar plan (PENDING → IN_PROGRESS)" })
-  assign(@Param("id", ParseUUIDPipe) id: string) {
-    return this.service.assign(id);
+  assign(@Param("id", ParseUUIDPipe) id: string, @CurrentUser() user: JwtPayload) {
+    return this.service.assign(id, user);
   }
 
   @Post(":id/complete")
   @HttpCode(HttpStatus.OK)
   @Roles("ADMIN", "SUPER_ADMIN", "UTP", "TEACHER")
   @ApiOperation({ summary: "Completar plan (IN_PROGRESS → COMPLETED)" })
-  complete(@Param("id", ParseUUIDPipe) id: string) {
-    return this.service.complete(id);
+  complete(@Param("id", ParseUUIDPipe) id: string, @CurrentUser() user: JwtPayload) {
+    return this.service.complete(id, user);
   }
 
   @Post(":id/evaluate")
   @HttpCode(HttpStatus.OK)
   @Roles("ADMIN", "SUPER_ADMIN", "UTP", "TEACHER")
   @ApiOperation({ summary: "Evaluar efectividad del plan (COMPLETED → EFFECTIVE/NOT_EFFECTIVE)" })
-  evaluate(@Param("id", ParseUUIDPipe) id: string, @Body() body: { postScore: number }) {
-    return this.service.evaluate(id, body.postScore);
+  evaluate(@Param("id", ParseUUIDPipe) id: string, @Body() body: { postScore: number }, @CurrentUser() user: JwtPayload) {
+    return this.service.evaluate(id, body.postScore, user);
   }
 
   // ─── DETECTION & BATCH ───────────────────────────────
@@ -92,21 +97,21 @@ export class RemedialPlansController {
   @Post("detect")
   @Roles("ADMIN", "SUPER_ADMIN", "DIRECTION", "UTP")
   @ApiOperation({ summary: "Detectar brechas de OA y sugerir planes remediales" })
-  detect(@Body() dto: DetectAndSuggestDto) {
-    return this.service.detectAndSuggest(dto.courseId, dto.subjectId, dto.threshold ?? 60);
+  detect(@Body() dto: DetectAndSuggestDto, @CurrentUser() user: JwtPayload) {
+    return this.service.detectAndSuggest(dto.courseId, dto.subjectId, dto.threshold ?? 60, user);
   }
 
   @Post("batch-create")
   @Roles("ADMIN", "SUPER_ADMIN", "DIRECTION")
   @ApiOperation({ summary: "Crear planes remediales automáticamente desde detección de brechas" })
-  batchCreate(@Body() dto: DetectAndSuggestDto) {
-    return this.service.batchCreateFromDetection(dto.courseId, dto.threshold ?? 60);
+  batchCreate(@Body() dto: DetectAndSuggestDto, @CurrentUser() user: JwtPayload) {
+    return this.service.batchCreateFromDetection(dto.courseId, dto.threshold ?? 60, user);
   }
 
   @Get("summary/:courseId")
   @Roles("ADMIN", "SUPER_ADMIN", "DIRECTION", "UTP", "TEACHER")
   @ApiOperation({ summary: "Resumen de planes remediales de un curso (efectividad, OA más intervenidos)" })
-  getSummary(@Param("courseId", ParseUUIDPipe) courseId: string) {
-    return this.service.getCourseRemedialSummary(courseId);
+  getSummary(@Param("courseId", ParseUUIDPipe) courseId: string, @CurrentUser() user: JwtPayload) {
+    return this.service.getCourseRemedialSummary(courseId, user);
   }
 }

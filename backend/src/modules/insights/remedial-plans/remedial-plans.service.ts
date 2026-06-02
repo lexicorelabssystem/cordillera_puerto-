@@ -1,6 +1,12 @@
 import { Injectable, NotFoundException, BadRequestException } from "@nestjs/common";
 import { PrismaService } from "../../prisma/prisma.service.js";
 import { RemedialStatus } from "@prisma/client";
+import type { JwtPayload } from "../../../common/decorators/current-user.decorator.js";
+import {
+  assertCourseScope,
+  assertStudentScope,
+  resolveUserScope,
+} from "../../../common/authz/access-scope.js";
 
 @Injectable()
 export class RemedialPlansService {
@@ -14,7 +20,12 @@ export class RemedialPlansService {
     studentId: string; courseId: string; subjectId: string;
     learningObjectiveId: string; title: string; description: string;
     startDate: string; endDate: string; preScore?: number; assignedTo?: string;
-  }) {
+  }, user?: JwtPayload | string) {
+    if (user) {
+      await assertCourseScope(this.prisma, user, dto.courseId, dto.subjectId);
+      await assertStudentScope(this.prisma, user, dto.studentId);
+    }
+
     const student = await this.prisma.student.findUnique({ where: { id: dto.studentId } });
     if (!student) throw new NotFoundException("Estudiante no encontrado");
 
@@ -42,7 +53,7 @@ export class RemedialPlansService {
     });
   }
 
-  async findById(id: string) {
+  async findById(id: string, user?: JwtPayload | string) {
     const plan = await this.prisma.remedialPlan.findUnique({
       where: { id },
       include: {
@@ -57,10 +68,16 @@ export class RemedialPlansService {
       },
     });
     if (!plan) throw new NotFoundException("Plan remedial no encontrado");
+    if (user) {
+      await assertStudentScope(this.prisma, user, plan.studentId);
+      await assertCourseScope(this.prisma, user, plan.courseId, plan.subjectId);
+    }
     return plan;
   }
 
-  async findByStudent(studentId: string) {
+  async findByStudent(studentId: string, user?: JwtPayload | string) {
+    if (user) await assertStudentScope(this.prisma, user, studentId);
+
     return this.prisma.remedialPlan.findMany({
       where: { studentId },
       orderBy: { createdAt: "desc" },
@@ -71,9 +88,23 @@ export class RemedialPlansService {
     });
   }
 
-  async findAll(courseId?: string, status?: string) {
+  async findAll(courseId?: string, status?: string, user?: JwtPayload | string) {
     const where: Record<string, unknown> = {};
-    if (courseId) where.courseId = courseId;
+
+    if (user) {
+      const scope = await resolveUserScope(this.prisma, user);
+      if (courseId) {
+        await assertCourseScope(this.prisma, user, courseId);
+        where.courseId = courseId;
+      } else if (scope.role === "TEACHER") {
+        where.courseId = { in: scope.assignments.map((assignment) => assignment.courseId) };
+      } else if (!scope.isSuperAdmin && !scope.isGlobalAdmin) {
+        where.course = { institutionId: scope.institutionId ?? "00000000-0000-0000-0000-000000000000" };
+      }
+    } else if (courseId) {
+      where.courseId = courseId;
+    }
+
     if (status) where.status = status;
 
     return this.prisma.remedialPlan.findMany({
@@ -92,7 +123,9 @@ export class RemedialPlansService {
     });
   }
 
-  async findByCourse(courseId: string, status?: string) {
+  async findByCourse(courseId: string, status?: string, user?: JwtPayload | string) {
+    if (user) await assertCourseScope(this.prisma, user, courseId);
+
     const where: Record<string, unknown> = { courseId };
     if (status) where.status = status;
 
@@ -109,8 +142,8 @@ export class RemedialPlansService {
   async update(id: string, dto: {
     title?: string; description?: string; endDate?: string;
     postScore?: number; status?: RemedialStatus;
-  }) {
-    await this.findById(id);
+  }, user?: JwtPayload | string) {
+    await this.findById(id, user);
 
     // Validate status transitions
     if (dto.status) {
@@ -133,7 +166,9 @@ export class RemedialPlansService {
   //  STATUS MACHINE
   // ══════════════════════════════════════════════════════
 
-  async assign(id: string) {
+  async assign(id: string, user?: JwtPayload | string) {
+    if (user) await this.findById(id, user);
+
     const plan = await this.prisma.remedialPlan.findUnique({ where: { id } });
     if (!plan) throw new NotFoundException("Plan no encontrado");
     if (plan.status !== "PENDING") throw new BadRequestException("Solo planes PENDING pueden asignarse");
@@ -141,7 +176,9 @@ export class RemedialPlansService {
     return this.prisma.remedialPlan.update({ where: { id }, data: { status: "IN_PROGRESS" } });
   }
 
-  async complete(id: string) {
+  async complete(id: string, user?: JwtPayload | string) {
+    if (user) await this.findById(id, user);
+
     const plan = await this.prisma.remedialPlan.findUnique({ where: { id } });
     if (!plan) throw new NotFoundException("Plan no encontrado");
     if (plan.status !== "IN_PROGRESS") throw new BadRequestException("Solo planes IN_PROGRESS pueden completarse");
@@ -149,7 +186,9 @@ export class RemedialPlansService {
     return this.prisma.remedialPlan.update({ where: { id }, data: { status: "COMPLETED" } });
   }
 
-  async evaluate(id: string, postScore: number) {
+  async evaluate(id: string, postScore: number, user?: JwtPayload | string) {
+    if (user) await this.findById(id, user);
+
     const plan = await this.prisma.remedialPlan.findUnique({ where: { id } });
     if (!plan) throw new NotFoundException("Plan no encontrado");
     if (plan.status !== "COMPLETED") throw new BadRequestException("Solo planes COMPLETED pueden evaluarse");
@@ -172,7 +211,9 @@ export class RemedialPlansService {
   //  AUTO-DETECT & SUGGEST
   // ══════════════════════════════════════════════════════
 
-  async detectAndSuggest(courseId: string, subjectId?: string, threshold = 60) {
+  async detectAndSuggest(courseId: string, subjectId?: string, threshold = 60, user?: JwtPayload | string) {
+    if (user) await assertCourseScope(this.prisma, user, courseId, subjectId);
+
     const course = await this.prisma.course.findUnique({
       where: { id: courseId },
       include: {
@@ -330,8 +371,8 @@ export class RemedialPlansService {
   //  BATCH CREATE FROM SUGGESTIONS
   // ══════════════════════════════════════════════════════
 
-  async batchCreateFromDetection(courseId: string, threshold = 60) {
-    const detection = await this.detectAndSuggest(courseId, undefined, threshold);
+  async batchCreateFromDetection(courseId: string, threshold = 60, user?: JwtPayload | string) {
+    const detection = await this.detectAndSuggest(courseId, undefined, threshold, user);
 
     const newBreaches = detection.suggestions.filter((s) => !s.existingPlan);
     const created: unknown[] = [];
@@ -352,7 +393,7 @@ export class RemedialPlansService {
           startDate: today.toISOString().slice(0, 10),
           endDate: endDate.toISOString().slice(0, 10),
           preScore: breach.achievement,
-        });
+        }, user);
         created.push(plan);
       } catch {
         // Skip duplicates
@@ -372,7 +413,9 @@ export class RemedialPlansService {
   //  SUMMARY
   // ══════════════════════════════════════════════════════
 
-  async getCourseRemedialSummary(courseId: string) {
+  async getCourseRemedialSummary(courseId: string, user?: JwtPayload | string) {
+    if (user) await assertCourseScope(this.prisma, user, courseId);
+
     const plans = await this.prisma.remedialPlan.findMany({
       where: { courseId },
       include: {

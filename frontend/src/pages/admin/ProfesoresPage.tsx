@@ -27,30 +27,39 @@ interface SubjectRow {
   code?: string | null;
 }
 
+interface RawSubjectRow {
+  subject_id?: string;
+  subject_name?: string;
+  id?: string;
+  name?: string;
+  code?: string | null;
+}
+
 export function ProfesoresPage() {
   const queryClient = useQueryClient();
   const { toast } = useToast();
   const { selectedInstitution } = useInstitution();
   const [search, setSearch] = useState("");
+  const [showInactive, setShowInactive] = useState(false);
   const [profesorSeleccionado, setProfesorSeleccionado] = useState<TeacherRow | null>(null);
   const [nuevaAsignacion, setNuevaAsignacion] = useState({ courseId: "", subjectId: "" });
   const [showCreate, setShowCreate] = useState(false);
   const [createForm, setCreateForm] = useState({ firstName: "", lastName: "", email: "", temporaryPassword: "", rut: "", title: "" });
+  const [editForm, setEditForm] = useState({ firstName: "", lastName: "", rut: "", title: "" });
 
   const teachersQuery = useQuery<TeacherRow[]>({
-    queryKey: ["teachers", search],
-    queryFn: () => api.listTeachers(search || undefined) as unknown as Promise<TeacherRow[]>,
+    queryKey: ["teachers", search, selectedInstitution?.id, showInactive],
+    queryFn: () => api.listTeachers(search || undefined, { institutionId: selectedInstitution?.id, includeInactive: showInactive }) as unknown as Promise<TeacherRow[]>,
   });
 
   const coursesQuery = useQuery<CourseRow[]>({
     queryKey: ["courses-teachers", selectedInstitution?.id],
     queryFn: () => api.listCourses({ institutionId: selectedInstitution?.id }) as unknown as Promise<CourseRow[]>,
-    enabled: Boolean(selectedInstitution?.id),
   });
 
-  const subjectsQuery = useQuery<SubjectRow[]>({
+  const subjectsQuery = useQuery<RawSubjectRow[]>({
     queryKey: ["subjects-teachers"],
-    queryFn: () => api.listSubjects(true) as unknown as Promise<SubjectRow[]>,
+    queryFn: () => api.listSubjects(true) as unknown as Promise<RawSubjectRow[]>,
   });
 
   const createTeacher = useMutation({
@@ -84,16 +93,62 @@ export function ProfesoresPage() {
 
   const removeAssignment = useMutation({
     mutationFn: (assignmentId: string) => api.removeAssignment(assignmentId),
-    onSuccess: () => {
+    onSuccess: (_data, assignmentId) => {
       toast("Asignacion removida.", "success");
+      setProfesorSeleccionado((current) => current
+        ? {
+            ...current,
+            courseAssignments: current.courseAssignments.filter((assignment) => assignment.id !== assignmentId),
+            _count: {
+              ...current._count,
+              courseAssignments: Math.max(0, current._count.courseAssignments - 1),
+            },
+          }
+        : current);
       queryClient.invalidateQueries({ queryKey: ["teachers"] });
     },
     onError: (err) => toast(err instanceof Error ? err.message : "Error al quitar asignacion.", "error"),
   });
 
+  const updateTeacherStatus = useMutation({
+    mutationFn: ({ teacherId, isActive }: { teacherId: string; isActive: boolean }) => api.updateTeacher(teacherId, { isActive }),
+    onSuccess: () => {
+      toast("Estado del profesor actualizado.", "success");
+      setProfesorSeleccionado(null);
+      queryClient.invalidateQueries({ queryKey: ["teachers"] });
+    },
+    onError: (err) => toast(err instanceof Error ? err.message : "Error al actualizar profesor.", "error"),
+  });
+
+  const retireTeacher = useMutation({
+    mutationFn: ({ teacherId, removeAssignments }: { teacherId: string; removeAssignments: boolean }) => api.retireTeacher(teacherId, removeAssignments),
+    onSuccess: () => {
+      toast("Profesor retirado correctamente.", "success");
+      setProfesorSeleccionado(null);
+      queryClient.invalidateQueries({ queryKey: ["teachers"] });
+    },
+    onError: (err) => toast(err instanceof Error ? err.message : "Error al retirar profesor.", "error"),
+  });
+
+  const updateTeacherProfile = useMutation({
+    mutationFn: ({ teacherId, payload }: { teacherId: string; payload: Record<string, unknown> }) => api.updateTeacher(teacherId, payload),
+    onSuccess: (updated) => {
+      toast("Profesor actualizado.", "success");
+      setProfesorSeleccionado(updated as unknown as TeacherRow);
+      queryClient.invalidateQueries({ queryKey: ["teachers"] });
+    },
+    onError: (err) => toast(err instanceof Error ? err.message : "Error al actualizar profesor.", "error"),
+  });
+
   const teachers: TeacherRow[] = teachersQuery.data || [];
   const courses: CourseRow[] = coursesQuery.data || [];
-  const subjects: SubjectRow[] = subjectsQuery.data || [];
+  const subjects: SubjectRow[] = (subjectsQuery.data || [])
+    .map((subject) => ({
+      subject_id: subject.subject_id ?? subject.id ?? "",
+      subject_name: subject.subject_name ?? subject.name ?? "Asignatura sin nombre",
+      code: subject.code ?? null,
+    }))
+    .filter((subject) => subject.subject_id);
 
   const totalAsignaciones = teachers.reduce((s, t) => s + t.courseAssignments.length, 0);
   const totalEvaluaciones = teachers.reduce((s, t) => s + (t._count?.assessments || 0), 0);
@@ -106,6 +161,33 @@ export function ProfesoresPage() {
       userId: profesorSeleccionado.userId,
       courseId: nuevaAsignacion.courseId,
       subjectId: nuevaAsignacion.subjectId,
+    });
+  }
+
+  function toggleProfesor(t: TeacherRow) {
+    if (profesorSeleccionado?.userId === t.userId) {
+      setProfesorSeleccionado(null);
+      return;
+    }
+    setProfesorSeleccionado(t);
+    setEditForm({
+      firstName: t.user.firstName,
+      lastName: t.user.lastName,
+      rut: t.rut || "",
+      title: t.title || "",
+    });
+  }
+
+  function handleUpdateTeacherProfile() {
+    if (!profesorSeleccionado) return;
+    updateTeacherProfile.mutate({
+      teacherId: profesorSeleccionado.id,
+      payload: {
+        firstName: editForm.firstName,
+        lastName: editForm.lastName,
+        rut: editForm.rut || null,
+        title: editForm.title || null,
+      },
     });
   }
 
@@ -134,7 +216,13 @@ export function ProfesoresPage() {
             </div>
             <span style={{ fontSize: ".84rem", color: "var(--muted)", marginTop: 18 }}>{teachers.length} profesor(es)</span>
           </div>
-          <button onClick={() => setShowCreate(!showCreate)} style={{ marginTop: 18 }}>{showCreate ? "Cancelar" : "+ Nuevo profesor"}</button>
+          <div style={{ display: "flex", gap: 10, alignItems: "center", flexWrap: "wrap" }}>
+            <label style={{ display: "flex", alignItems: "center", gap: 8, cursor: "pointer", marginTop: 18 }}>
+              <input type="checkbox" checked={showInactive} onChange={(e) => setShowInactive(e.target.checked)} style={{ width: "auto" }} />
+              Mostrar retirados
+            </label>
+            <button onClick={() => setShowCreate(!showCreate)} style={{ marginTop: 18 }}>{showCreate ? "Cancelar" : "+ Nuevo profesor / reemplazo"}</button>
+          </div>
         </div>
 
         {showCreate && (
@@ -180,9 +268,31 @@ export function ProfesoresPage() {
                   <td style={{ textAlign: "center", fontWeight: 600 }}>{t._count?.assessments || 0}</td>
                   <td><span className={`badge ${t.user.isActive ? "badge--active" : "badge--inactive"}`}>{t.user.isActive ? "Si" : "No"}</span></td>
                   <td>
-                    <button className="btn-small" onClick={() => setProfesorSeleccionado(profesorSeleccionado?.userId === t.userId ? null : t)}>
-                      {profesorSeleccionado?.userId === t.userId ? "Cerrar" : "Gestionar"}
-                    </button>
+                    <div className="action-buttons">
+                      <button className="btn-small" onClick={() => toggleProfesor(t)}>
+                        {profesorSeleccionado?.userId === t.userId ? "Cerrar" : "Gestionar"}
+                      </button>
+                      {t.user.isActive ? (
+                        <>
+                        <button className="btn-small btn-danger" onClick={() => {
+                          if (window.confirm(`¿Retirar a ${t.user.firstName} ${t.user.lastName}? Su historial se conservará, pero no podrá ingresar ni recibir nuevas asignaciones.`)) {
+                            retireTeacher.mutate({ teacherId: t.id, removeAssignments: false });
+                          }
+                        }} disabled={retireTeacher.isPending}>Retirar</button>
+                        {t.courseAssignments.length > 0 ? (
+                          <button className="btn-small btn-danger" onClick={() => {
+                            if (window.confirm(`Retirar a ${t.user.firstName} ${t.user.lastName} y quitar ${t.courseAssignments.length} asignacion(es) activas? El historial de evaluaciones se conserva.`)) {
+                              retireTeacher.mutate({ teacherId: t.id, removeAssignments: true });
+                            }
+                          }} disabled={retireTeacher.isPending}>Retirar y quitar asignaciones</button>
+                        ) : null}
+                        </>
+                      ) : (
+                        <button className="btn-small" onClick={() => updateTeacherStatus.mutate({ teacherId: t.id, isActive: true })}>
+                          Reactivar
+                        </button>
+                      )}
+                    </div>
                   </td>
                 </tr>
               ))}
@@ -197,9 +307,17 @@ export function ProfesoresPage() {
           <h3>Gestionar: {profesorSeleccionado.user.firstName} {profesorSeleccionado.user.lastName}</h3>
           <div style={{ display: "grid", gap: 12 }}>
             <div className="form-grid">
-              <div className="form-field"><label>Profesor</label><span style={{ fontWeight: 700 }}>{profesorSeleccionado.user.firstName} {profesorSeleccionado.user.lastName}</span></div>
+              <div className="form-field"><label>Nombre</label><input value={editForm.firstName} onChange={(e) => setEditForm((s) => ({ ...s, firstName: e.target.value }))} /></div>
+              <div className="form-field"><label>Apellido</label><input value={editForm.lastName} onChange={(e) => setEditForm((s) => ({ ...s, lastName: e.target.value }))} /></div>
               <div className="form-field"><label>Email</label><span>{profesorSeleccionado.user.email}</span></div>
               <div className="form-field"><label>Rol</label><span>{profesorSeleccionado.user.role}</span></div>
+              <div className="form-field"><label>RUT</label><input value={editForm.rut} onChange={(e) => setEditForm((s) => ({ ...s, rut: e.target.value }))} /></div>
+              <div className="form-field"><label>Titulo</label><input value={editForm.title} onChange={(e) => setEditForm((s) => ({ ...s, title: e.target.value }))} /></div>
+            </div>
+            <div className="form-actions">
+              <button onClick={handleUpdateTeacherProfile} disabled={updateTeacherProfile.isPending || !editForm.firstName.trim() || !editForm.lastName.trim()}>
+                {updateTeacherProfile.isPending ? "Guardando..." : "Guardar datos del profesor"}
+              </button>
             </div>
 
             <h4 style={{ marginTop: 8 }}>Asignaciones actuales ({profesorSeleccionado.courseAssignments.length})</h4>
@@ -246,9 +364,14 @@ export function ProfesoresPage() {
                 </select>
               </div>
               <div style={{ display: "flex", alignItems: "end" }}>
-                <button onClick={handleAsignar} disabled={assignTeacher.isPending}>Asignar profesor</button>
+                <button onClick={handleAsignar} disabled={assignTeacher.isPending || !profesorSeleccionado.user.isActive}>Asignar profesor</button>
               </div>
             </div>
+            {!profesorSeleccionado.user.isActive ? (
+              <p style={{ color: "var(--muted)", fontSize: ".88rem" }}>
+                Este profesor está retirado. Puedes reactivarlo o crear un profesor de reemplazo y asignarle los cursos correspondientes.
+              </p>
+            ) : null}
           </div>
         </section>
       )}

@@ -1,5 +1,7 @@
 import { Injectable } from "@nestjs/common";
 import { PrismaService } from "../prisma/prisma.service.js";
+import type { JwtPayload } from "../../common/decorators/current-user.decorator.js";
+import { resolveUserScope } from "../../common/authz/access-scope.js";
 
 @Injectable()
 export class AuditLogsService {
@@ -8,13 +10,17 @@ export class AuditLogsService {
   async findAll(filters: {
     action?: string; entityType?: string; entityId?: string;
     actorId?: string; dateFrom?: string; dateTo?: string; search?: string;
-  }, page = 1, limit = 50) {
+  }, page = 1, limit = 50, user?: JwtPayload) {
     const where: Record<string, unknown> = {};
+    const scope = user ? await resolveUserScope(this.prisma, user) : null;
 
     if (filters.action) where.action = filters.action;
     if (filters.entityType) where.entityType = filters.entityType;
     if (filters.entityId) where.entityId = filters.entityId;
     if (filters.actorId) where.actorId = filters.actorId;
+    if (scope && !scope.isGlobalAdmin) {
+      where.institutionId = scope.institutionId ?? "00000000-0000-0000-0000-000000000000";
+    }
     if (filters.search) {
       where.metadata = { path: "$", string_contains: filters.search };
     }
@@ -45,12 +51,18 @@ export class AuditLogsService {
     };
   }
 
-  async getActionsSummary(days = 7) {
+  async getActionsSummary(days = 7, user?: JwtPayload) {
     const since = new Date();
     since.setDate(since.getDate() - days);
+    const scope = user ? await resolveUserScope(this.prisma, user) : null;
 
     const logs = await this.prisma.auditLog.findMany({
-      where: { createdAt: { gte: since } },
+      where: {
+        createdAt: { gte: since },
+        ...(scope && !scope.isGlobalAdmin
+          ? { institutionId: scope.institutionId ?? "00000000-0000-0000-0000-000000000000" }
+          : {}),
+      },
       select: { action: true, createdAt: true },
       orderBy: { createdAt: "desc" },
     });
@@ -82,11 +94,12 @@ export class AuditLogsService {
 
   async log(params: {
     actorId?: string | null; action: string; entityType: string;
-    entityId?: string | null; metadata?: string | null;
+    entityId?: string | null; institutionId?: string | null; metadata?: string | null;
   }) {
     return this.prisma.auditLog.create({
       data: {
         actorId: params.actorId ?? undefined,
+        institutionId: params.institutionId ?? undefined,
         action: params.action,
         entityType: params.entityType,
         entityId: params.entityId ?? undefined,

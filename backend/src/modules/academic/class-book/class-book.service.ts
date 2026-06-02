@@ -1,12 +1,19 @@
 import { Injectable, NotFoundException } from "@nestjs/common";
 import { PrismaService } from "../../prisma/prisma.service.js";
 import type { CreateClassBookEntryDto, UpdateClassBookEntryDto } from "./dto/class-book.dto.js";
+import type { JwtPayload } from "../../../common/decorators/current-user.decorator.js";
+import {
+  assertCourseScope,
+  resolveUserScope,
+} from "../../../common/authz/access-scope.js";
 
 @Injectable()
 export class ClassBookService {
   constructor(private readonly prisma: PrismaService) {}
 
   async create(dto: CreateClassBookEntryDto, userId: string) {
+    await assertCourseScope(this.prisma, userId, dto.courseId, dto.subjectId);
+
     const [course, subject, teacher] = await Promise.all([
       this.prisma.course.findUnique({ where: { id: dto.courseId } }),
       this.prisma.subject.findUnique({ where: { id: dto.subjectId } }),
@@ -45,10 +52,23 @@ export class ClassBookService {
     date?: string;
     from?: string;
     to?: string;
-  }) {
+  }, user?: JwtPayload | string) {
     const where: Record<string, unknown> = {};
 
-    if (filters.courseId) where.courseId = filters.courseId;
+    if (user) {
+      const scope = await resolveUserScope(this.prisma, user);
+      if (filters.courseId) {
+        await assertCourseScope(this.prisma, user, filters.courseId, filters.subjectId);
+        where.courseId = filters.courseId;
+      } else if (scope.role === "TEACHER") {
+        where.courseId = { in: scope.assignments.map((assignment) => assignment.courseId) };
+      } else if (!scope.isSuperAdmin && !scope.isGlobalAdmin) {
+        where.course = { institutionId: scope.institutionId ?? "00000000-0000-0000-0000-000000000000" };
+      }
+    } else if (filters.courseId) {
+      where.courseId = filters.courseId;
+    }
+
     if (filters.subjectId) where.subjectId = filters.subjectId;
 
     if (filters.date) {
@@ -68,7 +88,7 @@ export class ClassBookService {
     });
   }
 
-  async findById(id: string) {
+  async findById(id: string, user?: JwtPayload | string) {
     const entry = await this.prisma.classBookEntry.findUnique({
       where: { id },
       include: {
@@ -78,11 +98,12 @@ export class ClassBookService {
       },
     });
     if (!entry) throw new NotFoundException("Entrada del libro de clases no encontrada");
+    if (user) await assertCourseScope(this.prisma, user, entry.courseId, entry.subjectId);
     return entry;
   }
 
-  async update(id: string, dto: UpdateClassBookEntryDto) {
-    await this.findById(id);
+  async update(id: string, dto: UpdateClassBookEntryDto, user?: JwtPayload | string) {
+    await this.findById(id, user);
 
     const data: Record<string, unknown> = {};
     if (dto.semester !== undefined) data.semester = dto.semester;
@@ -105,8 +126,8 @@ export class ClassBookService {
     });
   }
 
-  async remove(id: string) {
-    await this.findById(id);
+  async remove(id: string, user?: JwtPayload | string) {
+    await this.findById(id, user);
     return this.prisma.classBookEntry.delete({ where: { id } });
   }
 }

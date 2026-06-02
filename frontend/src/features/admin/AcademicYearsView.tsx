@@ -1,4 +1,4 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import type { AcademicYear, PeriodRow } from "../../types/api";
 import { api } from "../../lib/api";
@@ -9,6 +9,7 @@ export function AcademicYearsView() {
   const queryClient = useQueryClient();
   const { toast } = useToast();
   const { selectedInstitution } = useInstitution();
+  const periodsPanelRef = useRef<HTMLElement | null>(null);
   const [selectedYearId, setSelectedYearId] = useState<string>("");
   const [editingYearId, setEditingYearId] = useState<string | null>(null);
   const [editingPeriodId, setEditingPeriodId] = useState<string | null>(null);
@@ -34,7 +35,15 @@ export function AcademicYearsView() {
   });
 
   useEffect(() => {
-    const activeYear = years.data?.find((y) => y.isActive);
+    setSelectedYearId("");
+    setEditingYearId(null);
+    setEditingPeriodId(null);
+    setYearForm({ year: new Date().getFullYear(), startDate: "", endDate: "" });
+    setPeriodForm({ name: "", type: "SEMESTER", startDate: "", endDate: "", weight: 50 });
+  }, [selectedInstitution?.id]);
+
+  useEffect(() => {
+    const activeYear = years.data?.find((y) => y.isActive) ?? years.data?.[0];
     if (activeYear && !selectedYearId) setSelectedYearId(activeYear.id);
   }, [years.data, selectedYearId]);
 
@@ -144,6 +153,15 @@ export function AcademicYearsView() {
     });
   }
 
+  function handleViewPeriods(yearId: string) {
+    setSelectedYearId(yearId);
+    setEditingPeriodId(null);
+    setPeriodForm({ name: "", type: "SEMESTER", startDate: "", endDate: "", weight: 50 });
+    window.setTimeout(() => {
+      periodsPanelRef.current?.scrollIntoView({ behavior: "smooth", block: "start" });
+    }, 0);
+  }
+
   function handleSaveYear() {
     if (!selectedInstitution?.id) return;
     if (!yearForm.startDate || !yearForm.endDate) {
@@ -186,6 +204,7 @@ export function AcademicYearsView() {
 
   const yearList = years.data || [];
   const periodList = periods.data || [];
+  const selectedYear = yearList.find((year) => year.id === selectedYearId);
 
   return (
     <>
@@ -251,7 +270,7 @@ export function AcademicYearsView() {
                         )}
                         <button
                           className="btn-small"
-                          onClick={() => setSelectedYearId(y.id)}
+                          onClick={() => handleViewPeriods(y.id)}
                           style={{ background: selectedYearId === y.id ? "var(--accent)" : undefined, color: selectedYearId === y.id ? "white" : undefined }}
                         >
                           Ver periodos
@@ -305,8 +324,13 @@ export function AcademicYearsView() {
       </section>
 
       {selectedYearId ? (
-        <section className="panel">
+        <section className="panel" ref={periodsPanelRef}>
           <h3>Periodos del año seleccionado</h3>
+          {selectedYear ? (
+            <p style={{ color: "var(--muted)", marginTop: -4 }}>
+              Año académico seleccionado: {selectedYear.year}
+            </p>
+          ) : null}
           {periods.isLoading ? <p>Cargando periodos...</p> : null}
           {periodList.length === 0 && !periods.isLoading ? (
             <div className="empty-state">

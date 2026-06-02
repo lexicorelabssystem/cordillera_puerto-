@@ -17,7 +17,7 @@ export class AcademicYearsController {
   constructor(private readonly service: AcademicYearsService) {}
 
   @Post()
-  @Roles("ADMIN", "SUPER_ADMIN")
+  @Roles("ADMIN", "SUPER_ADMIN", "DIRECTION", "UTP")
   @ApiOperation({ summary: "Crear año académico" })
   @ApiResponse({ status: 201 })
   @ApiResponse({ status: 409, description: "Ya existe ese año para la institución" })
@@ -40,7 +40,7 @@ export class AcademicYearsController {
   }
 
   @Patch(":id")
-  @Roles("ADMIN", "SUPER_ADMIN")
+  @Roles("ADMIN", "SUPER_ADMIN", "DIRECTION", "UTP")
   @ApiOperation({ summary: "Actualizar año académico" })
   update(@Param("id", ParseUUIDPipe) id: string, @Body() dto: UpdateAcademicYearDto) {
     return this.service.update(id, dto);
@@ -48,7 +48,7 @@ export class AcademicYearsController {
 
   @Post(":id/close")
   @HttpCode(HttpStatus.OK)
-  @Roles("ADMIN", "SUPER_ADMIN")
+  @Roles("ADMIN", "SUPER_ADMIN", "DIRECTION", "UTP")
   @ApiOperation({ summary: "Cerrar año académico (requiere que todos los periodos estén cerrados)" })
   @ApiResponse({ status: 400, description: "Hay periodos activos" })
   close(@Param("id", ParseUUIDPipe) id: string) {
@@ -57,7 +57,7 @@ export class AcademicYearsController {
 
   @Post(":id/reopen")
   @HttpCode(HttpStatus.OK)
-  @Roles("ADMIN", "SUPER_ADMIN")
+  @Roles("ADMIN", "SUPER_ADMIN", "DIRECTION", "UTP")
   @ApiOperation({ summary: "Reabrir año académico" })
   reopen(@Param("id", ParseUUIDPipe) id: string) {
     return this.service.reopen(id);

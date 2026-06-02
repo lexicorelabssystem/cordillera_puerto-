@@ -2,6 +2,7 @@ import { useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { api } from "../../lib/api";
 import { useInstitution } from "../../app/InstitutionContext";
+import { GRADE_LEVELS } from "../../lib/grade-levels";
 
 export function LearningResourcesPage() {
   const [showCreate, setShowCreate] = useState(false);
@@ -64,7 +65,7 @@ export function LearningResourcesPage() {
               </div>
               <div className="form-field"><label>Nivel</label>
                 <select value={form.gradeLevel} onChange={(e) => setForm((s) => ({ ...s, gradeLevel: Number(e.target.value) }))}>
-                  {[1,2,3,4,5,6,7,8].map((g) => <option key={g} value={g}>{g}° básico</option>)}
+                  {GRADE_LEVELS.map((level) => <option key={level.value} value={level.value}>{level.label}</option>)}
                 </select>
               </div>
               <div className="form-field"><label>Descripción</label><input value={form.description} onChange={(e) => setForm((s) => ({ ...s, description: e.target.value }))} /></div>

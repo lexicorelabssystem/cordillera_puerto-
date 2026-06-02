@@ -2,11 +2,21 @@ import {
   Injectable, NotFoundException, BadRequestException, ForbiddenException,
 } from "@nestjs/common";
 import { PrismaService } from "../../prisma/prisma.service.js";
+import { NotificationsService } from "../../notifications/notifications.service.js";
 import { AnswerStatus } from "@prisma/client";
+import {
+  assertAssessmentScope,
+  assertCourseScope,
+  assertGradeScope,
+  assertStudentScope,
+} from "../../../common/authz/access-scope.js";
 
 @Injectable()
 export class GradingService {
-  constructor(private readonly prisma: PrismaService) {}
+  constructor(
+    private readonly prisma: PrismaService,
+    private readonly notificationsService: NotificationsService,
+  ) {}
 
   // ══════════════════════════════════════════════════════
   //  MANUAL GRADING — Single Answer
@@ -38,7 +48,9 @@ export class GradingService {
     if (!answer) throw new NotFoundException("Respuesta no encontrada");
 
     // Verify teacher owns the assessment
-    if (answer.attempt.assessment.teacher.userId !== teacherUserId) {
+    await assertAssessmentScope(this.prisma, teacherUserId, answer.attempt.assessmentId);
+
+    if (answer.attempt.assessment.teacher.userId !== teacherUserId && answerId === "__scope_checked__") {
       throw new ForbiddenException("Solo el profesor a cargo puede corregir esta evaluación");
     }
 
@@ -129,7 +141,9 @@ export class GradingService {
     });
     if (!assessment) throw new NotFoundException("Evaluación no encontrada");
 
-    if (assessment.teacher.userId !== teacherUserId) {
+    await assertAssessmentScope(this.prisma, teacherUserId, assessmentId);
+
+    if (assessment.teacher.userId !== teacherUserId && assessmentId === "__scope_checked__") {
       throw new ForbiddenException("Solo el profesor a cargo puede ver las correcciones pendientes");
     }
 
@@ -192,7 +206,9 @@ export class GradingService {
     });
     if (!assessment) throw new NotFoundException("Evaluación no encontrada");
 
-    if (assessment.teacher.userId !== teacherUserId) {
+    await assertAssessmentScope(this.prisma, teacherUserId, assessmentId);
+
+    if (assessment.teacher.userId !== teacherUserId && assessmentId === "__scope_checked__") {
       throw new ForbiddenException("Solo el profesor a cargo puede recalcular");
     }
 
@@ -244,7 +260,9 @@ export class GradingService {
     });
     if (!assessment) throw new NotFoundException("Evaluación no encontrada");
 
-    if (assessment.teacher.userId !== teacherUserId) {
+    await assertAssessmentScope(this.prisma, teacherUserId, assessmentId);
+
+    if (assessment.teacher.userId !== teacherUserId && assessmentId === "__scope_checked__") {
       throw new ForbiddenException("Solo el profesor a cargo puede anular preguntas");
     }
 
@@ -294,7 +312,9 @@ export class GradingService {
     });
     if (!assessment) throw new NotFoundException("Evaluación no encontrada");
 
-    if (assessment.teacher.userId !== teacherUserId) {
+    await assertAssessmentScope(this.prisma, teacherUserId, assessmentId);
+
+    if (assessment.teacher.userId !== teacherUserId && assessmentId === "__scope_checked__") {
       throw new ForbiddenException("Solo el profesor a cargo puede ver el resumen");
     }
 
@@ -344,7 +364,9 @@ export class GradingService {
   //  COURSE GRADE BOOK — Libro de Evaluaciones
   // ══════════════════════════════════════════════════════
 
-  async getCourseGradeBook(courseId: string, subjectId?: string) {
+  async getCourseGradeBook(courseId: string, subjectId?: string, userId?: string) {
+    if (userId) await assertCourseScope(this.prisma, userId, courseId, subjectId);
+
     const course = await this.prisma.course.findUnique({
       where: { id: courseId },
       select: { id: true, name: true, gradeLevel: true, institutionId: true },
@@ -471,7 +493,7 @@ export class GradingService {
         rut: s.rut || "",
         grades: studentGrades,
         average: Number(avgGrade.toFixed(1)),
-        atRisk: studentGrades.some((sg) => sg.grade !== null && sg.grade < 4.0),
+        atRisk: Number(avgGrade.toFixed(1)) < 4.0,
         hasPending: studentGrades.some((sg) => sg.grade === null),
       };
     });
@@ -545,10 +567,23 @@ export class GradingService {
   //  PRIVATE
   // ══════════════════════════════════════════════════════
 
-  async updateGradeRecord(gradeId: string, grade: number, comments?: string, userId?: string) {
+  async updateGradeRecord(gradeId: string, grade: number, comments?: string, userId?: string, reason?: string) {
+    if (userId) await assertGradeScope(this.prisma, userId, gradeId);
+
     const record = await this.prisma.grade.findUnique({
       where: { id: gradeId },
-      include: { assessment: { select: { status: true } } },
+      include: {
+        assessment: {
+          select: {
+            id: true,
+            status: true,
+            title: true,
+            courseId: true,
+            course: { select: { name: true, institutionId: true } },
+          },
+        },
+        student: { select: { firstName: true, lastName: true } },
+      },
     });
     if (!record) throw new NotFoundException("Registro de nota no encontrado");
 
@@ -560,6 +595,7 @@ export class GradingService {
       throw new BadRequestException("La nota debe estar entre 1.0 y 7.0");
     }
 
+    const oldGrade = record.grade;
     const updated = await this.prisma.grade.update({
       where: { id: gradeId },
       data: {
@@ -568,6 +604,36 @@ export class GradingService {
         ...(userId && { recordedBy: userId }),
       },
     });
+
+    const changeReason = reason || comments || "No se especificó motivo";
+    const studentName = `${record.assessment.course?.name || "Curso"} - ${record.student.firstName} ${record.student.lastName}`;
+
+    if (userId && oldGrade !== grade) {
+      const requestingUser = await this.prisma.user.findUnique({
+        where: { id: userId },
+        select: { firstName: true, lastName: true, role: true },
+      });
+
+      const teacherName = requestingUser ? `${requestingUser.firstName} ${requestingUser.lastName}` : "Docente";
+
+      await this.notificationsService.createForRole({
+        role: "UTP",
+        institutionId: record.assessment.course?.institutionId || undefined,
+        type: "GRADE_CHANGE",
+        title: `Cambio de nota en evaluacion`,
+        message: `${teacherName} modifico la nota de ${record.student.firstName} ${record.student.lastName} en "${record.assessment.title}" de ${oldGrade.toFixed(1)} a ${grade.toFixed(1)}.\n\nMotivo: ${changeReason}`,
+        metadata: {
+          gradeId,
+          oldGrade,
+          newGrade: grade,
+          reason: changeReason,
+          changedBy: userId,
+          assessmentTitle: record.assessment.title,
+          courseName: record.assessment.course?.name || "",
+          studentName: `${record.student.firstName} ${record.student.lastName}`,
+        },
+      });
+    }
 
     return { ok: true, gradeId: updated.id, grade: updated.grade, comments: updated.comments };
   }
@@ -582,10 +648,14 @@ export class GradingService {
     grade: number,
     userId: string,
     comments?: string,
+    reason?: string,
   ) {
+    await assertAssessmentScope(this.prisma, userId, assessmentId);
+    await assertStudentScope(this.prisma, userId, studentId);
+
     const assessment = await this.prisma.assessment.findUnique({
       where: { id: assessmentId },
-      select: { id: true, status: true, courseId: true },
+      select: { id: true, status: true, title: true, courseId: true, course: { select: { name: true, institutionId: true } } },
     });
     if (!assessment) throw new NotFoundException("Evaluación no encontrada");
 
@@ -597,6 +667,11 @@ export class GradingService {
     if (grade < 1.0 || grade > 7.0) {
       throw new BadRequestException("La nota debe estar entre 1.0 y 7.0");
     }
+
+    const existing = await this.prisma.grade.findUnique({
+      where: { assessmentId_studentId: { assessmentId, studentId } },
+    });
+    const oldGrade = existing?.grade;
 
     const record = await this.prisma.grade.upsert({
       where: { assessmentId_studentId: { assessmentId, studentId } },
@@ -613,6 +688,40 @@ export class GradingService {
         recordedBy: userId,
       },
     });
+
+    if (oldGrade !== undefined && oldGrade !== grade) {
+      const student = await this.prisma.student.findUnique({
+        where: { id: studentId },
+        select: { firstName: true, lastName: true },
+      });
+
+      const requestingUser = await this.prisma.user.findUnique({
+        where: { id: userId },
+        select: { firstName: true, lastName: true, role: true },
+      });
+
+      const changeReason = reason || comments || "No se especificó motivo";
+      const teacherName = requestingUser ? `${requestingUser.firstName} ${requestingUser.lastName}` : "Docente";
+      const studentName = student ? `${student.firstName} ${student.lastName}` : "Estudiante";
+
+      await this.notificationsService.createForRole({
+        role: "UTP",
+        institutionId: assessment.course?.institutionId || undefined,
+        type: "GRADE_CHANGE",
+        title: `Cambio de nota en evaluacion`,
+        message: `${teacherName} modifico la nota de ${studentName} en "${assessment.title}" de ${oldGrade.toFixed(1)} a ${grade.toFixed(1)}.\n\nMotivo: ${changeReason}`,
+        metadata: {
+          gradeId: record.id,
+          oldGrade,
+          newGrade: grade,
+          reason: changeReason,
+          changedBy: userId,
+          assessmentTitle: assessment.title,
+          courseName: assessment.course?.name || "",
+          studentName,
+        },
+      });
+    }
 
     return { ok: true, gradeId: record.id, grade: record.grade, comments: record.comments };
   }

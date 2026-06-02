@@ -26,10 +26,10 @@ export class CreateLearningObjectiveDto {
   @MinLength(5)
   description!: string;
 
-  @ApiProperty({ example: 4, minimum: 1, maximum: 8 })
+  @ApiProperty({ example: 4, minimum: 1, maximum: 12 })
   @IsInt()
   @Min(1)
-  @Max(8)
+  @Max(12)
   gradeLevel!: number;
 
   @ApiPropertyOptional({ description: "IDs de habilidades asociadas" })
@@ -67,6 +67,13 @@ export class UpdateLearningObjectiveDto {
   @IsOptional()
   @IsUUID()
   unitId?: string;
+
+  @ApiPropertyOptional({ minimum: 1, maximum: 12 })
+  @IsOptional()
+  @IsInt()
+  @Min(1)
+  @Max(12)
+  gradeLevel?: number;
 
   @ApiPropertyOptional()
   @IsOptional()

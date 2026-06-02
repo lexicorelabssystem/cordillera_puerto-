@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from "react";
-import { useMutation, useQuery } from "@tanstack/react-query";
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { ShellLayout } from "../../components/common/ShellLayout";
 import { KpiCard } from "../../components/common/KpiCard";
 import { GradeBarChart } from "../../components/charts/GradeBarChart";
@@ -8,23 +8,135 @@ import { useToast } from "../../components/common/Toast";
 import { Modal } from "../../components/common/Modal";
 import { LoadingSpinner } from "../../components/common/LoadingSpinner";
 import { api } from "../../lib/api";
-import type { AuthUser, CourseStudentRow } from "../../types/api";
+import type { AdminCourseRow, AuthUser, CourseStudentRow } from "../../types/api";
 
 interface Props {
   user: AuthUser;
   onLogout: () => void;
 }
 
+interface TeacherAssessmentRow {
+  assessment_id: string;
+  title: string;
+  assessment_type: string;
+  status: string;
+  course_name?: string;
+  subject_name?: string;
+  attempts_count: number;
+  grades_count: number;
+  created_at: string;
+}
+
+interface ClassBookEntry {
+  id?: string;
+  date?: string;
+  classNumber?: number | null;
+  unitName?: string | null;
+  topic?: string | null;
+  content?: string | null;
+  activities?: string | null;
+  resources?: string | null;
+}
+
+interface LearningResourceRow {
+  id?: string;
+  title?: string;
+  description?: string | null;
+  type?: string;
+  status?: string;
+  createdAt?: string;
+}
+
+interface MaterialFileRow {
+  id: string;
+  fileName: string;
+  originalName: string;
+  mimeType: string;
+  size: number;
+  url: string | null;
+  createdAt: string;
+}
+
+interface LearningObjectiveRow {
+  id: string;
+  code: string;
+  description: string;
+  gradeLevel: number;
+}
+
+interface TeacherAssignmentView {
+  assignment_id: string;
+  course_id: string;
+  course_name: string;
+  grade_level?: number;
+  students_count?: number;
+  subject_id: string;
+  subject_name: string;
+}
+
+type CeldaLibro = { estudianteId: string; evaluacionId: string } | null;
+
+function formatearNota(n: number | null | undefined): string {
+  if (n === null || n === undefined) return "-";
+  return n.toFixed(1).replace(".", ",");
+}
+
+function colorNota(n: number | null | undefined): string {
+  if (n === null || n === undefined) return "var(--muted)";
+  if (n < 4.0) return "var(--danger)";
+  if (n >= 6.0) return "var(--success)";
+  return "var(--ink)";
+}
+
+function getStudentField(student: CourseStudentRow, snakeKey: "student_id" | "first_name" | "last_name" | "course_name", camelKey: "studentId" | "firstName" | "lastName" | "courseName"): string {
+  const raw = student as unknown as Record<string, unknown>;
+  const value = raw[snakeKey] ?? raw[camelKey];
+  return typeof value === "string" ? value : "";
+}
+
 export function ProfesorDashboard({ user, onLogout }: Props) {
+  const queryClient = useQueryClient();
   const assignmentsQuery = useQuery({
     queryKey: ["teacher-assignments"],
     queryFn: () => api.myAssignments(),
   });
-  const firstAssignment = assignmentsQuery.data?.[0];
+  const assignments = useMemo<TeacherAssignmentView[]>(
+    () => (assignmentsQuery.data || []).map((assignment) => {
+      const raw = assignment as unknown as {
+        assignment_id?: string;
+        course_id?: string;
+        course_name?: string;
+        grade_level?: number;
+        students_count?: number;
+        subject_id?: string;
+        subject_name?: string;
+        id?: string;
+        courseId?: string;
+        subjectId?: string;
+        course?: { id?: string; name?: string; gradeLevel?: number; _count?: { enrollments?: number } };
+        subject?: { id?: string; name?: string };
+      };
+      return {
+        assignment_id: raw.assignment_id ?? raw.id ?? "",
+        course_id: raw.course_id ?? raw.courseId ?? raw.course?.id ?? "",
+        course_name: raw.course_name ?? raw.course?.name ?? "Curso sin nombre",
+        grade_level: raw.grade_level ?? raw.course?.gradeLevel,
+        students_count: raw.students_count ?? raw.course?._count?.enrollments,
+        subject_id: raw.subject_id ?? raw.subjectId ?? raw.subject?.id ?? "",
+        subject_name: raw.subject_name ?? raw.subject?.name ?? "Asignatura sin nombre",
+      };
+    }).filter((assignment) => assignment.assignment_id && assignment.course_id && assignment.subject_id),
+    [assignmentsQuery.data],
+  );
+  const firstAssignment = assignments[0];
   const [assignmentId, setAssignmentId] = useState<string>("");
-  const selectedAssignment = assignmentsQuery.data?.find((assignment) => assignment.assignment_id === assignmentId);
+  const selectedAssignment = assignments.find((assignment) => assignment.assignment_id === assignmentId);
   const courseId = selectedAssignment?.course_id || "";
   const subjectId = selectedAssignment?.subject_id || "";
+  const assignedCourseIds = useMemo(
+    () => new Set(assignments.map((assignment) => assignment.course_id)),
+    [assignments]
+  );
 
   useEffect(() => {
     if (firstAssignment && !assignmentId) {
@@ -39,28 +151,263 @@ export function ProfesorDashboard({ user, onLogout }: Props) {
   });
 
   const alertsQuery = useQuery({ queryKey: ["my-alerts"], queryFn: api.myAlerts });
-
+  const teacherAssessmentsQuery = useQuery({
+    queryKey: ["teacher-profile-assessments", courseId, subjectId],
+    queryFn: () => api.listAssessments({ courseId, subjectId }) as Promise<TeacherAssessmentRow[]>,
+    enabled: Boolean(courseId) && Boolean(subjectId),
+  });
+  const coursesQuery = useQuery({
+    queryKey: ["teacher-visible-courses"],
+    queryFn: () => api.listCourses(),
+  });
+  const selectedCourse = coursesQuery.data?.find((course) => course.course_id === courseId);
+  const gradeBookQuery = useQuery({
+    queryKey: ["teacher-course-book", courseId, subjectId],
+    queryFn: () => api.getCourseGradeBook(courseId, { subjectId }),
+    enabled: Boolean(courseId) && Boolean(subjectId),
+  });
+  const objectivesQuery = useQuery({
+    queryKey: ["teacher-learning-objectives", subjectId, selectedCourse?.grade_level],
+    queryFn: () =>
+      api.listLearningObjectives({ subjectId, gradeLevel: selectedCourse?.grade_level }) as Promise<LearningObjectiveRow[]>,
+    enabled: Boolean(subjectId) && Boolean(selectedCourse?.grade_level),
+  });
+  const classBookQuery = useQuery({
+    queryKey: ["teacher-class-book", courseId, subjectId],
+    queryFn: () => api.listClassBookEntries({ courseId, subjectId }) as Promise<ClassBookEntry[]>,
+    enabled: Boolean(courseId) && Boolean(subjectId),
+  });
+  const resourcesQuery = useQuery({
+    queryKey: ["teacher-resources", courseId, subjectId],
+    queryFn: () => api.listLearningResources({ courseId, subjectId }) as Promise<LearningResourceRow[]>,
+    enabled: Boolean(courseId) && Boolean(subjectId),
+  });
   const [title, setTitle] = useState("Control unidad 1");
-  const [assessmentType, setAssessmentType] = useState("proceso");
+  const [assessmentType, setAssessmentType] = useState("PROCESO");
   const [semester, setSemester] = useState(1);
   const [appliedAt, setAppliedAt] = useState(new Date().toISOString().slice(0, 10));
+  const [lessonDate, setLessonDate] = useState(new Date().toISOString().slice(0, 10));
+  const [lessonTopic, setLessonTopic] = useState("Clase de la unidad");
+  const [lessonContent, setLessonContent] = useState("");
+  const [lessonActivities, setLessonActivities] = useState("");
+  const [lessonResources, setLessonResources] = useState("");
   const [grades, setGrades] = useState<Record<string, number>>({});
+  const [celdaLibro, setCeldaLibro] = useState<CeldaLibro>(null);
+  const [valorCeldaLibro, setValorCeldaLibro] = useState("");
+  const [guardandoCeldas, setGuardandoCeldas] = useState<Set<string>>(new Set());
+  const [finalizandoEvaluaciones, setFinalizandoEvaluaciones] = useState<Set<string>>(new Set());
+  const [materialTitle, setMaterialTitle] = useState("");
+  const [materialType, setMaterialType] = useState("CLASS_MATERIAL");
+  const [materialDescription, setMaterialDescription] = useState("");
+  const [materialFile, setMaterialFile] = useState<File | null>(null);
+  const [selectedMaterial, setSelectedMaterial] = useState<LearningResourceRow | null>(null);
   const [observation, setObservation] = useState("");
   const gradesEditedRef = useRef(false);
   const prevCourseIdRef = useRef(courseId);
   const { toast } = useToast();
+  const materialFilesQuery = useQuery({
+    queryKey: ["teacher-resource-files", selectedMaterial?.id],
+    queryFn: () => api.listEntityFiles("resource", selectedMaterial?.id || "") as Promise<MaterialFileRow[]>,
+    enabled: Boolean(selectedMaterial?.id),
+  });
+
+  async function finalizarProcesoNota(assessmentId: string, status?: string) {
+    let currentStatus = status || "ACTIVE";
+    if (currentStatus === "REPORTED" || currentStatus === "GRADED") return;
+
+    if (currentStatus === "PUBLISHED") {
+      await api.activateAssessment(assessmentId);
+      currentStatus = "ACTIVE";
+    }
+    if (currentStatus === "ACTIVE") {
+      await api.closeAssessment(assessmentId);
+      currentStatus = "CLOSED";
+    }
+    if (currentStatus === "CLOSED") {
+      await api.startAssessmentGrading(assessmentId);
+      currentStatus = "IN_GRADING";
+    }
+    if (currentStatus === "IN_GRADING") {
+      await api.markAssessmentGraded(assessmentId);
+    }
+  }
 
   const createAssessment = useMutation({
-    mutationFn: api.createAssessment,
+    mutationFn: async (payload: {
+      assessment: {
+        courseId: string;
+        subjectId: string;
+        title: string;
+        assessmentType: string;
+        semester: number;
+        description?: string;
+        startDate: string;
+        deliveryMode: string;
+      };
+      grades: { studentId: string; grade: number; comments?: string }[];
+    }) => {
+      const assessment = await api.createAssessment(payload.assessment);
+      const assessmentId = assessment.assessmentId ?? assessment.id;
+      if (!assessmentId) throw new Error("No fue posible identificar la evaluacion creada.");
+      if (payload.grades.length > 0) {
+        const bulk = await api.bulkDirectGrades({
+          grades: payload.grades.map((grade) => ({
+            assessmentId,
+            studentId: grade.studentId,
+            grade: grade.grade,
+            comments: grade.comments,
+          })),
+        });
+        if (bulk.failed > 0) {
+          throw new Error(`No se pudieron registrar ${bulk.failed} nota(s). Revisa la planilla e intenta nuevamente.`);
+        }
+      }
+      return assessment;
+    },
     onSuccess: () => {
       setGrades({});
       gradesEditedRef.current = false;
-      toast("Planilla registrada correctamente.", "success");
+      toast("Planilla registrada. Puedes revisar las notas y cerrar la evaluacion cuando este completa.", "success");
       studentsQuery.refetch();
+      queryClient.invalidateQueries({ queryKey: ["teacher-course-book", courseId, subjectId] });
+      queryClient.invalidateQueries({ queryKey: ["teacher-profile-assessments", courseId, subjectId] });
+      queryClient.invalidateQueries({ queryKey: ["teacher-course-assessments", courseId, subjectId] });
+      queryClient.invalidateQueries({ queryKey: ["my-alerts"] });
     },
     onError: (error) => {
       toast(error instanceof Error ? error.message : "No se pudo registrar la planilla", "error");
     }
+  });
+
+  const finalizarEvaluacion = useMutation({
+    mutationFn: async ({ assessmentId, status, missingCount }: { assessmentId: string; status: string; missingCount: number }) => {
+      if (status === "GRADED" || status === "REPORTED") return;
+      if (missingCount > 0) {
+        throw new Error(`Faltan ${missingCount} nota(s). Completa todos los alumnos antes de cerrar.`);
+      }
+      await finalizarProcesoNota(assessmentId, status);
+    },
+    onSuccess: () => {
+      toast("Evaluacion cerrada: las notas quedaron puestas.", "success");
+      queryClient.invalidateQueries({ queryKey: ["teacher-course-book", courseId, subjectId] });
+      queryClient.invalidateQueries({ queryKey: ["teacher-profile-assessments", courseId, subjectId] });
+      queryClient.invalidateQueries({ queryKey: ["teacher-course-assessments", courseId, subjectId] });
+      queryClient.invalidateQueries({ queryKey: ["my-alerts"] });
+    },
+    onError: (error) => {
+      toast(error instanceof Error ? error.message : "No se pudo cerrar la evaluacion.", "error");
+    },
+    onSettled: (_data, _error, variables) => {
+      setFinalizandoEvaluaciones((prev) => {
+        const next = new Set(prev);
+        if (variables?.assessmentId) next.delete(variables.assessmentId);
+        return next;
+      });
+    },
+  });
+
+  const updateGradeMutation = useMutation({
+    mutationFn: ({ gradeId, grade }: { gradeId: string; grade: number }) =>
+      api.updateGrade(gradeId, { grade }),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["teacher-course-book", courseId, subjectId] });
+    },
+    onError: (error) => {
+      toast(error instanceof Error ? error.message : "No se pudo guardar la nota.", "error");
+    },
+  });
+
+  const directGradeMutation = useMutation({
+    mutationFn: (payload: { assessmentId: string; studentId: string; grade: number }) =>
+      api.createDirectGrade(payload),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["teacher-course-book", courseId, subjectId] });
+    },
+    onError: (error) => {
+      toast(error instanceof Error ? error.message : "No se pudo registrar la nota.", "error");
+    },
+  });
+
+  const createClassBookEntry = useMutation({
+    mutationFn: () =>
+      api.createClassBookEntry({
+        courseId,
+        subjectId,
+        date: `${lessonDate}T12:00:00.000Z`,
+        semester,
+        topic: lessonTopic,
+        content: lessonContent,
+        activities: lessonActivities,
+        resources: lessonResources,
+      }),
+    onSuccess: () => {
+      setLessonContent("");
+      setLessonActivities("");
+      setLessonResources("");
+      toast("Libro de clases registrado correctamente.", "success");
+      classBookQuery.refetch();
+    },
+    onError: (error) => {
+      toast(error instanceof Error ? error.message : "No se pudo guardar el libro de clases", "error");
+    },
+  });
+
+  const uploadMaterial = useMutation({
+    mutationFn: async () => {
+      if (!user.institutionId) throw new Error("No se pudo identificar la institucion del profesor.");
+      if (!courseId || !subjectId) throw new Error("Selecciona un curso/asignatura antes de subir material.");
+      if (!materialFile) throw new Error("Selecciona un archivo.");
+
+      const title = materialTitle.trim() || materialFile.name.replace(/\.[^.]+$/, "");
+      const resource = await api.createLearningResource({
+        institutionId: user.institutionId,
+        title,
+        description: materialDescription.trim() || undefined,
+        type: materialType,
+        subjectId,
+        courseId,
+        gradeLevel: selectedAssignment?.grade_level,
+        guideType: materialType === "GUIDE" ? "CONTENT" : undefined,
+        presentationType: materialType === "PRESENTATION" ? materialFile.type || "PDF" : undefined,
+      }) as { id: string };
+
+      await api.uploadFile("resource", resource.id, materialFile);
+      await api.publishLearningResource(resource.id).catch(() => null);
+      return resource;
+    },
+    onSuccess: () => {
+      toast("Material subido correctamente.", "success");
+      setMaterialTitle("");
+      setMaterialDescription("");
+      setMaterialFile(null);
+      resourcesQuery.refetch();
+    },
+    onError: (error) => {
+      toast(error instanceof Error ? error.message : "No se pudo subir el material.", "error");
+    },
+  });
+
+  const archiveMaterial = useMutation({
+    mutationFn: (resourceId: string) => api.archiveLearningResource(resourceId),
+    onSuccess: () => {
+      toast("Material eliminado de la biblioteca.", "success");
+      setSelectedMaterial(null);
+      resourcesQuery.refetch();
+    },
+    onError: (error) => {
+      toast(error instanceof Error ? error.message : "No se pudo eliminar el material.", "error");
+    },
+  });
+
+  const deleteMaterialFile = useMutation({
+    mutationFn: (fileId: string) => api.deleteFile(fileId),
+    onSuccess: () => {
+      toast("Archivo eliminado.", "success");
+      materialFilesQuery.refetch();
+    },
+    onError: (error) => {
+      toast(error instanceof Error ? error.message : "No se pudo eliminar el archivo.", "error");
+    },
   });
 
   const students = studentsQuery.data || [];
@@ -79,6 +426,26 @@ export function ProfesorDashboard({ user, onLogout }: Props) {
     else level = "Bajo";
     return { avgGrade: avg.toFixed(2), avgPercent: `${pct}%`, level, totalGrades };
   }, [students, grades]);
+
+  const activeAssessmentsCount = useMemo(
+    () =>
+      (teacherAssessmentsQuery.data || []).filter((assessment) =>
+        ["ACTIVE", "PUBLISHED", "IN_GRADING"].includes(assessment.status)
+      ).length,
+    [teacherAssessmentsQuery.data]
+  );
+  const courseBookStats = gradeBookQuery.data?.stats;
+  const visibleCourses = useMemo(() => {
+    const courses = coursesQuery.data || [];
+    if (courses.length) return courses;
+    return assignments.map((assignment) => ({
+      course_id: assignment.course_id,
+      course_name: assignment.course_name,
+      grade_level: assignment.grade_level ?? 0,
+      students_count: assignment.students_count ?? 0,
+      section: null,
+    }));
+  }, [coursesQuery.data, assignments]);
 
   useEffect(() => {
     if (!studentsQuery.data?.length) return;
@@ -99,17 +466,25 @@ export function ProfesorDashboard({ user, onLogout }: Props) {
 
     if (!gradesEditedRef.current) {
       const next: Record<string, number> = {};
-      for (const s of studentsQuery.data) next[s.student_id] = 4.0;
+      for (const s of studentsQuery.data) {
+        const studentId = getStudentField(s, "student_id", "studentId");
+        if (studentId) next[studentId] = 4.0;
+      }
       setGrades(next);
     }
   }, [studentsQuery.data, courseId]);
 
   const chartData = useMemo(
     () =>
-      students.slice(0, 12).map((s: CourseStudentRow) => ({
-        name: `${s.first_name} ${s.last_name.charAt(0)}.`,
-        grade: grades[s.student_id] ?? 0
-      })),
+      students.slice(0, 12).map((s: CourseStudentRow, index) => {
+        const studentId = getStudentField(s, "student_id", "studentId");
+        const firstName = getStudentField(s, "first_name", "firstName") || "Alumno";
+        const lastName = getStudentField(s, "last_name", "lastName");
+        return {
+          name: `${firstName} ${lastName ? `${lastName.charAt(0)}.` : `#${index + 1}`}`,
+          grade: grades[studentId] ?? 0,
+        };
+      }),
     [students, grades]
   );
 
@@ -125,7 +500,8 @@ export function ProfesorDashboard({ user, onLogout }: Props) {
     }
 
     const invalid = students.find((s) => {
-      const value = Number(grades[s.student_id]);
+      const studentId = getStudentField(s, "student_id", "studentId");
+      const value = Number(grades[studentId]);
       return Number.isNaN(value) || value < 0 || value > 7;
     });
     if (invalid) {
@@ -134,144 +510,575 @@ export function ProfesorDashboard({ user, onLogout }: Props) {
     }
 
     createAssessment.mutate({
-      courseId,
-      subjectId,
-      title,
-      assessmentType,
-      semester,
-      description: observation,
-      appliedAt,
-      grades: students.map((s) => ({
-        studentId: s.student_id,
-        grade: Number(grades[s.student_id] ?? 0),
+      assessment: {
+        courseId,
+        subjectId,
+        title,
+        assessmentType,
+        semester,
+        description: observation,
+        startDate: `${appliedAt}T12:00:00.000Z`,
+        deliveryMode: "PRINTED",
+      },
+      grades: students.map((s) => {
+        const studentId = getStudentField(s, "student_id", "studentId");
+        return {
+          studentId,
+          grade: Number(grades[studentId] ?? 0),
         comments: observation
-      }))
+        };
+      }).filter((grade) => grade.studentId),
     });
+  }
+
+  function crearColumnaLibro() {
+    if (!courseId || !subjectId) {
+      toast("Selecciona una asignacion curso/asignatura.", "warning");
+      return;
+    }
+    if (!title.trim()) {
+      toast("El nombre de la evaluacion es obligatorio.", "warning");
+      return;
+    }
+
+    createAssessment.mutate({
+      assessment: {
+        courseId,
+        subjectId,
+        title: title.trim(),
+        assessmentType,
+        semester,
+        description: observation,
+        startDate: `${appliedAt}T12:00:00.000Z`,
+        deliveryMode: "PRINTED",
+      },
+      grades: [],
+    });
+  }
+
+  function guardarCeldaLibro(estudianteId: string, evaluacionId: string) {
+    const parsed = Number(valorCeldaLibro.trim().replace(",", "."));
+    const cellKey = `${estudianteId}|${evaluacionId}`;
+    if (valorCeldaLibro.trim() === "") {
+      setCeldaLibro(null);
+      return;
+    }
+    if (Number.isNaN(parsed) || parsed < 1 || parsed > 7) {
+      toast("La nota debe estar entre 1.0 y 7.0.", "warning");
+      setCeldaLibro(null);
+      return;
+    }
+
+    const nota = Math.round(parsed * 10) / 10;
+    const student = gradeBookQuery.data?.students.find((item) => item.studentId === estudianteId);
+    const gradeEntry = student?.grades.find((item) => item.assessmentId === evaluacionId);
+    const assessment = gradeBookQuery.data?.assessments.find((item) => item.id === evaluacionId);
+    setGuardandoCeldas((prev) => new Set(prev).add(cellKey));
+
+    const onSettled = () => {
+      setGuardandoCeldas((prev) => {
+        const next = new Set(prev);
+        next.delete(cellKey);
+        return next;
+      });
+    };
+
+    if (gradeEntry?.gradeId && assessment?.status !== "ACTIVE") {
+      updateGradeMutation.mutate({ gradeId: gradeEntry.gradeId, grade: nota }, { onSettled });
+    } else {
+      directGradeMutation.mutate({ assessmentId: evaluacionId, studentId: estudianteId, grade: nota }, { onSettled });
+    }
+    setCeldaLibro(null);
   }
 
   return (
     <ShellLayout
       title="Pantalla Profesor"
-      subtitle={`Bienvenido ${user.name}. Gestiona planillas por curso y notas de 0.0 a 7.0.`}
-      right={<button onClick={onLogout}>Cerrar sesion</button>}
+      subtitle={`Bienvenido ${user.name}. Gestiona tus cursos, libro de clases, OA, evaluaciones, notas y material.`}
+      right={
+        <div className="header-actions">
+          <div className="header-user">
+            <span className="header-user__role">TEACHER</span>
+            <span className="header-user__name">{user.name}</span>
+          </div>
+          <button className="btn-logout" onClick={onLogout}>Salir</button>
+        </div>
+      }
+      className="shell--teacher"
     >
       {assignmentsQuery.isLoading ? <section className="panel"><p>Cargando asignaciones...</p></section> : null}
       {assignmentsQuery.isError ? <section className="panel"><p>No se pudieron cargar las asignaciones.</p></section> : null}
 
-      <section className="kpi-grid">
-        <KpiCard label="Promedio curso" value={kpiData.avgGrade} />
-        <KpiCard label="Equivalente %" value={kpiData.avgPercent} />
-        <KpiCard label="Nivel" value={kpiData.level} />
-        <KpiCard label="Notas registradas" value={kpiData.totalGrades} />
-      </section>
-
-      <section className="panel">
-        <h3>Asignaciones del profesor</h3>
-        {!assignmentsQuery.data?.length ? <p>Sin asignaciones activas. Solicita configuracion al equipo directivo.</p> : null}
-        <select
-          value={assignmentId}
-          onChange={(event) => {
-            setAssignmentId(event.target.value);
-          }}
-        >
-          {assignmentsQuery.data?.map((a) => (
-            <option key={a.assignment_id} value={a.assignment_id}>
-              {a.course_name} - {a.subject_name}
+      <section className="teacher-overview">
+        <div className="teacher-overview__main">
+          <span>Curso activo</span>
+          <strong>{selectedAssignment ? `${selectedAssignment.course_name} - ${selectedAssignment.subject_name}` : "Sin curso asignado"}</strong>
+          <p>Los cursos asignados quedan habilitados para editar libro, notas, OA y evaluaciones. Los demas cursos se muestran sin informacion.</p>
+        </div>
+        <select value={assignmentId} onChange={(event) => setAssignmentId(event.target.value)}>
+          {assignments.map((assignment) => (
+            <option key={assignment.assignment_id} value={assignment.assignment_id}>
+              {assignment.course_name} - {assignment.subject_name}
             </option>
           ))}
         </select>
       </section>
 
-      <section className="panel">
-        <h3>Planilla de notas por curso</h3>
-        <div className="form-row">
-          <input value={title} onChange={(e) => setTitle(e.target.value)} placeholder="Nombre de evaluacion" />
-          <select value={assessmentType} onChange={(e) => setAssessmentType(e.target.value)}>
-            <option value="diagnostica">Diagnostica</option>
-            <option value="proceso">Proceso</option>
-            <option value="cierre">Cierre</option>
-            <option value="parcial">Parcial</option>
-            <option value="final">Final</option>
-          </select>
-          <select value={semester} onChange={(e) => setSemester(Number(e.target.value))}>
-            <option value={1}>Semestre 1</option>
-            <option value={2}>Semestre 2</option>
-          </select>
-          <input type="date" value={appliedAt} onChange={(e) => setAppliedAt(e.target.value)} />
-          <button onClick={submitGradebook} disabled={createAssessment.isPending}>
-            {createAssessment.isPending ? "Guardando..." : "Registrar planilla"}
-          </button>
-        </div>
+      <section className="teacher-course-grid" aria-label="Cursos del colegio">
+        {visibleCourses.map((course: AdminCourseRow) => {
+          const active = assignedCourseIds.has(course.course_id);
+          const assignment = assignments.find((item) => item.course_id === course.course_id);
+          return (
+            <button
+              key={course.course_id}
+              className={`teacher-course-card ${active ? "teacher-course-card--active" : "teacher-course-card--locked"}`}
+              type="button"
+              disabled={!active || !assignment}
+              onClick={() => assignment && setAssignmentId(assignment.assignment_id)}
+            >
+              <strong>{course.course_name}</strong>
+              <span>{active ? assignment?.subject_name : "Sin informacion"}</span>
+              <small>{active ? `${course.students_count ?? students.length} alumnos` : "No asignado"}</small>
+            </button>
+          );
+        })}
+      </section>
 
-        <div style={{ marginTop: 12 }}>
-          <VoiceTextarea
-            value={observation}
-            onChange={setObservation}
-            label="Observaciones de la evaluacion"
-            placeholder="Dicta o escribe observaciones generales..."
-            rows={2}
-          />
-        </div>
+      <section className="kpi-grid">
+        <KpiCard label="Cursos asignados" value={assignments.length} />
+        <KpiCard label="Promedio libro" value={courseBookStats?.courseAvg?.toFixed?.(2) ?? kpiData.avgGrade} />
+        <KpiCard label="Evaluaciones activas" value={activeAssessmentsCount} />
+        <KpiCard label="Alumnos en riesgo" value={courseBookStats?.atRiskCount ?? alertsQuery.data?.summary?.atRiskCount ?? 0} />
+      </section>
 
-        <div className="table-wrap">
-          <table className="table">
-            <thead>
-              <tr>
-                <th>Alumno</th>
-                <th>Curso</th>
-                <th>Nota (0.0 - 7.0)</th>
-              </tr>
-            </thead>
-            <tbody>
-              {students.map((s) => (
-                <tr key={s.student_id}>
-                  <td>{s.first_name} {s.last_name}</td>
-                  <td>{s.course_name}</td>
-                  <td>
-                    <input
-                      type="number"
-                      min="0"
-                      max="7"
-                      step="0.1"
-                      value={grades[s.student_id] ?? 0}
-                      onChange={(e) => {
-                        const value = Number(e.target.value);
-                        gradesEditedRef.current = true;
-                        setGrades((prev) => ({ ...prev, [s.student_id]: value }));
-                      }}
-                    />
-                  </td>
-                </tr>
+      <div className="teacher-complete-grid">
+        <aside className="teacher-module-rail" aria-label="Modulos del profesor">
+          <a href="#teacher-curricular">Diseno Curricular</a>
+          <a href="#teacher-classbook">Libro de clases</a>
+          <a href="#teacher-grades">Evaluaciones y Notas</a>
+          <a href="#teacher-analysis">Analisis y Reportes</a>
+          <a href="#teacher-material">Material Pedagogico</a>
+        </aside>
+
+        <main className="teacher-complete-content">
+          <section id="teacher-curricular" className="panel">
+            <div className="panel-heading">
+              <div>
+                <h3>Diseno Curricular</h3>
+                <p>OA del curso activo y objetivos descendidos desde el libro de notas.</p>
+              </div>
+              <span className="badge badge--role">{selectedCourse?.grade_level ? `${selectedCourse.grade_level} basico/medio` : "Curso activo"}</span>
+            </div>
+
+            <div className="teacher-oa-grid">
+              {(objectivesQuery.data || []).slice(0, 8).map((objective) => (
+                <article key={objective.id} className="teacher-oa-card">
+                  <strong>{objective.code}</strong>
+                  <p>{objective.description}</p>
+                </article>
               ))}
-            </tbody>
-          </table>
-        </div>
-      </section>
+              {!objectivesQuery.isLoading && !objectivesQuery.data?.length ? (
+                <div className="empty-inline">
+                  <strong>Sin OA cargados para esta asignatura.</strong>
+                  <span>Cuando UTP registre objetivos, apareceran aqui para planificar y evaluar.</span>
+                </div>
+              ) : null}
+            </div>
 
-      <section className="panel">
-        <h3>Vista grafica de notas</h3>
-        <GradeBarChart data={chartData} />
-      </section>
+            {gradeBookQuery.data?.oaDescendidos?.length ? (
+              <div className="teacher-risk-strip">
+                {gradeBookQuery.data.oaDescendidos.slice(0, 4).map((oa) => (
+                  <span key={oa.code}>{oa.code}: promedio {oa.average.toFixed(2)}</span>
+                ))}
+              </div>
+            ) : null}
+          </section>
 
-      <EvaluacionesProfesorPanel courseId={courseId} subjectId={subjectId} />
+          <section id="teacher-classbook" className="panel">
+            <div className="panel-heading">
+              <div>
+                <h3>Libro de clases</h3>
+                <p>Registro de la clase diaria para el curso y asignatura seleccionados.</p>
+              </div>
+            </div>
 
-      <AnswersInspectionPanel courseId={courseId} subjectId={subjectId} />
+            <div className="form-row">
+              <input type="date" value={lessonDate} onChange={(e) => setLessonDate(e.target.value)} />
+              <input value={lessonTopic} onChange={(e) => setLessonTopic(e.target.value)} placeholder="Tema de la clase" />
+              <button onClick={() => createClassBookEntry.mutate()} disabled={!courseId || !subjectId || createClassBookEntry.isPending}>
+                {createClassBookEntry.isPending ? "Guardando..." : "Guardar clase"}
+              </button>
+            </div>
+            <div className="teacher-classbook-form">
+              <VoiceTextarea value={lessonContent} onChange={setLessonContent} label="Contenido tratado" placeholder="Contenido, OA o foco de la clase..." rows={2} />
+              <VoiceTextarea value={lessonActivities} onChange={setLessonActivities} label="Actividades" placeholder="Actividades realizadas..." rows={2} />
+              <VoiceTextarea value={lessonResources} onChange={setLessonResources} label="Recursos" placeholder="Materiales, enlaces, guias o apoyos..." rows={2} />
+            </div>
 
-      <section className="panel">
-        <h3>Notificaciones y alertas del curso</h3>
-        {!alertsQuery.data?.alerts.length ? (
-          <p>Sin alertas de riesgo en tus cursos asignados.</p>
-        ) : (
-          <div className="alert-list">
-            {alertsQuery.data.alerts.slice(0, 12).map((a) => (
-              <article key={`${a.studentId}-${a.semester}`} className="alert-card">
-                <strong>{a.courseName} - {a.studentName} (Sem {a.semester})</strong>
-                <p>Promedio {a.avgGrade} | Riesgo {a.level}. {a.message}</p>
+            <div className="teacher-entry-list">
+              {(classBookQuery.data || []).slice(0, 4).map((entry, index) => (
+                <article key={entry.id || `${entry.date}-${index}`} className="teacher-entry-card">
+                  <span>{entry.date ? new Date(entry.date).toLocaleDateString("es-CL") : "Sin fecha"}</span>
+                  <strong>{entry.topic || entry.unitName || "Clase registrada"}</strong>
+                  <p>{entry.content || entry.activities || "Registro sin detalle."}</p>
+                </article>
+              ))}
+              {!classBookQuery.isLoading && !classBookQuery.data?.length ? (
+                <div className="empty-inline">
+                  <strong>Sin clases registradas.</strong>
+                  <span>Guarda la primera clase para comenzar el libro.</span>
+                </div>
+              ) : null}
+            </div>
+          </section>
+
+          <section id="teacher-grades" className="panel">
+            <div className="panel-heading">
+              <div>
+                <h3>Libro de Calificaciones</h3>
+                <p>{selectedAssignment ? `${selectedAssignment.course_name} - ${selectedAssignment.subject_name}` : "Selecciona una asignacion para ver el libro."}</p>
+              </div>
+              <span className="badge badge--role">{gradeBookQuery.data?.students.length ?? 0} alumnos</span>
+            </div>
+            <div className="form-row">
+              <input value={title} onChange={(e) => setTitle(e.target.value)} placeholder="Nombre de evaluacion" />
+              <select value={assessmentType} onChange={(e) => setAssessmentType(e.target.value)}>
+                <option value="DIAGNOSTICA">Diagnostica</option>
+                <option value="PROCESO">Proceso</option>
+                <option value="CIERRE">Cierre</option>
+                <option value="PARCIAL">Parcial</option>
+                <option value="FINAL">Final</option>
+              </select>
+              <select value={semester} onChange={(e) => setSemester(Number(e.target.value))}>
+                <option value={1}>Semestre 1</option>
+                <option value={2}>Semestre 2</option>
+              </select>
+              <input type="date" value={appliedAt} onChange={(e) => setAppliedAt(e.target.value)} />
+              <button onClick={crearColumnaLibro} disabled={!courseId || !subjectId || createAssessment.isPending}>
+                {createAssessment.isPending ? "Creando..." : "+ Calificacion"}
+              </button>
+            </div>
+
+            <div style={{ marginTop: 12 }}>
+              <VoiceTextarea
+                value={observation}
+                onChange={setObservation}
+                label="Observaciones de la evaluacion"
+                placeholder="Dicta o escribe observaciones generales..."
+                rows={2}
+              />
+            </div>
+
+            {gradeBookQuery.isLoading ? <LoadingSpinner label="Cargando libro de calificaciones..." /> : null}
+            {gradeBookQuery.isError ? <p className="error">No se pudo cargar el libro del curso asignado.</p> : null}
+
+            {!gradeBookQuery.isLoading && gradeBookQuery.data ? (
+              <>
+                <div className="gradebook-kpi-grid" style={{ marginTop: 16 }}>
+                  <div className="gradebook-kpi-card"><div><span>Promedio</span><strong style={{ color: colorNota(gradeBookQuery.data.stats.courseAvg) }}>{formatearNota(gradeBookQuery.data.stats.courseAvg)}</strong></div></div>
+                  <div className="gradebook-kpi-card"><div><span>Aprobacion</span><strong>{gradeBookQuery.data.stats.approvalRate}%</strong></div></div>
+                  <div className="gradebook-kpi-card"><div><span>Evaluaciones</span><strong>{gradeBookQuery.data.assessments.length}</strong></div></div>
+                  <div className="gradebook-kpi-card"><div><span>Pendientes</span><strong>{gradeBookQuery.data.stats.pendingsCount}</strong></div></div>
+                </div>
+
+                {gradeBookQuery.data.students.length === 0 ? (
+                  <div className="empty-inline" style={{ marginTop: 16 }}>
+                    <strong>Este curso no tiene alumnos matriculados.</strong>
+                    <span>Cuando se asignen alumnos al curso, apareceran aqui automaticamente.</span>
+                  </div>
+                ) : (
+                  <div className="gradebook-table-scroll" style={{ marginTop: 16 }}>
+                    <table className="gradebook-table">
+                      <thead>
+                        <tr>
+                          <th className="gb-col-nro">N°</th>
+                          <th className="gb-col-nombre">Estudiante</th>
+                          {gradeBookQuery.data.assessments.map((assessment, index) => {
+                            const totalStudents = gradeBookQuery.data.students.length;
+                            const gradesCount = gradeBookQuery.data.students.filter((student) =>
+                              student.grades.some((grade) => grade.assessmentId === assessment.id && grade.grade !== null)
+                            ).length;
+                            const missingCount = Math.max(totalStudents - gradesCount, 0);
+                            const canCloseGrade = totalStudents > 0 && missingCount === 0;
+                            const isClosedGrade = assessment.status === "GRADED" || assessment.status === "REPORTED";
+                            const isFinalizing = finalizandoEvaluaciones.has(assessment.id);
+                            return (
+                              <th key={assessment.id} className="gb-col-eval" title={assessment.title}>
+                                <div className="gb-eval-header">
+                                  <span className="gb-eval-title">{assessment.title || `N${index + 1}`}</span>
+                                  <span className="gb-eval-type">{assessment.type}</span>
+                                  <span className={`badge ${isClosedGrade ? "badge--active" : "badge--warning"}`}>
+                                    {isClosedGrade ? "Nota puesta" : `${gradesCount}/${totalStudents}`}
+                                  </span>
+                                  {!isClosedGrade ? (
+                                    <button
+                                      type="button"
+                                      className="gb-finalize-btn"
+                                      disabled={!canCloseGrade || isFinalizing}
+                                      title={canCloseGrade ? "Cerrar evaluacion y bloquear notas" : `Faltan ${missingCount} nota(s)`}
+                                      onClick={() => {
+                                        setFinalizandoEvaluaciones((prev) => new Set(prev).add(assessment.id));
+                                        finalizarEvaluacion.mutate({ assessmentId: assessment.id, status: assessment.status, missingCount });
+                                      }}
+                                    >
+                                      {isFinalizing ? "Cerrando..." : "Cerrar nota"}
+                                    </button>
+                                  ) : null}
+                                </div>
+                              </th>
+                            );
+                          })}
+                          <th className="gb-col-prom">Promedio</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {gradeBookQuery.data.students.map((student, index) => (
+                          <tr key={student.studentId}>
+                            <td className="gb-col-nro">{index + 1}</td>
+                            <td className="gb-col-nombre">
+                              <strong>{student.lastName}, {student.firstName}</strong>
+                              {student.rut ? <span style={{ display: "block", color: "var(--muted)", fontSize: ".75rem" }}>{student.rut}</span> : null}
+                            </td>
+                            {gradeBookQuery.data.assessments.map((assessment) => {
+                              const grade = student.grades.find((item) => item.assessmentId === assessment.id);
+                              const isEditing = celdaLibro?.estudianteId === student.studentId && celdaLibro.evaluacionId === assessment.id;
+                              const cellKey = `${student.studentId}|${assessment.id}`;
+                              const isClosedGrade = assessment.status === "GRADED" || assessment.status === "REPORTED";
+                              return (
+                                <td key={assessment.id} className={`gb-col-eval gb-cell ${isEditing ? "gb-cell--editing" : ""}`}>
+                                  {isClosedGrade ? (
+                                    <span
+                                      className="gb-cell-value gb-cell-value--locked"
+                                      style={{ color: colorNota(grade?.grade), fontWeight: grade?.grade !== null ? 700 : 400 }}
+                                      title="Nota cerrada"
+                                    >
+                                      {formatearNota(grade?.grade)}
+                                    </span>
+                                  ) : isEditing ? (
+                                    <input
+                                      className="gb-cell-input"
+                                      type="text"
+                                      inputMode="decimal"
+                                      value={valorCeldaLibro}
+                                      onChange={(e) => setValorCeldaLibro(e.target.value)}
+                                      onBlur={() => guardarCeldaLibro(student.studentId, assessment.id)}
+                                      onKeyDown={(e) => {
+                                        if (e.key === "Enter") {
+                                          e.preventDefault();
+                                          guardarCeldaLibro(student.studentId, assessment.id);
+                                        }
+                                        if (e.key === "Escape") setCeldaLibro(null);
+                                      }}
+                                      autoFocus
+                                      onFocus={(e) => e.target.select()}
+                                    />
+                                  ) : (
+                                    <button
+                                      type="button"
+                                      className="gb-cell-value"
+                                      style={{ color: colorNota(grade?.grade), fontWeight: grade?.grade !== null ? 700 : 400 }}
+                                      disabled={guardandoCeldas.has(cellKey) || isClosedGrade}
+                                      onClick={() => {
+                                        setCeldaLibro({ estudianteId: student.studentId, evaluacionId: assessment.id });
+                                        setValorCeldaLibro(grade?.grade != null ? grade.grade.toFixed(1).replace(".", ",") : "");
+                                      }}
+                                    >
+                                      {guardandoCeldas.has(cellKey) ? "..." : formatearNota(grade?.grade)}
+                                    </button>
+                                  )}
+                                </td>
+                              );
+                            })}
+                            <td className="gb-col-prom" style={{ color: colorNota(student.average), fontWeight: 800 }}>{formatearNota(student.average)}</td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
+                )}
+              </>
+            ) : null}
+          </section>
+
+          <EvaluacionesProfesorPanel courseId={courseId} subjectId={subjectId} />
+          <AnswersInspectionPanel courseId={courseId} subjectId={subjectId} />
+
+          <section id="teacher-analysis" className="panel">
+            <div className="panel-heading">
+              <div>
+                <h3>Analisis y Reportes</h3>
+                <p>Promedios, alumnos en riesgo y salud academica del curso.</p>
+              </div>
+            </div>
+            <div className="kpi-grid">
+              <KpiCard label="Notas libro" value={courseBookStats?.totalNotes ?? kpiData.totalGrades} />
+              <KpiCard label="Aprobacion" value={courseBookStats ? `${courseBookStats.approvalRate}%` : kpiData.avgPercent} />
+              <KpiCard label="Pendientes" value={courseBookStats?.pendingsCount ?? 0} />
+            </div>
+            <GradeBarChart data={chartData} />
+            <div className="alert-list" style={{ marginTop: 16 }}>
+              {alertsQuery.data?.alerts.slice(0, 8).map((a) => (
+                <article key={`${a.studentId}-${a.semester}`} className="alert-card">
+                  <strong>{a.courseName} - {a.studentName} (Sem {a.semester})</strong>
+                  <p>Promedio {a.avgGrade} | Riesgo {a.level}. {a.message}</p>
+                </article>
+              ))}
+              {!alertsQuery.data?.alerts.length ? <p>Sin alumnos con riesgo alto en tus cursos asignados.</p> : null}
+            </div>
+          </section>
+
+          <section id="teacher-material" className="panel">
+            <div className="panel-heading">
+              <div>
+                <h3>Material Pedagogico</h3>
+                <p>Sube, organiza y visualiza recursos del curso activo: PDF, PPT, guias, imagenes y material de apoyo.</p>
+              </div>
+            </div>
+
+            <div className="teacher-material-upload">
+              <div className="form-field">
+                <label>Titulo</label>
+                <input value={materialTitle} onChange={(e) => setMaterialTitle(e.target.value)} placeholder="Ej: Guia unidad 2" />
+              </div>
+              <div className="form-field">
+                <label>Tipo</label>
+                <select value={materialType} onChange={(e) => setMaterialType(e.target.value)}>
+                  <option value="CLASS_MATERIAL">Material</option>
+                  <option value="GUIDE">Guia</option>
+                  <option value="PRESENTATION">Presentacion</option>
+                  <option value="WORKSHEET">Actividad</option>
+                  <option value="PRINTABLE_TEST">Evaluacion imprimible</option>
+                </select>
+              </div>
+              <div className="form-field">
+                <label>Archivo</label>
+                <input
+                  type="file"
+                  accept=".pdf,.ppt,.pptx,.doc,.docx,.xls,.xlsx,.png,.jpg,.jpeg,.webp,.txt"
+                  onChange={(e) => setMaterialFile(e.target.files?.[0] ?? null)}
+                />
+              </div>
+              <button onClick={() => uploadMaterial.mutate()} disabled={uploadMaterial.isPending || !materialFile || !courseId || !subjectId}>
+                {uploadMaterial.isPending ? "Subiendo..." : "Subir material"}
+              </button>
+              <div className="form-field teacher-material-upload__description">
+                <label>Descripcion breve</label>
+                <input value={materialDescription} onChange={(e) => setMaterialDescription(e.target.value)} placeholder="Para que sirve este recurso..." />
+              </div>
+            </div>
+
+            <div className="teacher-material-grid">
+              {(resourcesQuery.data || []).map((resource, index) => (
+                <article
+                  key={resource.id || `${resource.title}-${index}`}
+                  className="teacher-material-card"
+                >
+                  <span className="teacher-material-card__type">{resource.type || "RECURSO"}</span>
+                  <strong>{resource.title || "Material sin titulo"}</strong>
+                  <p>{resource.description || "Disponible para este curso."}</p>
+                  <small>{resource.status || "DRAFT"}</small>
+                  <div className="teacher-material-card__actions">
+                    <button type="button" className="btn-small" onClick={() => setSelectedMaterial(resource)}>Ver</button>
+                    <button
+                      type="button"
+                      className="btn-small btn-danger"
+                      disabled={!resource.id || archiveMaterial.isPending}
+                      onClick={() => {
+                        if (!resource.id) return;
+                        const ok = window.confirm(`¿Eliminar "${resource.title || "este material"}" de la biblioteca?`);
+                        if (ok) archiveMaterial.mutate(resource.id);
+                      }}
+                    >
+                      Eliminar
+                    </button>
+                  </div>
+                </article>
+              ))}
+              {!resourcesQuery.isLoading && !resourcesQuery.data?.length ? (
+                <div className="empty-inline">
+                  <strong>Biblioteca vacia.</strong>
+                  <span>Sube el primer PDF, presentacion o guia para compartirlo con el curso.</span>
+                </div>
+              ) : null}
+            </div>
+          </section>
+        </main>
+      </div>
+
+      <Modal
+        isOpen={Boolean(selectedMaterial)}
+        onClose={() => setSelectedMaterial(null)}
+        title={selectedMaterial?.title || "Material pedagógico"}
+        size="lg"
+        footer={
+          <>
+            {selectedMaterial?.id ? (
+              <button
+                className="btn-danger"
+                disabled={archiveMaterial.isPending}
+                onClick={() => {
+                  const ok = window.confirm(`¿Eliminar "${selectedMaterial.title || "este material"}" de la biblioteca?`);
+                  if (ok) archiveMaterial.mutate(selectedMaterial.id!);
+                }}
+              >
+                Eliminar material
+              </button>
+            ) : null}
+            <button className="btn-secondary" onClick={() => setSelectedMaterial(null)}>Cerrar</button>
+          </>
+        }
+      >
+        <div className="teacher-material-preview">
+          <p>{selectedMaterial?.description || "Recurso asociado al curso activo."}</p>
+          {materialFilesQuery.isLoading ? <LoadingSpinner size="sm" /> : null}
+          {(materialFilesQuery.data || []).map((file) => {
+            const viewUrl = `/api/v1/files/view/${file.fileName}`;
+            const downloadUrl = `/api/v1/files/download/${file.fileName}`;
+            const canEmbed = file.mimeType.includes("pdf") || file.mimeType.startsWith("image/") || file.mimeType.startsWith("text/");
+            return (
+              <article key={file.id} className="teacher-material-file">
+                <div>
+                  <strong>{file.originalName}</strong>
+                  <span>{file.mimeType} · {(file.size / 1024).toFixed(1)} KB</span>
+                </div>
+                <div className="teacher-material-file__actions">
+                  <a className="btn-small" href={viewUrl} target="_blank" rel="noreferrer">Abrir</a>
+                  <a className="btn-small" href={downloadUrl}>Descargar</a>
+                  <button
+                    type="button"
+                    className="btn-small btn-danger"
+                    disabled={deleteMaterialFile.isPending}
+                    onClick={() => {
+                      const ok = window.confirm(`¿Eliminar el archivo "${file.originalName}"?`);
+                      if (ok) deleteMaterialFile.mutate(file.id);
+                    }}
+                  >
+                    Eliminar archivo
+                  </button>
+                </div>
+                {canEmbed ? (
+                  file.mimeType.startsWith("image/") ? (
+                    <img src={viewUrl} alt={file.originalName} className="teacher-material-file__image" />
+                  ) : (
+                    <iframe src={viewUrl} title={file.originalName} className="teacher-material-file__frame" />
+                  )
+                ) : (
+                  <div className="teacher-material-file__placeholder">
+                    <strong>Vista previa no disponible en navegador</strong>
+                    <span>Abre o descarga el archivo para verlo con su aplicacion correspondiente.</span>
+                  </div>
+                )}
               </article>
-            ))}
-          </div>
-        )}
-      </section>
+            );
+          })}
+          {!materialFilesQuery.isLoading && !materialFilesQuery.data?.length ? (
+            <div className="empty-inline">
+              <strong>Este recurso no tiene archivo asociado.</strong>
+              <span>Sube un archivo nuevo para visualizarlo aqui.</span>
+            </div>
+          ) : null}
+        </div>
+      </Modal>
     </ShellLayout>
   );
 }

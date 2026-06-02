@@ -21,7 +21,7 @@ export function InstitutionProvider({ children }: { children: ReactNode }) {
 
   const { data: institutions = [], isLoading } = useQuery({
     queryKey: ["institutions"],
-    queryFn: () => api.listInstitutions(),
+    queryFn: () => api.listInstitutions().catch(() => []),
     staleTime: 5 * 60 * 1000,
   });
 

@@ -37,7 +37,6 @@ async function refreshSession(): Promise<boolean> {
       const response = await fetch(`${API_BASE}/auth/refresh`, {
         method: "POST",
         credentials: "include",
-        headers: { "Content-Type": "application/json" },
       });
       return response.ok;
     } catch {
@@ -50,19 +49,24 @@ async function refreshSession(): Promise<boolean> {
   return result;
 }
 
+const NO_REFRESH_PATHS = ["/auth/login", "/auth/refresh"];
+
 async function request<T>(path: string, init?: RequestInit): Promise<T> {
   const url = `${API_BASE}${path}`;
+  const headers = new Headers(init?.headers);
+  if (init?.body !== undefined && !headers.has("Content-Type")) {
+    headers.set("Content-Type", "application/json");
+  }
+
   const fetchOptions: RequestInit = {
     credentials: "include",
-    headers: {
-      "Content-Type": "application/json",
-    } as HeadersInit,
     ...init,
+    headers,
   };
 
   let response = await fetch(url, fetchOptions);
 
-  if (response.status === 401) {
+  if (response.status === 401 && !NO_REFRESH_PATHS.includes(path)) {
     const refreshed = await refreshSession();
     if (refreshed) {
       response = await fetch(url, fetchOptions);
@@ -81,6 +85,15 @@ async function request<T>(path: string, init?: RequestInit): Promise<T> {
       throw new Error("Servidor no disponible temporalmente. Intenta de nuevo en unos segundos.");
     }
     throw new Error(`Solicitud fallida (${response.status})`);
+  }
+
+  if (response.status === 204) {
+    return undefined as T;
+  }
+
+  const contentType = response.headers.get("content-type") ?? "";
+  if (!contentType.includes("application/json")) {
+    return undefined as T;
   }
 
   return response.json() as Promise<T>;
@@ -177,7 +190,7 @@ export const api = {
     }),
 
   // ─── Users ──────────────────────────────────────
-  listUsers: (params?: { page?: number; limit?: number; role?: string; search?: string }) =>
+  listUsers: (params?: { page?: number; limit?: number; role?: string; search?: string; institutionId?: string }) =>
     request<PaginatedResponse<UserRow>>(`/users${buildQuery(params ?? {})}`),
   getUser: (id: string) => request<UserRow>(`/users/${id}`),
   createUser: (payload: {
@@ -187,6 +200,7 @@ export const api = {
     temporaryPassword: string;
     role: string;
     institutionId?: string;
+    courseId?: string;
   }) =>
     request<UserRow>("/users", {
       method: "POST",
@@ -202,8 +216,8 @@ export const api = {
 
   // ─── Teachers ───────────────────────────────────
   myAssignments: () => request<TeacherAssignment[]>("/teachers/my/assignments"),
-  listTeachers: (search?: string) =>
-    request<TeacherAssignment[]>(`/teachers${buildQuery({ search })}`),
+  listTeachers: (search?: string, params?: { institutionId?: string; includeInactive?: boolean }) =>
+    request<TeacherAssignment[]>(`/teachers${buildQuery({ search, ...(params ?? {}) })}`),
   getTeacher: (id: string) => request<TeacherAssignment>(`/teachers/${id}`),
   createTeacher: (payload: {
     firstName: string;
@@ -218,6 +232,16 @@ export const api = {
       method: "POST",
       body: JSON.stringify(payload)
     }),
+  updateTeacher: (id: string, payload: Record<string, unknown>) =>
+    request<TeacherAssignment>(`/teachers/${id}`, {
+      method: "PATCH",
+      body: JSON.stringify(payload)
+    }),
+  retireTeacher: (id: string, removeAssignments = false) =>
+    request<TeacherAssignment>(`/teachers/${id}/retire`, {
+      method: "POST",
+      body: JSON.stringify({ removeAssignments })
+    }),
   getTeacherAssignments: (teacherId: string) =>
     request<TeacherAssignment[]>(`/teachers/${teacherId}/assignments`),
   assignTeacher: (payload: { userId: string; courseId: string; subjectId: string }) =>
@@ -229,7 +253,7 @@ export const api = {
     request<{ ok: boolean }>(`/teachers/assignments/${assignmentId}`, { method: "DELETE" }),
 
   // ─── Students ───────────────────────────────────
-  listStudents: (params?: { page?: number; limit?: number; search?: string; courseId?: string }) =>
+  listStudents: (params?: { page?: number; limit?: number; search?: string; courseId?: string; includeInactive?: boolean }) =>
     request<PaginatedResponse<CourseStudentRow>>(`/students${buildQuery(params ?? {})}`),
   getStudent: (id: string) => request<CourseStudentRow>(`/students/${id}`),
   createStudent: (payload: {
@@ -237,7 +261,7 @@ export const api = {
     lastName: string;
     courseId: string;
     email?: string;
-    temporaryPassword: string;
+    temporaryPassword?: string;
     rut?: string;
     gender?: string;
     birthDate?: string;
@@ -253,10 +277,12 @@ export const api = {
     }),
   deleteStudent: (id: string) =>
     request<{ ok: boolean }>(`/students/${id}`, { method: "DELETE" }),
+  restoreStudent: (id: string) =>
+    request<CourseStudentRow>(`/students/${id}/restore`, { method: "POST" }),
   studentKpi: () => request<StudentKpi>("/students/me/kpi"),
   studentPortal: () => request<StudentPortal>("/students/me/portal"),
   // ─── Courses ────────────────────────────────────
-  listCourses: (params?: { institutionId?: string; academicYearId?: string; gradeLevel?: number }) =>
+  listCourses: (params?: { institutionId?: string; academicYearId?: string; gradeLevel?: number; includeInactive?: boolean }) =>
     request<AdminCourseRow[]>(`/courses${buildQuery(params ?? {})}`),
   getCourse: (id: string) => request<AdminCourseRow & { students: CourseStudentRow[]; teachers: TeacherAssignment[] }>(`/courses/${id}`),
   getCourseStudents: (courseId: string) => request<CourseStudentRow[]>(`/courses/${courseId}/students`),
@@ -267,6 +293,8 @@ export const api = {
     }),
   updateCourse: (id: string, payload: Record<string, unknown>) =>
     request<AdminCourseRow>(`/courses/${id}`, { method: "PATCH", body: JSON.stringify(payload) }),
+  deleteCoursePermanent: (id: string) =>
+    request<{ ok: boolean; id: string }>(`/courses/${id}/permanent`, { method: "DELETE" }),
 
   // ─── Subjects ───────────────────────────────────
   listSubjects: (includeInactive?: boolean) =>
@@ -280,6 +308,8 @@ export const api = {
     request<AdminSubject>(`/subjects/${id}`, { method: "PATCH", body: JSON.stringify(payload) }),
   deleteSubject: (id: string) =>
     request<{ ok: boolean }>(`/subjects/${id}`, { method: "DELETE" }),
+  deleteSubjectPermanent: (id: string) =>
+    request<{ ok: boolean; id: string }>(`/subjects/${id}/permanent`, { method: "DELETE" }),
 
   // ─── Academic Years ────────────────────────────
   listAcademicYears: (institutionId: string) =>
@@ -314,7 +344,7 @@ export const api = {
   reopenPeriod: (id: string) =>
     request<PeriodRow>(`/periods/${id}/reopen`, { method: "POST" }),
   createAssessment: (payload: unknown) =>
-    request<{ assessmentId: string; count: number }>("/assessments", {
+    request<{ id: string; assessmentId?: string; count?: number }>("/assessments", {
       method: "POST",
       body: JSON.stringify(payload)
     }),
@@ -326,6 +356,17 @@ export const api = {
     request<{ id: string; studentId: string; student: { firstName: string; lastName: string }; status: string; totalScore: number | null; percentage: number | null; answers: { questionId: string; question: { statement: string; type: string }; textAnswer: string | null; selectedOptionId: string | null; score: number | null; status: string; isCorrect: boolean | null }[] }[]>(`/attempts/assessment/${assessmentId}`),
 
   // ─── Enrollments ────────────────────────────────
+  closeAssessment: (id: string) =>
+    request<unknown>(`/assessments/${id}/close`, { method: "POST" }),
+  activateAssessment: (id: string) =>
+    request<unknown>(`/assessments/${id}/activate`, { method: "POST" }),
+  startAssessmentGrading: (id: string) =>
+    request<unknown>(`/assessments/${id}/start-grading`, { method: "POST" }),
+  markAssessmentGraded: (id: string) =>
+    request<unknown>(`/assessments/${id}/mark-graded`, { method: "POST" }),
+  markAssessmentReported: (id: string) =>
+    request<unknown>(`/assessments/${id}/mark-reported`, { method: "POST" }),
+
   enrollStudent: (payload: { studentId: string; courseId: string }) =>
     request<{ enrollmentId: string }>("/enrollments", {
       method: "POST",
@@ -340,7 +381,7 @@ export const api = {
     }),
 
   // ─── Grading ────────────────────────────────────
-  updateGrade: (gradeId: string, payload: { grade: number; comments?: string }) =>
+  updateGrade: (gradeId: string, payload: { grade: number; comments?: string; reason?: string }) =>
     request<{ ok: boolean }>(`/grading/grades/${gradeId}`, {
       method: "PATCH",
       body: JSON.stringify(payload)
@@ -473,7 +514,7 @@ export const api = {
       oaDescendidos: { code: string; description: string; average: number; count: number }[];
     }>(`/grading/course-book/${courseId}${buildQuery(params ?? {})}`),
 
-  createDirectGrade: (payload: { assessmentId: string; studentId: string; grade: number; comments?: string }) =>
+  createDirectGrade: (payload: { assessmentId: string; studentId: string; grade: number; comments?: string; reason?: string }) =>
     request<{ ok: boolean; gradeId: string; grade: number }>("/grading/direct-grade", {
       method: "POST",
       body: JSON.stringify(payload),
@@ -493,12 +534,45 @@ export const api = {
   listLearningResources: (params?: { institutionId?: string; type?: string; subjectId?: string; courseId?: string }) =>
     request<{ data: unknown[] }>(`/resources${buildQuery(params ?? {})}`).then((r) => r.data),
   getLearningResource: (id: string) => request<unknown>(`/resources/${id}`),
-  createLearningResource: (payload: { institutionId: string; title: string; description?: string; type: string; subjectId?: string; courseId?: string; gradeLevel?: number }) =>
+  createLearningResource: (payload: {
+    institutionId: string;
+    title: string;
+    description?: string;
+    type: string;
+    subjectId?: string;
+    courseId?: string;
+    gradeLevel?: number;
+    guideType?: string;
+    presentationType?: string;
+  }) =>
     request<unknown>("/resources", { method: "POST", body: JSON.stringify(payload) }),
   updateLearningResource: (id: string, payload: Record<string, unknown>) =>
     request<unknown>(`/resources/${id}`, { method: "PATCH", body: JSON.stringify(payload) }),
   publishLearningResource: (id: string) =>
     request<unknown>(`/resources/${id}/publish`, { method: "POST" }),
+  archiveLearningResource: (id: string) =>
+    request<unknown>(`/resources/${id}/archive`, { method: "POST" }),
+  uploadFile: (entityType: string, entityId: string, file: File) => {
+    const formData = new FormData();
+    formData.append("file", file);
+    return fetch(`${API_BASE}/files/upload${buildQuery({ entityType, entityId })}`, {
+      method: "POST",
+      credentials: "include",
+      body: formData,
+    }).then(async (r) => {
+      if (!r.ok) {
+        const err = await r.json().catch(() => null);
+        throw new Error(typeof err?.message === "string" ? err.message : `Fallo al subir archivo (${r.status})`);
+      }
+      return r.json() as Promise<{ fileId: string; fileName: string; url: string; size: number }>;
+    });
+  },
+  listEntityFiles: (entityType: string, entityId: string) =>
+    request<{ id: string; fileName: string; originalName: string; mimeType: string; size: number; url: string | null; createdAt: string }[]>(
+      `/files/entity/${entityType}/${entityId}`,
+    ),
+  deleteFile: (fileId: string) =>
+    request<void>(`/files/${fileId}`, { method: "DELETE" }),
 
   // ─── Lessons ───────────────────────────────────────
   listLessons: (params?: Record<string, string | number | boolean | undefined>) =>
@@ -578,4 +652,50 @@ export const api = {
     request<unknown>(`/class-book/${id}`, { method: "PATCH", body: JSON.stringify(payload) }),
   deleteClassBookEntry: (id: string) =>
     request<{ ok: boolean }>(`/class-book/${id}`, { method: "DELETE" }),
+
+  // ─── Notifications ─────────────────────────────────
+  getNotifications: (params?: { status?: string; limit?: number; offset?: number }) =>
+    request<{ notifications: { id: string; type: string; title: string; message: string; status: string; metadata: Record<string, unknown> | null; createdAt: string; readAt: string | null }[]; total: number }>(`/notifications${buildQuery(params ?? {})}`),
+  getUnreadNotificationCount: () =>
+    request<number>("/notifications/unread-count"),
+  markNotificationRead: (id: string) =>
+    request<{ ok: boolean }>(`/notifications/${id}/read`, { method: "PATCH" }),
+  markAllNotificationsRead: () =>
+    request<{ marked: number }>("/notifications/read-all", { method: "PATCH" }),
+
+  // ─── SIMCE ────────────────────────────────────────────
+
+  listSimceAssessments: (params?: { courseId?: string; subjectId?: string; status?: string; academicYearId?: string; page?: number; limit?: number }) =>
+    request<{ data: unknown[]; meta: { total: number; page: number; limit: number; totalPages: number; hasNext: boolean; hasPrevious: boolean } }>(`/simce${buildQuery(params ?? {})}`),
+  getSimceAssessment: (id: string) => request<unknown>(`/simce/${id}`),
+  createSimceAssessment: (payload: { title: string; courseId: string; subjectId: string; gradeLevel: number; academicYearId?: string; date?: string; description?: string }) =>
+    request<unknown>("/simce", { method: "POST", body: JSON.stringify(payload) }),
+  updateSimceAssessment: (id: string, payload: { title?: string; description?: string; date?: string; pdfFileId?: string; academicYearId?: string; status?: string }) =>
+    request<unknown>(`/simce/${id}`, { method: "PATCH", body: JSON.stringify(payload) }),
+  deleteSimceAssessment: (id: string) =>
+    request<{ ok: boolean }>(`/simce/${id}`, { method: "DELETE" }),
+
+  getSimceAnswerKey: (id: string) => request<unknown>(`/simce/${id}/answer-key`),
+  saveSimceAnswerKey: (id: string, payload: { items: { questionNumber: number; correctOption: string; score?: number; axisId?: string; skillId?: string; oaId?: string; observation?: string }[] }) =>
+    request<unknown>(`/simce/${id}/answer-key`, { method: "POST", body: JSON.stringify(payload) }),
+  confirmSimceAnswerKey: (id: string) =>
+    request<unknown>(`/simce/${id}/answer-key/confirm`, { method: "POST" }),
+
+  saveSimceStudentResponses: (assessmentId: string, studentId: string, payload: { responses: { questionNumber: number; selectedOption?: string }[] }) =>
+    request<unknown>(`/simce/${assessmentId}/responses/${studentId}`, { method: "POST", body: JSON.stringify(payload) }),
+  batchSaveSimceResponses: (assessmentId: string, payload: { studentId: string; responses: { questionNumber: number; selectedOption?: string }[] }[]) =>
+    request<unknown>(`/simce/${assessmentId}/responses/batch`, { method: "POST", body: JSON.stringify(payload) }),
+
+  autoCorrectSimce: (id: string) =>
+    request<unknown>(`/simce/${id}/auto-correct`, { method: "POST" }),
+
+  getSimceResults: (id: string) => request<unknown>(`/simce/${id}/results`),
+  getSimceStudentResult: (assessmentId: string, studentId: string) => request<unknown>(`/simce/${assessmentId}/results/${studentId}`),
+
+  getSimceGroupReview: (id: string) => request<unknown>(`/simce/${id}/review`),
+  getSimceQuestionStats: (assessmentId: string, questionNumber: number) => request<unknown>(`/simce/${assessmentId}/review/${questionNumber}`),
+
+  getStudentSimceResults: () => request<unknown[]>("/simce/student/results"),
+  getStudentSimceDetail: (assessmentId: string) => request<unknown>(`/simce/student/results/${assessmentId}`),
+  getStudentSimceEssays: () => request<unknown[]>("/simce/student/essays"),
 };

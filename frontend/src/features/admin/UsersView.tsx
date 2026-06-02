@@ -1,5 +1,6 @@
 import { useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { useLocation } from "react-router-dom";
 import type { UserRow, UserRole, PermissionCatalogItem } from "../../types/api";
 import { api } from "../../lib/api";
 import { Modal } from "../../components/common/Modal";
@@ -7,21 +8,31 @@ import { LoadingSpinner } from "../../components/common/LoadingSpinner";
 import { useToast } from "../../components/common/Toast";
 import { useInstitution } from "../../app/InstitutionContext";
 
-const ROLES: { value: UserRole; label: string }[] = [
+const MANAGED_ROLES: { value: UserRole; label: string }[] = [
   { value: "SUPER_ADMIN", label: "Super Admin" },
-  { value: "ADMIN", label: "Administrador" },
   { value: "DIRECTION", label: "Dirección" },
   { value: "UTP", label: "UTP" },
   { value: "TEACHER", label: "Docente" },
   { value: "STUDENT", label: "Estudiante" },
 ];
 
-const ROLE_LABELS: Record<string, string> = Object.fromEntries(
-  ROLES.map((r) => [r.value, r.label])
-);
+const ROLE_LABELS: Record<string, string> = {
+  SUPER_ADMIN: "Super Admin",
+  ADMIN: "Administrador (sin uso)",
+  DIRECTION: "Dirección",
+  UTP: "UTP",
+  TEACHER: "Docente",
+  STUDENT: "Estudiante",
+  PARENT: "Apoderado (sin uso)",
+};
 
 export function UsersView() {
   const queryClient = useQueryClient();
+  const location = useLocation();
+  const isUtpMode = location.pathname.startsWith("/utp");
+  const availableRoles = isUtpMode
+    ? MANAGED_ROLES.filter((r) => !["SUPER_ADMIN", "DIRECTION"].includes(r.value))
+    : MANAGED_ROLES;
   const [page, setPage] = useState(1);
   const [roleFilter, setRoleFilter] = useState<string>("");
   const [search, setSearch] = useState("");
@@ -34,24 +45,32 @@ export function UsersView() {
     email: "",
     temporaryPassword: "",
     role: "TEACHER" as UserRole,
+    courseId: "",
   });
 
   const users = useQuery({
-    queryKey: ["users", { page, role: roleFilter, search }],
+    queryKey: ["users", { page, role: roleFilter, search, institutionId: selectedInstitution?.id }],
     queryFn: () =>
       api.listUsers({
         page,
         limit: 15,
         role: roleFilter || undefined,
         search: search || undefined,
+        institutionId: selectedInstitution?.id,
       }),
+  });
+
+  const courses = useQuery({
+    queryKey: ["courses", { institutionId: selectedInstitution?.id, activeOnly: true }],
+    queryFn: () => api.listCourses({ institutionId: selectedInstitution?.id }),
+    enabled: form.role === "STUDENT",
   });
 
   const createMutation = useMutation({
     mutationFn: api.createUser,
     onSuccess: () => {
       toast("Usuario creado correctamente (clave temporal asignada).", "success");
-      setForm({ firstName: "", lastName: "", email: "", temporaryPassword: "", role: "TEACHER" });
+      setForm({ firstName: "", lastName: "", email: "", temporaryPassword: "", role: "TEACHER", courseId: "" });
       setEditingId(null);
       queryClient.invalidateQueries({ queryKey: ["users"] });
     },
@@ -65,7 +84,7 @@ export function UsersView() {
     onSuccess: () => {
       toast("Usuario actualizado correctamente.", "success");
       setEditingId(null);
-      setForm({ firstName: "", lastName: "", email: "", temporaryPassword: "", role: "TEACHER" });
+      setForm({ firstName: "", lastName: "", email: "", temporaryPassword: "", role: "TEACHER", courseId: "" });
       queryClient.invalidateQueries({ queryKey: ["users"] });
     },
     onError: (err) =>
@@ -90,12 +109,13 @@ export function UsersView() {
       email: user.email,
       temporaryPassword: "",
       role: user.role,
+      courseId: user.courseId ?? "",
     });
   }
 
   function cancelEdit() {
     setEditingId(null);
-    setForm({ firstName: "", lastName: "", email: "", temporaryPassword: "", role: "TEACHER" });
+    setForm({ firstName: "", lastName: "", email: "", temporaryPassword: "", role: "TEACHER", courseId: "" });
   }
 
   function handleSave() {
@@ -103,8 +123,16 @@ export function UsersView() {
       toast("Nombre, apellido y correo son obligatorios.", "warning");
       return;
     }
+    if (form.role === "ADMIN") {
+      toast("El rol ADMIN esta deshabilitado. Usa SUPER_ADMIN o un rol institucional.", "warning");
+      return;
+    }
     if (!editingId && !form.temporaryPassword) {
       toast("La clave temporal es obligatoria para nuevos usuarios.", "warning");
+      return;
+    }
+    if (form.role === "STUDENT" && !form.courseId) {
+      toast("Selecciona el curso que cursara el estudiante.", "warning");
       return;
     }
 
@@ -115,6 +143,7 @@ export function UsersView() {
         email: form.email.trim(),
         role: form.role,
       };
+      if (form.role === "STUDENT") data.courseId = form.courseId;
       if (form.temporaryPassword) data.temporaryPassword = form.temporaryPassword;
       updateMutation.mutate({ id: editingId, data });
     } else {
@@ -124,12 +153,17 @@ export function UsersView() {
         email: form.email.trim(),
         temporaryPassword: form.temporaryPassword,
         role: form.role,
+        institutionId: selectedInstitution?.id,
+        courseId: form.role === "STUDENT" ? form.courseId : undefined,
       });
     }
   }
 
   const apiList = users.data?.data || [];
+  const courseList = courses.data || [];
   const meta = users.data?.meta;
+  const isEditingStudent = editingId !== null && form.role === "STUDENT";
+  const requiresCourse = form.role === "STUDENT";
 
   const isPending = createMutation.isPending || updateMutation.isPending;
 
@@ -166,15 +200,43 @@ export function UsersView() {
             <label>Rol *</label>
             <select
               value={form.role}
-              onChange={(e) => setForm((s) => ({ ...s, role: e.target.value as UserRole }))}
+              onChange={(e) => setForm((s) => ({ ...s, role: e.target.value as UserRole, courseId: "" }))}
+              disabled={isEditingStudent}
             >
-              {ROLES.map((r) => (
-                <option key={r.value} value={r.value}>
-                  {r.label}
+              {isEditingStudent ? (
+                <option value="STUDENT">Estudiante</option>
+              ) : form.role === "ADMIN" ? (
+                <option value="ADMIN" disabled>
+                  Administrador (sin uso)
                 </option>
-              ))}
+              ) : (
+                availableRoles.map((r) => (
+                  <option key={r.value} value={r.value}>
+                    {r.label}
+                  </option>
+                ))
+              )}
             </select>
           </div>
+          {requiresCourse ? (
+            <div className="form-field">
+              <label>Curso a cursar *</label>
+              <select
+                value={form.courseId}
+                onChange={(e) => setForm((s) => ({ ...s, courseId: e.target.value }))}
+                disabled={courses.isLoading}
+              >
+                <option value="">{courses.isLoading ? "Cargando cursos..." : "Selecciona un curso"}</option>
+                {courseList.map((course) => (
+                  <option key={course.course_id} value={course.course_id}>
+                    {course.course_name}
+                  </option>
+                ))}
+              </select>
+              {editingId ? <span style={{ color: "var(--muted)", fontSize: ".78rem" }}>Cambia el curso para trasladar al estudiante.</span> : null}
+              {courses.isError ? <span className="error">Error al cargar cursos.</span> : null}
+            </div>
+          ) : null}
           <div className="form-field">
             <label>{editingId ? "Nueva clave (opcional)" : "Clave temporal *"}</label>
             <input
@@ -193,7 +255,8 @@ export function UsersView() {
               !form.firstName.trim() ||
               !form.lastName.trim() ||
               !form.email.trim() ||
-              (!editingId && !form.temporaryPassword)
+              (!editingId && !form.temporaryPassword) ||
+              (requiresCourse && !form.courseId)
             }
           >
             {isPending ? "Guardando..." : editingId ? "Actualizar Usuario" : "Crear Usuario"}
@@ -225,7 +288,7 @@ export function UsersView() {
             }}
           >
             <option value="">Todos los roles</option>
-            {ROLES.map((r) => (
+            {availableRoles.map((r) => (
               <option key={r.value} value={r.value}>
                 {r.label}
               </option>
@@ -244,7 +307,7 @@ export function UsersView() {
             <div className="table-wrap">
               <table className="table">
                 <thead>
-                  <tr><th>Nombre</th><th>Email</th><th>Rol</th><th>Activo</th><th>Ultimo acceso</th><th>Acciones</th></tr>
+                  <tr><th>Nombre</th><th>Email</th><th>Rol</th><th>Curso</th><th>Activo</th><th>Ultimo acceso</th><th>Acciones</th></tr>
                 </thead>
                 <tbody>
                   {apiList.map((u) => (
@@ -252,6 +315,7 @@ export function UsersView() {
                       <td><strong>{u.firstName} {u.lastName}</strong></td>
                       <td>{u.email}</td>
                       <td><span className={`badge badge--role-${u.role.toLowerCase()}`}>{u.role === "STUDENT" ? "Estudiante" : u.role === "TEACHER" ? "Docente" : ROLE_LABELS[u.role] || u.role}</span></td>
+                      <td>{u.role === "STUDENT" ? (u.courseName || "Sin curso") : "-"}</td>
                       <td><span className={`badge ${u.isActive ? "badge--active" : "badge--inactive"}`}>{u.isActive ? "Si" : "No"}</span></td>
                       <td>
                         {u.lastLoginAt

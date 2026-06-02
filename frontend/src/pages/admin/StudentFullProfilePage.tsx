@@ -21,6 +21,10 @@ function colorNota(n: number | null): string {
   return "var(--ink)";
 }
 
+function fullName(first?: unknown, last?: unknown) {
+  return `${String(first || "")} ${String(last || "")}`.trim();
+}
+
 export function StudentFullProfilePage() {
   const { id } = useParams<{ id: string }>();
   const navigate = useNavigate();
@@ -94,6 +98,9 @@ export function StudentFullProfilePage() {
   const attendanceLabels: Record<string, string> = {
     PRESENT: "Presente", ABSENT: "Ausente", LATE: "Atraso", JUSTIFIED: "Justificado", EXCUSED: "Excusado",
   };
+  const sortedAttendance = [...attendanceList].sort((a, b) => new Date(a.date).getTime() - new Date(b.date).getTime());
+  const attendanceDays = sortedAttendance.slice(-12);
+  const periodLabels = Array.from({ length: 13 }, (_, i) => `P${i + 1}`);
 
   return (
     <div className="student-profile-page">
@@ -206,14 +213,51 @@ export function StudentFullProfilePage() {
                 <p style={{ color: "var(--muted)" }}>Selecciona un ano academico para ver el resumen.</p>
               )}
 
-              <h4 style={{ marginTop: 20 }}>Datos del Alumno</h4>
-              <div className="gb-modal-meta" style={{ borderBottom: "none", paddingBottom: 0 }}>
-                <div className="gb-modal-meta__item"><span>Nombre</span><strong>{s.firstName as string} {s.lastName as string}</strong></div>
-                <div className="gb-modal-meta__item"><span>RUT</span><strong>{(s.rut as string) || "\u2014"}</strong></div>
-                <div className="gb-modal-meta__item"><span>Genero</span><strong>{(s.gender as string) || "\u2014"}</strong></div>
-                <div className="gb-modal-meta__item"><span>Nacimiento</span><strong>{s.birthDate ? new Date(s.birthDate as string).toLocaleDateString("es-CL") : "\u2014"}</strong></div>
-                <div className="gb-modal-meta__item"><span>Curso Actual</span><strong>{activeCourse?.name || "\u2014"}</strong></div>
-                <div className="gb-modal-meta__item"><span>Email</span><strong>{(s.user as { email?: string })?.email || "\u2014"}</strong></div>
+              <div className="student-file">
+                <div className="student-file__page">
+                  <div className="student-file__school">
+                    <div className="student-file__avatar">
+                      {(s.firstName as string)?.charAt(0)}{(s.lastName as string)?.charAt(0)}
+                    </div>
+                    <div>
+                      <strong>Colegio Cordillera</strong>
+                      <span>{selectedInstitution?.name || "Ficha institucional"}</span>
+                    </div>
+                  </div>
+
+                  <section className="student-file__box">
+                    <h4>Ficha estudiante</h4>
+                    <div className="student-file__grid">
+                      <span>RUN:</span><strong>{(s.rut as string) || "\u2014"}</strong>
+                      <span>Apellido paterno:</span><strong>{(s.lastName as string)?.split(" ")[0] || "\u2014"}</strong>
+                      <span>Apellido materno:</span><strong>{(s.lastName as string)?.split(" ").slice(1).join(" ") || "\u2014"}</strong>
+                      <span>Nombres:</span><strong>{s.firstName as string}</strong>
+                      <span>Fecha nacimiento:</span><strong>{s.birthDate ? new Date(s.birthDate as string).toLocaleDateString("es-CL") : "\u2014"}</strong>
+                      <span>Genero:</span><strong>{(s.gender as string) || "\u2014"}</strong>
+                      <span>Curso actual:</span><strong>{activeCourse?.name || "\u2014"}</strong>
+                      <span>Correo electrónico:</span><strong>{(s.user as { email?: string })?.email || "\u2014"}</strong>
+                    </div>
+                  </section>
+
+                  <section className="student-file__box">
+                    <h4>Antecedentes escolares</h4>
+                    <div className="student-file__grid">
+                      <span>N° matrícula:</span><strong>{String(s.id || "").slice(0, 8) || "\u2014"}</strong>
+                      <span>Fecha matrícula:</span><strong>{s.createdAt ? new Date(s.createdAt as string).toLocaleDateString("es-CL") : "\u2014"}</strong>
+                      <span>Curso:</span><strong>{activeCourse?.name || "\u2014"}</strong>
+                      <span>Promedio general:</span><strong style={{ color: colorNota(avgGeneral) }}>{formatearNota(avgGeneral)}</strong>
+                      <span>Asistencia:</span><strong>{stats?.attendanceRate ?? "\u2014"}%</strong>
+                    </div>
+                  </section>
+                </div>
+
+                <nav className="student-file__tabs" aria-label="Documentos del estudiante">
+                  <button className="student-file__tab student-file__tab--pink">Identificación</button>
+                  <button className="student-file__tab student-file__tab--green">Ant. familiares</button>
+                  <button className="student-file__tab student-file__tab--red">Hoja de vida</button>
+                  <button className="student-file__tab student-file__tab--yellow">Cert. accidentes</button>
+                  <button className="student-file__tab student-file__tab--blue">PIE</button>
+                </nav>
               </div>
             </div>
           )}
@@ -264,6 +308,66 @@ export function StudentFullProfilePage() {
               )}
 
               <h4>Registro de Asistencia ({attendanceList.length})</h4>
+              {attendanceDays.length > 0 && (
+                <div className="attendance-book">
+                  <div className="attendance-book__sheet attendance-book__sheet--days">
+                    <table>
+                      <thead>
+                        <tr>
+                          <th>N°</th>
+                          <th>Estudiante</th>
+                          {attendanceDays.map((item, index) => (
+                            <th key={item.id}>
+                              {new Intl.DateTimeFormat("es-CL", { weekday: "short" }).format(new Date(item.date)).slice(0, 1).toUpperCase()}
+                              <small>{index + 1}</small>
+                            </th>
+                          ))}
+                        </tr>
+                      </thead>
+                      <tbody>
+                        <tr>
+                          <td>1</td>
+                          <td>{fullName(s.firstName, s.lastName)}</td>
+                          {attendanceDays.map((item) => (
+                            <td key={item.id}>
+                              <span className={`attendance-dot attendance-dot--${item.status.toLowerCase()}`} />
+                            </td>
+                          ))}
+                        </tr>
+                      </tbody>
+                    </table>
+                  </div>
+
+                  <div className="attendance-book__sheet attendance-book__sheet--periods">
+                    <table>
+                      <thead>
+                        <tr>
+                          <th>N°</th>
+                          <th>Estudiante</th>
+                          {periodLabels.map((period) => <th key={period}>{period}</th>)}
+                        </tr>
+                      </thead>
+                      <tbody>
+                        <tr>
+                          <td>1</td>
+                          <td>{fullName(s.firstName, s.lastName)}</td>
+                          {periodLabels.map((period, index) => {
+                            const source = attendanceDays[index % attendanceDays.length];
+                            const absent = source?.status === "ABSENT";
+                            return (
+                              <td key={period}>
+                                <span className={`attendance-pill ${absent ? "attendance-pill--absent" : ""}`}>
+                                  {absent ? "A" : "P"}
+                                </span>
+                              </td>
+                            );
+                          })}
+                        </tr>
+                      </tbody>
+                    </table>
+                  </div>
+                </div>
+              )}
               {attendanceList.length > 0 ? (
                 <div className="table-wrap" style={{ marginTop: 12 }}>
                   <table className="table">

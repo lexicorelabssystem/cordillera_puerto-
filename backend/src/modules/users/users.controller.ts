@@ -29,16 +29,16 @@ export class UsersController {
   constructor(private readonly usersService: UsersService) {}
 
   @Post()
-  @Roles("ADMIN", "SUPER_ADMIN")
+  @Roles("ADMIN", "SUPER_ADMIN", "UTP")
   @ApiOperation({ summary: "Crear usuario" })
   @ApiResponse({ status: 201, description: "Usuario creado", type: UserResponseDto })
   @ApiResponse({ status: 409, description: "Email ya registrado" })
-  async create(@Body() dto: CreateUserDto) {
-    return this.usersService.create(dto);
+  async create(@Body() dto: CreateUserDto, @CurrentUser() user: JwtPayload) {
+    return this.usersService.create(dto, user);
   }
 
   @Get()
-  @Roles("ADMIN", "SUPER_ADMIN", "DIRECTION")
+  @Roles("ADMIN", "SUPER_ADMIN", "DIRECTION", "UTP")
   @ApiOperation({ summary: "Listar usuarios" })
   @ApiQuery({ name: "page", required: false, type: Number })
   @ApiQuery({ name: "limit", required: false, type: Number })
@@ -47,8 +47,10 @@ export class UsersController {
     @Query("page") page?: number,
     @Query("limit") limit?: number,
     @Query("role") role?: UserRole,
+    @Query("institutionId") institutionId?: string,
+    @CurrentUser() user?: JwtPayload,
   ) {
-    return this.usersService.findAll(page ?? 1, limit ?? 20, role);
+    return this.usersService.findAll(page ?? 1, limit ?? 20, role, institutionId, user);
   }
 
   @Get("me")
@@ -58,24 +60,24 @@ export class UsersController {
   }
 
   @Get(":id")
-  @Roles("ADMIN", "SUPER_ADMIN", "DIRECTION")
+  @Roles("ADMIN", "SUPER_ADMIN", "DIRECTION", "UTP")
   @ApiOperation({ summary: "Obtener usuario por ID" })
-  async findOne(@Param("id", ParseUUIDPipe) id: string) {
-    return this.usersService.findById(id);
+  async findOne(@Param("id", ParseUUIDPipe) id: string, @CurrentUser() user: JwtPayload) {
+    return this.usersService.findById(id, user);
   }
 
   @Patch(":id")
-  @Roles("ADMIN", "SUPER_ADMIN")
+  @Roles("ADMIN", "SUPER_ADMIN", "UTP")
   @ApiOperation({ summary: "Actualizar usuario" })
-  async update(@Param("id", ParseUUIDPipe) id: string, @Body() dto: UpdateUserDto) {
-    return this.usersService.update(id, dto);
+  async update(@Param("id", ParseUUIDPipe) id: string, @Body() dto: UpdateUserDto, @CurrentUser() user: JwtPayload) {
+    return this.usersService.update(id, dto, user);
   }
 
   @Delete(":id")
   @HttpCode(HttpStatus.NO_CONTENT)
-  @Roles("ADMIN", "SUPER_ADMIN")
+  @Roles("ADMIN", "SUPER_ADMIN", "UTP")
   @ApiOperation({ summary: "Eliminar usuario (soft delete)" })
-  async remove(@Param("id", ParseUUIDPipe) id: string) {
-    await this.usersService.softDelete(id);
+  async remove(@Param("id", ParseUUIDPipe) id: string, @CurrentUser() user: JwtPayload) {
+    await this.usersService.softDelete(id, user);
   }
 }

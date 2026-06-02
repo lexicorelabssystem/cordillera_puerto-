@@ -19,7 +19,12 @@ async function bootstrap() {
     new FastifyAdapter({ logger: false }),
   );
 
-  await app.register(multipart as never);
+  await app.register(multipart as never, {
+    limits: {
+      files: 1,
+      fileSize: 50 * 1024 * 1024,
+    },
+  } as never);
   await app.register(cookie as never, {
     secret: process.env.COOKIE_SECRET || process.env.JWT_SECRET || "",
     parseOptions: {},

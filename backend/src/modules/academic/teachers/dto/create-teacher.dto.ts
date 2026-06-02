@@ -1,6 +1,6 @@
 import { ApiProperty, ApiPropertyOptional } from "@nestjs/swagger";
 import {
-  IsString, IsUUID, IsOptional, IsEmail, MinLength,
+  IsString, IsUUID, IsOptional, IsEmail, MinLength, IsBoolean,
 } from "class-validator";
 
 export class CreateTeacherDto {
@@ -61,6 +61,11 @@ export class UpdateTeacherDto {
   @IsOptional()
   @IsString()
   title?: string;
+
+  @ApiPropertyOptional({ description: "Activa o retira el acceso del profesor" })
+  @IsOptional()
+  @IsBoolean()
+  isActive?: boolean;
 }
 
 export class AssignTeacherDto {

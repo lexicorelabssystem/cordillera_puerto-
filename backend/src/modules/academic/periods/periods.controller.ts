@@ -18,7 +18,7 @@ export class PeriodsController {
   constructor(private readonly service: PeriodsService) {}
 
   @Post()
-  @Roles("ADMIN", "SUPER_ADMIN")
+  @Roles("ADMIN", "SUPER_ADMIN", "DIRECTION", "UTP")
   @ApiOperation({ summary: "Crear periodo académico" })
   create(@Body() dto: CreatePeriodDto) {
     return this.service.create(dto);
@@ -39,7 +39,7 @@ export class PeriodsController {
   }
 
   @Patch(":id")
-  @Roles("ADMIN", "SUPER_ADMIN")
+  @Roles("ADMIN", "SUPER_ADMIN", "DIRECTION", "UTP")
   @ApiOperation({ summary: "Actualizar periodo" })
   update(@Param("id", ParseUUIDPipe) id: string, @Body() dto: UpdatePeriodDto) {
     return this.service.update(id, dto);
@@ -47,7 +47,7 @@ export class PeriodsController {
 
   @Post(":id/close")
   @HttpCode(HttpStatus.OK)
-  @Roles("ADMIN", "SUPER_ADMIN")
+  @Roles("ADMIN", "SUPER_ADMIN", "DIRECTION", "UTP")
   @ApiOperation({ summary: "Cerrar periodo con validaciones" })
   @ApiResponse({ status: 400, description: "No se cumplen condiciones de cierre" })
   close(@Param("id", ParseUUIDPipe) id: string, @CurrentUser() user: JwtPayload) {
@@ -56,7 +56,7 @@ export class PeriodsController {
 
   @Post(":id/reopen")
   @HttpCode(HttpStatus.OK)
-  @Roles("ADMIN", "SUPER_ADMIN")
+  @Roles("ADMIN", "SUPER_ADMIN", "DIRECTION", "UTP")
   @ApiOperation({ summary: "Reabrir periodo cerrado" })
   reopen(@Param("id", ParseUUIDPipe) id: string, @CurrentUser() user: JwtPayload) {
     return this.service.reopen(id, user.sub);

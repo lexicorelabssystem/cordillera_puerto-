@@ -2,6 +2,7 @@ import { Injectable, NotFoundException, BadRequestException } from "@nestjs/comm
 import { PrismaService } from "../../prisma/prisma.service.js";
 import type { CreateResourceDto, UpdateResourceDto, ResourceFilterDto } from "./dto/create-resource.dto.js";
 import { ResourceType, GuideType } from "@prisma/client";
+import { assertCourseScope, assertInstitutionScope, resolveUserScope } from "../../../common/authz/access-scope.js";
 
 @Injectable()
 export class LearningResourcesService {
@@ -55,7 +56,7 @@ export class LearningResourcesService {
   }
 
   async findAll(filters: ResourceFilterDto, page = 1, limit = 20) {
-    const where: Record<string, unknown> = {};
+    const where: Record<string, unknown> = { status: { not: "ARCHIVED" } };
     if (filters.institutionId) where.institutionId = filters.institutionId;
     if (filters.type) where.type = filters.type;
     if (filters.subjectId) where.subjectId = filters.subjectId;
@@ -164,8 +165,22 @@ export class LearningResourcesService {
     });
   }
 
-  async archive(id: string) {
-    await this.findById(id);
+  async archive(id: string, userId?: string) {
+    const resource = await this.prisma.learningResource.findUnique({
+      where: { id },
+      select: { id: true, institutionId: true, courseId: true, subjectId: true, createdBy: true },
+    });
+    if (!resource) throw new NotFoundException("Recurso no encontrado");
+    if (userId) {
+      const scope = await resolveUserScope(this.prisma, userId);
+      if (!scope.isSuperAdmin && !scope.isGlobalAdmin && resource.createdBy !== scope.userId) {
+        if (resource.courseId) {
+          await assertCourseScope(this.prisma, userId, resource.courseId, resource.subjectId ?? undefined);
+        } else {
+          await assertInstitutionScope(this.prisma, userId, resource.institutionId);
+        }
+      }
+    }
     return this.prisma.learningResource.update({
       where: { id },
       data: { status: "ARCHIVED" },

@@ -18,18 +18,25 @@ export class TeachersController {
   constructor(private readonly service: TeachersService) {}
 
   @Post()
-  @Roles("ADMIN", "SUPER_ADMIN")
+  @Roles("ADMIN", "SUPER_ADMIN", "DIRECTION", "UTP")
   @ApiOperation({ summary: "Crear profesor (crea User + Teacher)" })
-  create(@Body() dto: CreateTeacherDto) {
-    return this.service.create(dto);
+  create(@Body() dto: CreateTeacherDto, @CurrentUser() user: JwtPayload) {
+    return this.service.create(dto, user);
   }
 
   @Get()
   @Roles("ADMIN", "SUPER_ADMIN", "DIRECTION", "UTP")
   @ApiOperation({ summary: "Listar profesores con búsqueda" })
   @ApiQuery({ name: "search", required: false })
-  findAll(@Query("search") search?: string) {
-    return this.service.findAll(search);
+  @ApiQuery({ name: "institutionId", required: false })
+  @ApiQuery({ name: "includeInactive", required: false, type: Boolean })
+  findAll(
+    @CurrentUser() user: JwtPayload,
+    @Query("search") search?: string,
+    @Query("institutionId") institutionId?: string,
+    @Query("includeInactive") includeInactive?: string,
+  ) {
+    return this.service.findAll(search, user, { institutionId, includeInactive: includeInactive === "true" });
   }
 
   @Get("my/assignments")
@@ -42,36 +49,47 @@ export class TeachersController {
   @Get(":id")
   @Roles("ADMIN", "SUPER_ADMIN", "DIRECTION", "UTP", "TEACHER")
   @ApiOperation({ summary: "Obtener profesor por ID (incluye asignaciones)" })
-  findOne(@Param("id", ParseUUIDPipe) id: string) {
-    return this.service.findById(id);
+  findOne(@Param("id", ParseUUIDPipe) id: string, @CurrentUser() user: JwtPayload) {
+    return this.service.findById(id, user);
   }
 
   @Patch(":id")
-  @Roles("ADMIN", "SUPER_ADMIN")
+  @Roles("ADMIN", "SUPER_ADMIN", "DIRECTION", "UTP")
   @ApiOperation({ summary: "Actualizar profesor" })
-  update(@Param("id", ParseUUIDPipe) id: string, @Body() dto: UpdateTeacherDto) {
-    return this.service.update(id, dto);
+  update(@Param("id", ParseUUIDPipe) id: string, @Body() dto: UpdateTeacherDto, @CurrentUser() user: JwtPayload) {
+    return this.service.update(id, dto, user);
+  }
+
+  @Post(":id/retire")
+  @Roles("ADMIN", "SUPER_ADMIN", "DIRECTION", "UTP")
+  @ApiOperation({ summary: "Retirar profesor, opcionalmente quitando asignaciones activas" })
+  retire(
+    @Param("id", ParseUUIDPipe) id: string,
+    @Body("removeAssignments") removeAssignments: boolean | undefined,
+    @CurrentUser() user: JwtPayload,
+  ) {
+    return this.service.retire(id, { removeAssignments: removeAssignments === true }, user);
   }
 
   @Get(":id/assignments")
   @Roles("ADMIN", "SUPER_ADMIN", "DIRECTION", "UTP", "TEACHER")
   @ApiOperation({ summary: "Listar asignaciones curso/asignatura del profesor" })
-  getAssignments(@Param("id", ParseUUIDPipe) id: string) {
-    return this.service.getAssignments(id);
+  getAssignments(@Param("id", ParseUUIDPipe) id: string, @CurrentUser() user: JwtPayload) {
+    return this.service.getAssignments(id, user);
   }
 
   @Post("assignments")
-  @Roles("ADMIN", "SUPER_ADMIN")
+  @Roles("ADMIN", "SUPER_ADMIN", "DIRECTION", "UTP")
   @ApiOperation({ summary: "Asignar profesor a curso y asignatura" })
-  assignToCourse(@Body() dto: AssignTeacherDto) {
-    return this.service.assignToCourse(dto);
+  assignToCourse(@Body() dto: AssignTeacherDto, @CurrentUser() user: JwtPayload) {
+    return this.service.assignToCourse(dto, user);
   }
 
   @Delete("assignments/:assignmentId")
   @HttpCode(HttpStatus.NO_CONTENT)
-  @Roles("ADMIN", "SUPER_ADMIN")
+  @Roles("ADMIN", "SUPER_ADMIN", "DIRECTION", "UTP")
   @ApiOperation({ summary: "Eliminar asignación profesor-curso-asignatura" })
-  removeAssignment(@Param("assignmentId", ParseUUIDPipe) assignmentId: string) {
-    return this.service.removeAssignment(assignmentId);
+  removeAssignment(@Param("assignmentId", ParseUUIDPipe) assignmentId: string, @CurrentUser() user: JwtPayload) {
+    return this.service.removeAssignment(assignmentId, user);
   }
 }

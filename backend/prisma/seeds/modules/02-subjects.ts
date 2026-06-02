@@ -24,7 +24,7 @@ export async function seed(prisma: PrismaClient): Promise<SubjectSeedResult> {
   }
   console.log(`  [✓] Subjects: ${subjectsData.length}`);
 
-  for (let grade = 1; grade <= 8; grade++) {
+  for (let grade = 1; grade <= 12; grade++) {
     await prisma.curriculumRule.upsert({
       where: { subjectId_gradeLevel: { subjectId: subjects["Lenguaje"]!, gradeLevel: grade } },
       update: {},
@@ -36,7 +36,7 @@ export async function seed(prisma: PrismaClient): Promise<SubjectSeedResult> {
       create: { subjectId: subjects["Matemática"]!, gradeLevel: grade },
     });
   }
-  for (let grade = 1; grade <= 8; grade++) {
+  for (let grade = 1; grade <= 12; grade++) {
     await prisma.curriculumRule.upsert({
       where: { subjectId_gradeLevel: { subjectId: subjects["Ciencias"]!, gradeLevel: grade } },
       update: {},
@@ -48,7 +48,7 @@ export async function seed(prisma: PrismaClient): Promise<SubjectSeedResult> {
       create: { subjectId: subjects["Historia y Geografía"]!, gradeLevel: grade },
     });
   }
-  console.log("  [✓] Curriculum Rules: 32 rules");
+  console.log("  [✓] Curriculum Rules: 48 rules");
 
   return { subjects };
 }

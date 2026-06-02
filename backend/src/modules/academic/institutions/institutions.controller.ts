@@ -17,7 +17,7 @@ export class InstitutionsController {
   constructor(private readonly service: InstitutionsService) {}
 
   @Post()
-  @Roles("ADMIN", "SUPER_ADMIN")
+  @Roles("ADMIN", "SUPER_ADMIN", "DIRECTION", "UTP")
   @ApiOperation({ summary: "Crear institución" })
   @ApiResponse({ status: 201, description: "Institución creada" })
   @ApiResponse({ status: 409, description: "RBD duplicado" })
@@ -41,7 +41,7 @@ export class InstitutionsController {
   }
 
   @Patch(":id")
-  @Roles("ADMIN", "SUPER_ADMIN")
+  @Roles("ADMIN", "SUPER_ADMIN", "DIRECTION", "UTP")
   @ApiOperation({ summary: "Actualizar institución" })
   update(@Param("id", ParseUUIDPipe) id: string, @Body() dto: UpdateInstitutionDto) {
     return this.service.update(id, dto);
@@ -63,7 +63,7 @@ export class InstitutionsController {
   }
 
   @Patch(":id/config")
-  @Roles("ADMIN", "SUPER_ADMIN")
+  @Roles("ADMIN", "SUPER_ADMIN", "DIRECTION", "UTP")
   @ApiOperation({ summary: "Actualizar configuración de institución" })
   updateConfig(@Param("id", ParseUUIDPipe) id: string, @Body() dto: UpdateInstitutionConfigDto) {
     return this.service.upsertConfig(id, dto);

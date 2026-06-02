@@ -17,6 +17,7 @@ import { AdminModule } from "./modules/admin/admin.module.js";
 import { FeatureFlagsModule } from "./modules/features/feature-flags.module.js";
 import { NotificationsModule } from "./modules/notifications/notifications.module.js";
 import { CacheModule } from "./modules/cache/cache.module.js";
+import { SimceModule } from "./modules/simce/simce.module.js";
 import { HealthController } from "./health.controller.js";
 
 @Module({
@@ -25,17 +26,7 @@ import { HealthController } from "./health.controller.js";
       {
         name: "default",
         ttl: 60_000,
-        limit: 60,
-      },
-      {
-        name: "auth",
-        ttl: 60_000,
-        limit: 10,
-      },
-      {
-        name: "write",
-        ttl: 60_000,
-        limit: 30,
+        limit: 300,
       },
     ]),
     ConfigModule,
@@ -54,6 +45,7 @@ import { HealthController } from "./health.controller.js";
     FeatureFlagsModule,
     NotificationsModule,
     CacheModule,
+    SimceModule,
   ],
   controllers: [HealthController],
   providers: [

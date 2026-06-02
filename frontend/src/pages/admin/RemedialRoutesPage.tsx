@@ -54,9 +54,9 @@ export function RemedialRoutesPage() {
               {plans.map((p) => (
                 <tr key={p.id}>
                   <td><strong>{p.student?.firstName} {p.student?.lastName}</strong></td>
-                  <td>{p.learningObjective?.subject?.name || "—"}</td>
+                  <td>{p.learningObjective?.subject?.name || "-"}</td>
                   <td><span className="badge badge--role">{p.learningObjective?.code}</span> <small>{p.learningObjective?.description?.slice(0, 40)}...</small></td>
-                  <td style={{ fontWeight: 600, color: (p.preScore ?? 0) < 4.0 ? "var(--danger)" : "var(--ink)" }}>{p.preScore?.toFixed(1).replace(".", ",") || "—"}</td>
+                  <td style={{ fontWeight: 600, color: (p.preScore ?? 0) < 4.0 ? "var(--danger)" : "var(--ink)" }}>{p.preScore?.toFixed(1).replace(".", ",") || "-"}</td>
                   <td><span className={`badge ${p.status === "ACTIVE" || p.status === "IN_PROGRESS" ? "badge--active" : p.status === "COMPLETED" || p.status === "EFFECTIVE" ? "badge--active" : "badge--warning"}`}>
                     {p.status === "PENDING" ? "Pendiente" : p.status === "IN_PROGRESS" ? "En progreso" : p.status === "COMPLETED" ? "Completado" : p.status === "EFFECTIVE" ? "Efectivo" : p.status}
                   </span></td>
@@ -71,3 +71,4 @@ export function RemedialRoutesPage() {
     </>
   );
 }
+

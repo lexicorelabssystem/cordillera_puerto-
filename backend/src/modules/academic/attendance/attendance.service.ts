@@ -1,18 +1,26 @@
 import { Injectable, NotFoundException, ConflictException } from "@nestjs/common";
 import { PrismaService } from "../../prisma/prisma.service.js";
 import type { CreateAttendanceDto, BulkAttendanceDto, UpdateAttendanceDto } from "./dto/attendance.dto.js";
+import type { JwtPayload } from "../../../common/decorators/current-user.decorator.js";
+import {
+  assertCourseScope,
+  assertStudentScope,
+  resolveUserScope,
+} from "../../../common/authz/access-scope.js";
 
 @Injectable()
 export class AttendanceService {
   constructor(private readonly prisma: PrismaService) {}
 
-  async create(dto: CreateAttendanceDto, recordedBy: string) {
+  async create(dto: CreateAttendanceDto, user: JwtPayload) {
     const [student, course] = await Promise.all([
       this.prisma.student.findUnique({ where: { id: dto.studentId } }),
       this.prisma.course.findUnique({ where: { id: dto.courseId } }),
     ]);
     if (!student) throw new NotFoundException("Estudiante no encontrado");
     if (!course) throw new NotFoundException("Curso no encontrado");
+    await assertCourseScope(this.prisma, user, dto.courseId);
+    await assertStudentScope(this.prisma, user, dto.studentId);
 
     const existing = await this.prisma.attendance.findUnique({
       where: {
@@ -26,7 +34,7 @@ export class AttendanceService {
     if (existing) {
       return this.prisma.attendance.update({
         where: { id: existing.id },
-        data: { status: dto.status ?? "PRESENT", recordedBy },
+        data: { status: dto.status ?? "PRESENT", recordedBy: user.sub },
       });
     }
 
@@ -36,15 +44,19 @@ export class AttendanceService {
         courseId: dto.courseId,
         date: new Date(dto.date),
         status: dto.status ?? "PRESENT",
-        recordedBy,
+        recordedBy: user.sub,
       },
       include: { student: { select: { id: true, firstName: true, lastName: true } } },
     });
   }
 
-  async createBulk(dto: BulkAttendanceDto, recordedBy: string) {
+  async createBulk(dto: BulkAttendanceDto, user: JwtPayload) {
     const course = await this.prisma.course.findUnique({ where: { id: dto.courseId } });
     if (!course) throw new NotFoundException("Curso no encontrado");
+    await assertCourseScope(this.prisma, user, dto.courseId);
+    for (const item of dto.items) {
+      await assertStudentScope(this.prisma, user, item.studentId);
+    }
 
     const date = new Date(dto.date);
     const results = await Promise.allSettled(
@@ -57,13 +69,13 @@ export class AttendanceService {
               date,
             },
           },
-          update: { status: item.status, recordedBy },
+          update: { status: item.status, recordedBy: user.sub },
           create: {
             studentId: item.studentId,
             courseId: dto.courseId,
             date,
             status: item.status,
-            recordedBy,
+            recordedBy: user.sub,
           },
         }),
       ),
@@ -74,11 +86,18 @@ export class AttendanceService {
     return { total: dto.items.length, succeeded, failed };
   }
 
-  async findAll(filters: { courseId?: string; date?: string; from?: string; to?: string }) {
+  async findAll(filters: { courseId?: string; date?: string; from?: string; to?: string }, user: JwtPayload) {
     const where: Record<string, unknown> = {};
+    const scope = await resolveUserScope(this.prisma, user);
 
     if (filters.courseId) {
+      await assertCourseScope(this.prisma, user, filters.courseId);
       where.courseId = filters.courseId;
+    } else if (scope.role === "TEACHER") {
+      where.courseId = { in: scope.assignments.map((a) => a.courseId) };
+    } else if (["ADMIN", "DIRECTION", "UTP"].includes(scope.role) && !scope.isGlobalAdmin) {
+      if (!scope.institutionId) where.courseId = "00000000-0000-0000-0000-000000000000";
+      else where.course = { institutionId: scope.institutionId };
     }
 
     if (filters.date) {
@@ -97,9 +116,11 @@ export class AttendanceService {
     });
   }
 
-  async findByStudent(studentId: string, courseId?: string) {
+  async findByStudent(studentId: string, courseId: string | undefined, user: JwtPayload) {
     const student = await this.prisma.student.findUnique({ where: { id: studentId } });
     if (!student) throw new NotFoundException("Estudiante no encontrado");
+    await assertStudentScope(this.prisma, user, studentId);
+    if (courseId) await assertCourseScope(this.prisma, user, courseId);
 
     const where: Record<string, unknown> = { studentId };
     if (courseId) where.courseId = courseId;
@@ -113,9 +134,10 @@ export class AttendanceService {
     });
   }
 
-  async getStudentStats(studentId: string) {
+  async getStudentStats(studentId: string, user: JwtPayload) {
     const student = await this.prisma.student.findUnique({ where: { id: studentId } });
     if (!student) throw new NotFoundException("Estudiante no encontrado");
+    await assertStudentScope(this.prisma, user, studentId);
 
     const [total, present, absent, late, justified, excused] = await Promise.all([
       this.prisma.attendance.count({ where: { studentId } }),
@@ -143,9 +165,10 @@ export class AttendanceService {
     };
   }
 
-  async update(id: string, dto: UpdateAttendanceDto) {
+  async update(id: string, dto: UpdateAttendanceDto, user: JwtPayload) {
     const attendance = await this.prisma.attendance.findUnique({ where: { id } });
     if (!attendance) throw new NotFoundException("Registro de asistencia no encontrado");
+    await assertCourseScope(this.prisma, user, attendance.courseId);
 
     return this.prisma.attendance.update({
       where: { id },

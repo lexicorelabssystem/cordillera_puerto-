@@ -5,27 +5,50 @@ export interface CurriculumSeedResult {
   skills: Record<string, string>;
 }
 
+export const axesData: { subjectName: string; name: string; description: string }[] = [
+  { subjectName: "Lenguaje", name: "Comprensión Lectora", description: "Extraer información explícita e implícita de textos literarios y no literarios" },
+  { subjectName: "Lenguaje", name: "Producción Escrita", description: "Planificar, escribir, revisar y publicar textos coherentes y cohesionados" },
+  { subjectName: "Lenguaje", name: "Comunicación Oral", description: "Expresarse y comprender discursos orales en distintos contextos" },
+  { subjectName: "Lenguaje", name: "Lectura Literaria", description: "Interpretar narraciones, poesía, drama y obras literarias de complejidad creciente" },
+  { subjectName: "Lenguaje", name: "Lectura No Literaria", description: "Comprender textos informativos, argumentativos, funcionales y multimodales" },
+  { subjectName: "Lenguaje", name: "Investigación y Alfabetización Informacional", description: "Buscar, evaluar, organizar y comunicar información de diversas fuentes" },
+  { subjectName: "Lenguaje", name: "Medios de Comunicación", description: "Analizar mensajes, propósitos y recursos de medios impresos, digitales y audiovisuales" },
+
+  { subjectName: "Matemática", name: "Números y Operaciones", description: "Comprender y aplicar números, operatoria y propiedades aritméticas" },
+  { subjectName: "Matemática", name: "Patrones y Álgebra", description: "Reconocer regularidades, generalizar relaciones y modelar con expresiones algebraicas" },
+  { subjectName: "Matemática", name: "Geometría", description: "Identificar, describir y analizar figuras, cuerpos, transformaciones y ubicación espacial" },
+  { subjectName: "Matemática", name: "Medición", description: "Medir magnitudes, estimar, convertir unidades y resolver problemas métricos" },
+  { subjectName: "Matemática", name: "Datos y Probabilidades", description: "Recolectar, representar, interpretar datos y analizar fenómenos aleatorios" },
+  { subjectName: "Matemática", name: "Funciones y Modelamiento", description: "Representar relaciones, funciones y modelos matemáticos en contextos diversos" },
+  { subjectName: "Matemática", name: "Resolución de Problemas", description: "Seleccionar estrategias, argumentar procedimientos y evaluar soluciones matemáticas" },
+
+  { subjectName: "Ciencias", name: "Ciencias de la Vida", description: "Seres vivos, células, sistemas, biodiversidad, ecosistemas y evolución" },
+  { subjectName: "Ciencias", name: "Ciencias Físicas y Químicas", description: "Materia, energía, fuerza, movimiento, transformaciones y reacciones químicas" },
+  { subjectName: "Ciencias", name: "Ciencias de la Tierra y el Universo", description: "Tierra, atmósfera, hidrósfera, geosfera, astronomía y fenómenos naturales" },
+  { subjectName: "Ciencias", name: "Cuerpo Humano y Salud", description: "Sistemas corporales, autocuidado, nutrición, sexualidad, salud y prevención" },
+  { subjectName: "Ciencias", name: "Ecología y Medio Ambiente", description: "Interacciones ecológicas, sustentabilidad, recursos naturales e impacto humano" },
+  { subjectName: "Ciencias", name: "Investigación Científica", description: "Observar, preguntar, experimentar, analizar evidencia y comunicar resultados" },
+  { subjectName: "Ciencias", name: "Tecnología y Sociedad", description: "Relación entre ciencia, tecnología, innovación, ciudadanía y vida cotidiana" },
+
+  { subjectName: "Historia y Geografía", name: "Historia", description: "Comprensión del tiempo histórico, procesos, continuidad y cambio" },
+  { subjectName: "Historia y Geografía", name: "Geografía", description: "Relación ser humano-medio ambiente, territorio, paisaje y localización" },
+  { subjectName: "Historia y Geografía", name: "Formación Ciudadana", description: "Democracia, derechos, deberes, participación y convivencia social" },
+  { subjectName: "Historia y Geografía", name: "Economía y Sociedad", description: "Recursos, trabajo, consumo, organización económica y vida social" },
+  { subjectName: "Historia y Geografía", name: "Patrimonio y Cultura", description: "Identidad, diversidad cultural, patrimonio local, nacional y mundial" },
+  { subjectName: "Historia y Geografía", name: "Pensamiento Histórico", description: "Fuentes, causalidad, evidencia, interpretación y argumentación histórica" },
+  { subjectName: "Historia y Geografía", name: "Territorio y Medio Ambiente", description: "Espacio geográfico, riesgos, sustentabilidad y organización del territorio" },
+];
+
 export async function seed(prisma: PrismaClient, subjects: Record<string, string>): Promise<CurriculumSeedResult> {
   console.log("\n─── CURRICULUM ─────────────────────────────");
-
-  const axesData: { subjectName: string; name: string; description: string }[] = [
-    { subjectName: "Lenguaje", name: "Comprensión Lectora", description: "Extraer información explícita e implícita de textos" },
-    { subjectName: "Lenguaje", name: "Producción Escrita", description: "Producir textos coherentes y cohesionados" },
-    { subjectName: "Lenguaje", name: "Comunicación Oral", description: "Expresarse y comprender discursos orales" },
-    { subjectName: "Matemática", name: "Números y Operaciones", description: "Comprender y aplicar operaciones aritméticas" },
-    { subjectName: "Matemática", name: "Geometría", description: "Identificar y analizar formas y figuras geométricas" },
-    { subjectName: "Matemática", name: "Medición y Datos", description: "Medir, recolectar y analizar datos" },
-    { subjectName: "Ciencias", name: "Ciencias de la Vida", description: "Seres vivos y ecosistemas" },
-    { subjectName: "Ciencias", name: "Ciencias Físicas y Químicas", description: "Materia, energía y sus transformaciones" },
-    { subjectName: "Historia y Geografía", name: "Historia", description: "Comprensión del tiempo histórico" },
-    { subjectName: "Historia y Geografía", name: "Geografía", description: "Relación ser humano-medio ambiente" },
-  ];
   const axes: Record<string, string> = {};
+  const axisOrderBySubject: Record<string, number> = {};
   for (const a of axesData) {
+    axisOrderBySubject[a.subjectName] = (axisOrderBySubject[a.subjectName] ?? 0) + 1;
     const axis = await prisma.axis.upsert({
       where: { subjectId_name: { subjectId: subjects[a.subjectName]!, name: a.name } },
-      update: {},
-      create: { subjectId: subjects[a.subjectName]!, name: a.name, description: a.description },
+      update: { description: a.description, sortOrder: axisOrderBySubject[a.subjectName] },
+      create: { subjectId: subjects[a.subjectName]!, name: a.name, description: a.description, sortOrder: axisOrderBySubject[a.subjectName] },
     });
     axes[`${a.subjectName}|${a.name}`] = axis.id;
   }

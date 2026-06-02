@@ -4,6 +4,7 @@ import { AuditLogsService } from "./audit-logs.service.js";
 import { JwtAuthGuard } from "../auth/jwt-auth.guard.js";
 import { RolesGuard } from "../../common/guards/roles.guard.js";
 import { Roles } from "../../common/decorators/roles.decorator.js";
+import { CurrentUser, JwtPayload } from "../../common/decorators/current-user.decorator.js";
 
 @ApiTags("Audit Logs")
 @Controller("audit-logs")
@@ -13,7 +14,7 @@ export class AuditLogsController {
   constructor(private readonly service: AuditLogsService) {}
 
   @Get()
-  @Roles("ADMIN", "SUPER_ADMIN", "DIRECTION")
+  @Roles("ADMIN", "SUPER_ADMIN", "DIRECTION", "UTP")
   @ApiOperation({ summary: "Consultar logs de auditoría con filtros avanzados" })
   @ApiQuery({ name: "action", required: false })
   @ApiQuery({ name: "entityType", required: false })
@@ -34,18 +35,19 @@ export class AuditLogsController {
     @Query("search") search?: string,
     @Query("page") page?: string,
     @Query("limit") limit?: string,
+    @CurrentUser() user?: JwtPayload,
   ) {
     return this.service.findAll(
       { action, entityType, entityId, actorId, dateFrom, dateTo, search },
-      Number(page ?? 1), Number(limit ?? 50),
+      Number(page ?? 1), Number(limit ?? 50), user,
     );
   }
 
   @Get("summary")
-  @Roles("ADMIN", "SUPER_ADMIN", "DIRECTION")
+  @Roles("ADMIN", "SUPER_ADMIN", "DIRECTION", "UTP")
   @ApiOperation({ summary: "Resumen de actividad de auditoría (últimos N días)" })
   @ApiQuery({ name: "days", required: false })
-  getSummary(@Query("days") days?: string) {
-    return this.service.getActionsSummary(Number(days ?? 7));
+  getSummary(@Query("days") days?: string, @CurrentUser() user?: JwtPayload) {
+    return this.service.getActionsSummary(Number(days ?? 7), user);
   }
 }

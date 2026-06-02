@@ -91,9 +91,9 @@ export class LearningResourcesController {
 
   @Post(":id/archive")
   @HttpCode(HttpStatus.OK)
-  @Roles("ADMIN", "SUPER_ADMIN")
+  @Roles("ADMIN", "SUPER_ADMIN", "UTP", "TEACHER")
   @ApiOperation({ summary: "Archivar recurso" })
-  archive(@Param("id", ParseUUIDPipe) id: string) {
-    return this.service.archive(id);
+  archive(@Param("id", ParseUUIDPipe) id: string, @CurrentUser() user: JwtPayload) {
+    return this.service.archive(id, user.sub);
   }
 }

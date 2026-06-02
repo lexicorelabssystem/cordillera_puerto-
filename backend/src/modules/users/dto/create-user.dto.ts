@@ -38,6 +38,11 @@ export class CreateUserDto {
   @IsOptional()
   @IsUUID()
   institutionId?: string;
+
+  @ApiPropertyOptional({ description: "ID del curso para matricular al estudiante" })
+  @IsOptional()
+  @IsUUID()
+  courseId?: string;
 }
 
 export class UpdateUserDto {
@@ -53,6 +58,17 @@ export class UpdateUserDto {
   @MinLength(2)
   lastName?: string;
 
+  @ApiPropertyOptional({ example: "juan.perez@colegio.cl" })
+  @IsOptional()
+  @IsEmail()
+  email?: string;
+
+  @ApiPropertyOptional({ example: "Temp2026*" })
+  @IsOptional()
+  @IsString()
+  @MinLength(10)
+  temporaryPassword?: string;
+
   @ApiPropertyOptional()
   @IsOptional()
   @IsBoolean()
@@ -67,6 +83,11 @@ export class UpdateUserDto {
   @IsOptional()
   @IsEnum(UserRole)
   role?: UserRole;
+
+  @ApiPropertyOptional({ description: "Nuevo curso activo del estudiante" })
+  @IsOptional()
+  @IsUUID()
+  courseId?: string;
 }
 
 export class UserResponseDto {
@@ -102,6 +123,15 @@ export class UserResponseDto {
 
   @ApiPropertyOptional()
   teacherId!: string | null;
+
+  @ApiPropertyOptional()
+  enrollmentId!: string | null;
+
+  @ApiPropertyOptional()
+  courseId!: string | null;
+
+  @ApiPropertyOptional()
+  courseName!: string | null;
 
   @ApiProperty()
   createdAt!: string;

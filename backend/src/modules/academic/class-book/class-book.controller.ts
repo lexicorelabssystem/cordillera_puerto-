@@ -33,34 +33,35 @@ export class ClassBookController {
   @ApiQuery({ name: "from", required: false })
   @ApiQuery({ name: "to", required: false })
   findAll(
+    @CurrentUser() user: JwtPayload,
     @Query("courseId") courseId?: string,
     @Query("subjectId") subjectId?: string,
     @Query("date") date?: string,
     @Query("from") from?: string,
     @Query("to") to?: string,
   ) {
-    return this.service.findAll({ courseId, subjectId, date, from, to });
+    return this.service.findAll({ courseId, subjectId, date, from, to }, user);
   }
 
   @Get(":id")
   @Roles("TEACHER", "ADMIN", "SUPER_ADMIN", "DIRECTION", "UTP")
   @ApiOperation({ summary: "Obtener entrada del libro de clases por ID" })
-  findOne(@Param("id", ParseUUIDPipe) id: string) {
-    return this.service.findById(id);
+  findOne(@Param("id", ParseUUIDPipe) id: string, @CurrentUser() user: JwtPayload) {
+    return this.service.findById(id, user);
   }
 
   @Patch(":id")
   @Roles("TEACHER", "ADMIN", "SUPER_ADMIN", "UTP")
   @ApiOperation({ summary: "Actualizar entrada del libro de clases" })
-  update(@Param("id", ParseUUIDPipe) id: string, @Body() dto: UpdateClassBookEntryDto) {
-    return this.service.update(id, dto);
+  update(@Param("id", ParseUUIDPipe) id: string, @Body() dto: UpdateClassBookEntryDto, @CurrentUser() user: JwtPayload) {
+    return this.service.update(id, dto, user);
   }
 
   @Delete(":id")
   @HttpCode(HttpStatus.NO_CONTENT)
   @Roles("ADMIN", "SUPER_ADMIN")
   @ApiOperation({ summary: "Eliminar entrada del libro de clases" })
-  remove(@Param("id", ParseUUIDPipe) id: string) {
-    return this.service.remove(id);
+  remove(@Param("id", ParseUUIDPipe) id: string, @CurrentUser() user: JwtPayload) {
+    return this.service.remove(id, user);
   }
 }

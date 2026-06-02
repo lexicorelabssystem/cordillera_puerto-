@@ -4,6 +4,11 @@ interface Props {
   overview: AdminOverview;
 }
 
+function gradeLevelLabel(grade: number) {
+  if (grade >= 9 && grade <= 12) return `${grade - 8}\u00b0 Medio`;
+  return `${grade}\u00b0 B\u00e1sico`;
+}
+
 export function CurriculumCoveragePage({ overview }: Props) {
   const byGrade = new Map<number, { courses: string[] }>();
   (overview.courses || []).forEach((c) => {
@@ -32,7 +37,7 @@ export function CurriculumCoveragePage({ overview }: Props) {
             <tbody>
               {Array.from(byGrade.entries()).sort(([a], [b]) => a - b).map(([grade, info]) => (
                 <tr key={grade}>
-                  <td><strong>{grade}° Básico</strong></td>
+                  <td><strong>{gradeLevelLabel(grade)}</strong></td>
                   <td>{info.courses.join(", ")}</td>
                   <td>{overview.subjects.filter((s) => {
                     if (grade <= 8) return s.name === "Lenguaje" || s.name === "Matemática";

@@ -18,10 +18,10 @@ export class StudentsController {
   constructor(private readonly service: StudentsService) {}
 
   @Post()
-  @Roles("ADMIN", "SUPER_ADMIN", "DIRECTION")
+  @Roles("ADMIN", "SUPER_ADMIN", "DIRECTION", "UTP")
   @ApiOperation({ summary: "Crear estudiante y matricularlo en un curso" })
-  create(@Body() dto: CreateStudentDto) {
-    return this.service.create(dto);
+  create(@Body() dto: CreateStudentDto, @CurrentUser() user: JwtPayload) {
+    return this.service.create(dto, user);
   }
 
   @Get()
@@ -31,13 +31,16 @@ export class StudentsController {
   @ApiQuery({ name: "courseId", required: false })
   @ApiQuery({ name: "page", required: false })
   @ApiQuery({ name: "limit", required: false })
+  @ApiQuery({ name: "includeInactive", required: false, type: Boolean })
   findAll(
+    @CurrentUser() user: JwtPayload,
     @Query("search") search?: string,
     @Query("courseId") courseId?: string,
     @Query("page") page?: string,
     @Query("limit") limit?: string,
+    @Query("includeInactive") includeInactive?: string,
   ) {
-    return this.service.findAll(search, courseId, Number(page ?? 1), Number(limit ?? 20));
+    return this.service.findAll(search, courseId, Number(page ?? 1), Number(limit ?? 20), user, includeInactive === "true");
   }
 
   @Get("me/portal")
@@ -63,22 +66,29 @@ export class StudentsController {
   @Get(":id")
   @Roles("ADMIN", "SUPER_ADMIN", "DIRECTION", "UTP", "TEACHER", "STUDENT")
   @ApiOperation({ summary: "Obtener estudiante por ID" })
-  findOne(@Param("id", ParseUUIDPipe) id: string) {
-    return this.service.findById(id);
+  findOne(@Param("id", ParseUUIDPipe) id: string, @CurrentUser() user: JwtPayload) {
+    return this.service.findById(id, user);
   }
 
   @Patch(":id")
-  @Roles("ADMIN", "SUPER_ADMIN")
+  @Roles("ADMIN", "SUPER_ADMIN", "DIRECTION", "UTP")
   @ApiOperation({ summary: "Actualizar estudiante" })
-  update(@Param("id", ParseUUIDPipe) id: string, @Body() dto: UpdateStudentDto) {
-    return this.service.update(id, dto);
+  update(@Param("id", ParseUUIDPipe) id: string, @Body() dto: UpdateStudentDto, @CurrentUser() user: JwtPayload) {
+    return this.service.update(id, dto, user);
   }
 
   @Delete(":id")
   @HttpCode(HttpStatus.NO_CONTENT)
-  @Roles("ADMIN", "SUPER_ADMIN")
+  @Roles("ADMIN", "SUPER_ADMIN", "DIRECTION", "UTP")
   @ApiOperation({ summary: "Eliminar estudiante (soft delete)" })
-  remove(@Param("id", ParseUUIDPipe) id: string) {
-    return this.service.softDelete(id);
+  remove(@Param("id", ParseUUIDPipe) id: string, @CurrentUser() user: JwtPayload) {
+    return this.service.softDelete(id, user);
+  }
+
+  @Post(":id/restore")
+  @Roles("ADMIN", "SUPER_ADMIN", "DIRECTION", "UTP")
+  @ApiOperation({ summary: "Reactivar estudiante retirado" })
+  restore(@Param("id", ParseUUIDPipe) id: string, @CurrentUser() user: JwtPayload) {
+    return this.service.restore(id, user);
   }
 }

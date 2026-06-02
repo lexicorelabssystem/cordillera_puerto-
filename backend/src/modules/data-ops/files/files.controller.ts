@@ -35,11 +35,34 @@ export class FilesController {
   }
 
   @Get("download/:fileName")
+  @UseGuards(JwtAuthGuard, RolesGuard)
+  @Roles("ADMIN", "SUPER_ADMIN", "DIRECTION", "UTP", "TEACHER", "STUDENT")
+  @ApiBearerAuth("access-token")
   @ApiOperation({ summary: "Descargar archivo por nombre" })
-  async download(@Param("fileName") fileName: string, @Res() reply: FastifyReply) {
-    const info = await this.service.getDownloadInfo(fileName);
+  async download(
+    @Param("fileName") fileName: string,
+    @CurrentUser() user: JwtPayload,
+    @Res() reply: FastifyReply,
+  ) {
+    const info = await this.service.getDownloadInfo(fileName, user);
     reply.header("Content-Type", info.mimeType);
     reply.header("Content-Disposition", `attachment; filename="${info.originalName}"`);
+    reply.send(fs.createReadStream(info.filePath));
+  }
+
+  @Get("view/:fileName")
+  @UseGuards(JwtAuthGuard, RolesGuard)
+  @Roles("ADMIN", "SUPER_ADMIN", "DIRECTION", "UTP", "TEACHER", "STUDENT")
+  @ApiBearerAuth("access-token")
+  @ApiOperation({ summary: "Visualizar archivo por nombre en el navegador" })
+  async view(
+    @Param("fileName") fileName: string,
+    @CurrentUser() user: JwtPayload,
+    @Res() reply: FastifyReply,
+  ) {
+    const info = await this.service.getDownloadInfo(fileName, user);
+    reply.header("Content-Type", info.mimeType);
+    reply.header("Content-Disposition", `inline; filename="${info.originalName}"`);
     reply.send(fs.createReadStream(info.filePath));
   }
 
@@ -48,18 +71,22 @@ export class FilesController {
   @Roles("ADMIN", "SUPER_ADMIN", "DIRECTION", "UTP", "TEACHER")
   @ApiBearerAuth("access-token")
   @ApiOperation({ summary: "Listar archivos de una entidad" })
-  listByEntity(@Param("entityType") entityType: string, @Param("entityId") entityId: string) {
-    return this.service.listByEntity(entityType, entityId);
+  listByEntity(
+    @Param("entityType") entityType: string,
+    @Param("entityId") entityId: string,
+    @CurrentUser() user: JwtPayload,
+  ) {
+    return this.service.listByEntity(entityType, entityId, user);
   }
 
   @Delete(":fileId")
   @HttpCode(HttpStatus.NO_CONTENT)
   @UseGuards(JwtAuthGuard, RolesGuard)
-  @Roles("ADMIN", "SUPER_ADMIN")
+  @Roles("ADMIN", "SUPER_ADMIN", "UTP", "TEACHER")
   @ApiBearerAuth("access-token")
   @ApiOperation({ summary: "Eliminar archivo" })
-  delete(@Param("fileId", ParseUUIDPipe) fileId: string) {
-    return this.service.deleteFile(fileId);
+  delete(@Param("fileId", ParseUUIDPipe) fileId: string, @CurrentUser() user: JwtPayload) {
+    return this.service.deleteFile(fileId, user);
   }
 
   @Get("templates/:type/download")

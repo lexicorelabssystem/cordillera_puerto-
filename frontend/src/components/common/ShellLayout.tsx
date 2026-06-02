@@ -12,11 +12,14 @@ interface Props {
   right?: ReactNode;
   children: ReactNode;
   breadcrumbs?: Breadcrumb[];
+  className?: string;
 }
 
-export function ShellLayout({ title, subtitle, right, children, breadcrumbs }: Props) {
+export function ShellLayout({ title, subtitle, right, children, breadcrumbs, className }: Props) {
+  const shellClassName = className ? `shell ${className}` : "shell";
+
   return (
-    <div className="shell">
+    <div className={shellClassName}>
       <header className="shell-header">
         <div>
           {breadcrumbs && breadcrumbs.length > 0 && (

@@ -12,7 +12,7 @@ import { AlumnoDashboard } from "./features/alumno/AlumnoDashboard";
 import { LoadingSpinner } from "./components/common/LoadingSpinner";
 import { ErrorBoundary } from "./components/common/ErrorBoundary";
 import { ToastProvider } from "./components/common/Toast";
-import { adminRoutes, directionRoutes } from "./app/routes";
+import { adminRoutes, directionRoutes, utpRoutes } from "./app/routes";
 import type { AuthUser } from "./types/api";
 
 const AdminLayout = lazy(() =>
@@ -27,11 +27,57 @@ function SuspenseWrapper({ children, label }: { children: React.ReactNode; label
   );
 }
 
+function getDefaultRouteForRole(role: AuthUser["role"]) {
+  switch (role) {
+    case "SUPER_ADMIN":
+      return "/admin";
+    case "DIRECTION":
+      return "/direction";
+    case "UTP":
+      return "/utp";
+    case "TEACHER":
+      return "/teacher";
+    case "STUDENT":
+      return "/student";
+    default:
+      return "/sin-acceso";
+  }
+}
+
+function RequireRole({
+  user,
+  allowed,
+  children,
+}: {
+  user: AuthUser;
+  allowed: AuthUser["role"][];
+  children: React.ReactNode;
+}) {
+  if (!allowed.includes(user.role)) {
+    return <Navigate to={getDefaultRouteForRole(user.role)} replace />;
+  }
+
+  return <>{children}</>;
+}
+
+function NoAccess({ user, logout }: { user: AuthUser; logout: () => Promise<void> }) {
+  return (
+    <main className="shell shell--no-access">
+      <section className="panel">
+        <h1>Sin acceso habilitado</h1>
+        <p>
+          El rol {user.role} no tiene una vista activa en esta etapa del sistema.
+        </p>
+        <button className="btn-logout" onClick={logout}>
+          Salir
+        </button>
+      </section>
+    </main>
+  );
+}
+
 function AuthenticatedApp({ user, logout }: { user: AuthUser; logout: () => Promise<void> }) {
-  const redirectPath =
-    user.role === "TEACHER" ? "/teacher" :
-    user.role === "STUDENT" ? "/student" :
-    user.role === "DIRECTION" ? "/direction" : "/admin";
+  const redirectPath = getDefaultRouteForRole(user.role);
 
   return (
     <InstitutionProvider>
@@ -41,23 +87,46 @@ function AuthenticatedApp({ user, logout }: { user: AuthUser; logout: () => Prom
           <Route path="/reset-password" element={<ResetPasswordPage />} />
 
           <Route path="/" element={<Navigate to={redirectPath} replace />} />
-          <Route path="/teacher" element={<ProfesorDashboard user={user} onLogout={logout} />} />
-          <Route path="/student" element={<AlumnoDashboard user={user} onLogout={logout} />} />
+          <Route path="/sin-acceso" element={<NoAccess user={user} logout={logout} />} />
+          <Route path="/teacher/*" element={
+            <RequireRole user={user} allowed={["TEACHER"]}>
+              <ProfesorDashboard user={user} onLogout={logout} />
+            </RequireRole>
+          } />
+          <Route path="/student/*" element={
+            <RequireRole user={user} allowed={["STUDENT"]}>
+              <AlumnoDashboard user={user} onLogout={logout} />
+            </RequireRole>
+          } />
 
           <Route path="/admin/*" element={
-            <SuspenseWrapper label="Cargando modulo...">
-              <AdminLayout user={user} onLogout={logout} mode="admin" />
-            </SuspenseWrapper>
+            <RequireRole user={user} allowed={["SUPER_ADMIN"]}>
+              <SuspenseWrapper label="Cargando modulo...">
+                <AdminLayout user={user} onLogout={logout} mode="admin" />
+              </SuspenseWrapper>
+            </RequireRole>
           }>
             {adminRoutes()}
           </Route>
 
           <Route path="/direction/*" element={
-            <SuspenseWrapper label="Cargando modulo...">
-              <AdminLayout user={user} onLogout={logout} mode="direction" />
-            </SuspenseWrapper>
+            <RequireRole user={user} allowed={["DIRECTION"]}>
+              <SuspenseWrapper label="Cargando modulo...">
+                <AdminLayout user={user} onLogout={logout} mode="direction" />
+              </SuspenseWrapper>
+            </RequireRole>
           }>
             {directionRoutes()}
+          </Route>
+
+          <Route path="/utp/*" element={
+            <RequireRole user={user} allowed={["UTP"]}>
+              <SuspenseWrapper label="Cargando modulo...">
+                <AdminLayout user={user} onLogout={logout} mode="utp" />
+              </SuspenseWrapper>
+            </RequireRole>
+          }>
+            {utpRoutes()}
           </Route>
 
           <Route path="*" element={<Navigate to={redirectPath} replace />} />

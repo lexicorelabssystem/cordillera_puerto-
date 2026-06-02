@@ -5,6 +5,12 @@ import {
 import { PrismaService } from "../../prisma/prisma.service.js";
 import type { CreateAssessmentDto, UpdateAssessmentDto, AssessmentItemDto, ReorderItemsDto } from "./dto/create-assessment.dto.js";
 import { isSubjectAllowedForGrade } from "../../../common/utils/curriculum.js";
+import type { JwtPayload } from "../../../common/decorators/current-user.decorator.js";
+import {
+  assertAssessmentScope,
+  assertCourseScope,
+  resolveUserScope,
+} from "../../../common/authz/access-scope.js";
 
 type AssessmentStatus = "DRAFT" | "PUBLISHED" | "ACTIVE" | "CLOSED" | "IN_GRADING" | "GRADED" | "REPORTED" | "ARCHIVED";
 
@@ -28,6 +34,8 @@ export class AssessmentsService {
   // ══════════════════════════════════════════════════════
 
   async create(dto: CreateAssessmentDto, userId: string, userRole?: string) {
+    await assertCourseScope(this.prisma, userId, dto.courseId, dto.subjectId);
+
     const course = await this.prisma.course.findUnique({
       where: { id: dto.courseId },
       include: { academicYear: true },
@@ -48,7 +56,7 @@ export class AssessmentsService {
     }
 
     let teacherId: string;
-    if (userRole === "ADMIN" || userRole === "SUPER_ADMIN") {
+    if (userRole === "ADMIN" || userRole === "SUPER_ADMIN" || userRole === "UTP") {
       const teacher = await this.prisma.teacher.findFirst({
         where: {
           courseAssignments: { some: { courseId: dto.courseId, subjectId: dto.subjectId } },
@@ -94,7 +102,7 @@ export class AssessmentsService {
         description: dto.description ?? null,
         assessmentType: dto.assessmentType,
         deliveryMode: dto.deliveryMode ?? "ONLINE",
-        status: "DRAFT",
+        status: dto.deliveryMode === "PRINTED" ? "ACTIVE" : "DRAFT",
         semester: dto.semester,
         maxScore: dto.maxScore ?? 100,
         weight: dto.weight ?? 0,
@@ -108,23 +116,38 @@ export class AssessmentsService {
     });
 
     if (dto.items?.length) {
-      await this.addItems(assessment.id, dto.items);
+      await this.addItems(assessment.id, dto.items, userId);
     }
 
-    return this.findById(assessment.id);
+    return this.findById(assessment.id, userId);
   }
 
   async findAll(filters: {
     courseId?: string; subjectId?: string; status?: string;
     assessmentType?: string; teacherId?: string; periodId?: string;
-  }, page = 1, limit = 20) {
+  }, page = 1, limit = 20, user?: JwtPayload | string) {
     const where: Record<string, unknown> = {};
-    if (filters.courseId) where.courseId = filters.courseId;
     if (filters.subjectId) where.subjectId = filters.subjectId;
     if (filters.status) where.status = filters.status;
     if (filters.assessmentType) where.assessmentType = filters.assessmentType;
-    if (filters.teacherId) where.teacherId = filters.teacherId;
     if (filters.periodId) where.periodId = filters.periodId;
+
+    if (user) {
+      const scope = await resolveUserScope(this.prisma, user);
+      if (filters.courseId) {
+        await assertCourseScope(this.prisma, user, filters.courseId, filters.subjectId);
+        where.courseId = filters.courseId;
+      } else if (scope.role === "TEACHER") {
+        where.courseId = { in: scope.assignments.map((assignment) => assignment.courseId) };
+      } else if (!scope.isSuperAdmin && !scope.isGlobalAdmin) {
+        where.course = { institutionId: scope.institutionId ?? "00000000-0000-0000-0000-000000000000" };
+      }
+
+      if (filters.teacherId && scope.role !== "TEACHER") where.teacherId = filters.teacherId;
+    } else {
+      if (filters.courseId) where.courseId = filters.courseId;
+      if (filters.teacherId) where.teacherId = filters.teacherId;
+    }
 
     const [data, total] = await Promise.all([
       this.prisma.assessment.findMany({
@@ -149,7 +172,9 @@ export class AssessmentsService {
     };
   }
 
-  async findById(id: string) {
+  async findById(id: string, user?: JwtPayload | string) {
+    if (user) await assertAssessmentScope(this.prisma, user, id);
+
     const assessment = await this.prisma.assessment.findUnique({
       where: { id },
       include: {
@@ -177,7 +202,9 @@ export class AssessmentsService {
     return assessment;
   }
 
-  async update(id: string, dto: UpdateAssessmentDto) {
+  async update(id: string, dto: UpdateAssessmentDto, user?: JwtPayload | string) {
+    if (user) await assertAssessmentScope(this.prisma, user, id);
+
     const assessment = await this.prisma.assessment.findUnique({ where: { id } });
     if (!assessment) throw new NotFoundException("Evaluación no encontrada");
 
@@ -208,7 +235,9 @@ export class AssessmentsService {
     });
   }
 
-  async softDelete(id: string) {
+  async softDelete(id: string, user?: JwtPayload | string) {
+    if (user) await assertAssessmentScope(this.prisma, user, id);
+
     const assessment = await this.prisma.assessment.findUnique({
       where: { id },
       include: { _count: { select: { attempts: true } } },
@@ -231,7 +260,9 @@ export class AssessmentsService {
   //  STATE MACHINE
   // ══════════════════════════════════════════════════════
 
-  async publish(id: string) {
+  async publish(id: string, user?: JwtPayload | string) {
+    if (user) await assertAssessmentScope(this.prisma, user, id);
+
     const assessment = await this.prisma.assessment.findUnique({
       where: { id },
       include: { _count: { select: { questions: true } } },
@@ -258,7 +289,9 @@ export class AssessmentsService {
     });
   }
 
-  async activate(id: string) {
+  async activate(id: string, user?: JwtPayload | string) {
+    if (user) await assertAssessmentScope(this.prisma, user, id);
+
     const assessment = await this.prisma.assessment.findUnique({
       where: { id },
       include: { _count: { select: { questions: true } } },
@@ -288,7 +321,9 @@ export class AssessmentsService {
     });
   }
 
-  async close(id: string) {
+  async close(id: string, user?: JwtPayload | string) {
+    if (user) await assertAssessmentScope(this.prisma, user, id);
+
     const assessment = await this.prisma.assessment.findUnique({ where: { id } });
     if (!assessment) throw new NotFoundException("Evaluación no encontrada");
 
@@ -300,7 +335,9 @@ export class AssessmentsService {
     });
   }
 
-  async startGrading(id: string) {
+  async startGrading(id: string, user?: JwtPayload | string) {
+    if (user) await assertAssessmentScope(this.prisma, user, id);
+
     const assessment = await this.prisma.assessment.findUnique({ where: { id } });
     if (!assessment) throw new NotFoundException("Evaluación no encontrada");
 
@@ -312,7 +349,9 @@ export class AssessmentsService {
     });
   }
 
-  async markGraded(id: string) {
+  async markGraded(id: string, user?: JwtPayload | string) {
+    if (user) await assertAssessmentScope(this.prisma, user, id);
+
     const assessment = await this.prisma.assessment.findUnique({
       where: { id },
       include: { _count: { select: { attempts: true, grades: true } } },
@@ -331,7 +370,9 @@ export class AssessmentsService {
     });
   }
 
-  async markReported(id: string) {
+  async markReported(id: string, user?: JwtPayload | string) {
+    if (user) await assertAssessmentScope(this.prisma, user, id);
+
     const assessment = await this.prisma.assessment.findUnique({ where: { id } });
     if (!assessment) throw new NotFoundException("Evaluación no encontrada");
 
@@ -343,7 +384,9 @@ export class AssessmentsService {
     });
   }
 
-  async archive(id: string) {
+  async archive(id: string, user?: JwtPayload | string) {
+    if (user) await assertAssessmentScope(this.prisma, user, id);
+
     const assessment = await this.prisma.assessment.findUnique({ where: { id } });
     if (!assessment) throw new NotFoundException("Evaluación no encontrada");
 
@@ -355,7 +398,9 @@ export class AssessmentsService {
     });
   }
 
-  async revertToDraft(id: string) {
+  async revertToDraft(id: string, user?: JwtPayload | string) {
+    if (user) await assertAssessmentScope(this.prisma, user, id);
+
     const assessment = await this.prisma.assessment.findUnique({
       where: { id },
       include: { _count: { select: { attempts: true } } },
@@ -380,7 +425,9 @@ export class AssessmentsService {
   //  ASSESSMENT ITEMS (questions in assessment)
   // ══════════════════════════════════════════════════════
 
-  async addItems(assessmentId: string, items: AssessmentItemDto[]) {
+  async addItems(assessmentId: string, items: AssessmentItemDto[], user?: JwtPayload | string) {
+    if (user) await assertAssessmentScope(this.prisma, user, assessmentId);
+
     const assessment = await this.prisma.assessment.findUnique({ where: { id: assessmentId } });
     if (!assessment) throw new NotFoundException("Evaluación no encontrada");
 
@@ -417,7 +464,9 @@ export class AssessmentsService {
     return results;
   }
 
-  async removeItem(assessmentId: string, questionId: string) {
+  async removeItem(assessmentId: string, questionId: string, user?: JwtPayload | string) {
+    if (user) await assertAssessmentScope(this.prisma, user, assessmentId);
+
     const assessment = await this.prisma.assessment.findUnique({ where: { id: assessmentId } });
     if (!assessment) throw new NotFoundException("Evaluación no encontrada");
 
@@ -433,7 +482,9 @@ export class AssessmentsService {
     return this.prisma.assessmentQuestion.delete({ where: { id: item.id } });
   }
 
-  async reorderItems(assessmentId: string, dto: ReorderItemsDto) {
+  async reorderItems(assessmentId: string, dto: ReorderItemsDto, user?: JwtPayload | string) {
+    if (user) await assertAssessmentScope(this.prisma, user, assessmentId);
+
     const assessment = await this.prisma.assessment.findUnique({ where: { id: assessmentId } });
     if (!assessment) throw new NotFoundException("Evaluación no encontrada");
 

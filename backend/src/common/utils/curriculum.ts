@@ -1,16 +1,33 @@
-export function isSubjectAllowedForGrade(gradeLevel: number, subjectName: string): boolean {
-  const normalized = subjectName.trim().toLowerCase();
+function normalizeSubjectName(subjectName: string): string {
+  return subjectName
+    .trim()
+    .toLowerCase()
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "");
+}
 
-  if (normalized === "lenguaje" || normalized === "matemática" || normalized === "matematica") {
-    return gradeLevel >= 1 && gradeLevel <= 8;
+export function isSubjectAllowedForGrade(gradeLevel: number, subjectName: string): boolean {
+  const normalized = normalizeSubjectName(subjectName);
+  const isSchoolGrade = gradeLevel >= 1 && gradeLevel <= 12;
+
+  if (
+    normalized === "lenguaje" ||
+    normalized === "lengua y literatura" ||
+    normalized === "matematica"
+  ) {
+    return isSchoolGrade;
   }
 
   if (normalized === "ciencias" || normalized === "ciencias naturales") {
-    return gradeLevel === 6;
+    return isSchoolGrade;
   }
 
-  if (normalized === "historia y geografía" || normalized === "historia y geografia" || normalized === "historia") {
-    return gradeLevel === 8;
+  if (
+    normalized === "historia" ||
+    normalized === "historia y geografia" ||
+    normalized === "historia geografia y ciencias sociales"
+  ) {
+    return isSchoolGrade;
   }
 
   return true;

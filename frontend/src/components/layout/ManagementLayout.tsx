@@ -10,6 +10,7 @@ interface Props {
   sidebarTitle?: string;
   children: ReactNode;
   breadcrumbs?: { label: string; path?: string }[];
+  className?: string;
 }
 
 export function ManagementLayout({
@@ -20,9 +21,10 @@ export function ManagementLayout({
   sidebarTitle,
   children,
   breadcrumbs,
+  className,
 }: Props) {
   return (
-    <ShellLayout title={title} subtitle={subtitle} right={right} breadcrumbs={breadcrumbs}>
+    <ShellLayout title={title} subtitle={subtitle} right={right} breadcrumbs={breadcrumbs} className={className}>
       <div className="management-layout">
         <Sidebar categories={sidebarCategories} title={sidebarTitle} />
         <main className="management-content">

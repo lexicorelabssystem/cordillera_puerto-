@@ -6,6 +6,7 @@ import { Modal } from "../../components/common/Modal";
 import { VoiceTextarea } from "../../components/voice/VoiceTextarea";
 import { useToast } from "../../components/common/Toast";
 import type { AdminSubject } from "../../types/api";
+import { GRADE_LEVELS, formatGradeLevel } from "../../lib/grade-levels";
 
 export function CurriculumPage() {
   const queryClient = useQueryClient();
@@ -169,7 +170,7 @@ function ObjectivesPanel({ subjectId }: { subjectId: string }) {
       <div className="form-row" style={{ marginBottom: 8 }}>
         <select value={gradeFilter} onChange={(e) => setGradeFilter(Number(e.target.value))}>
           <option value={0}>Todos los niveles</option>
-          {[1,2,3,4,5,6,7,8].map((g) => (<option key={g} value={g}>{g}° básico</option>))}
+          {GRADE_LEVELS.map((level) => (<option key={level.value} value={level.value}>{level.label}</option>))}
         </select>
       </div>
       {objectivesQuery.isLoading ? <LoadingSpinner size="sm" /> : null}
@@ -181,7 +182,7 @@ function ObjectivesPanel({ subjectId }: { subjectId: string }) {
               <tr key={oa.id}>
                 <td><strong>{oa.code}</strong></td>
                 <td style={{ maxWidth: 300 }}>{oa.description}</td>
-                <td>{oa.gradeLevel}°</td>
+                <td>{formatGradeLevel(oa.gradeLevel)}</td>
                 <td>{axes.find((a) => a.id === oa.axisId)?.name || "-"}</td>
                 <td>
                   <div className="action-buttons">
@@ -197,7 +198,7 @@ function ObjectivesPanel({ subjectId }: { subjectId: string }) {
       <h4 style={{ marginTop: 12 }}>{editingId ? "Editar OA" : "Nuevo OA"}</h4>
       <div className="form-grid">
         <div className="form-field"><label>Código *</label><input placeholder="OA01, OA02..." value={form.code} onChange={(e) => setForm((s) => ({ ...s, code: e.target.value }))} /></div>
-        <div className="form-field"><label>Nivel *</label><select value={form.gradeLevel} onChange={(e) => setForm((s) => ({ ...s, gradeLevel: Number(e.target.value) }))}>{[1,2,3,4,5,6,7,8].map((g) => (<option key={g} value={g}>{g}°</option>))}</select></div>
+        <div className="form-field"><label>Nivel *</label><select value={form.gradeLevel} onChange={(e) => setForm((s) => ({ ...s, gradeLevel: Number(e.target.value) }))}>{GRADE_LEVELS.map((level) => (<option key={level.value} value={level.value}>{level.label}</option>))}</select></div>
         <div className="form-field"><label>Eje</label><select value={form.axisId} onChange={(e) => setForm((s) => ({ ...s, axisId: e.target.value }))}><option value="">Sin eje</option>{axes.map((a) => (<option key={a.id} value={a.id}>{a.name}</option>))}</select></div>
         <div className="form-field" style={{ gridColumn: "1 / -1" }}><label>Descripción *</label>
           <VoiceTextarea value={form.description} onChange={(text) => setForm((s) => ({ ...s, description: text }))} placeholder="Describe el objetivo de aprendizaje..." rows={2} label="Descripción del OA" />

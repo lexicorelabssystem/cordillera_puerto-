@@ -41,6 +41,13 @@ export class UpdateCourseDto {
   @MinLength(2)
   name?: string;
 
+  @ApiPropertyOptional({ example: 3, minimum: 1, maximum: 12, description: "1-8 = básica, 9-12 = media" })
+  @IsOptional()
+  @IsInt()
+  @Min(1)
+  @Max(12)
+  gradeLevel?: number;
+
   @ApiPropertyOptional()
   @IsOptional()
   @IsString()

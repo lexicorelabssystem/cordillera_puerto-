@@ -6,10 +6,10 @@ export class CreateUnitDto {
   @IsUUID()
   subjectId!: string;
 
-  @ApiProperty({ example: 3, minimum: 1, maximum: 8 })
+  @ApiProperty({ example: 3, minimum: 1, maximum: 12 })
   @IsInt()
   @Min(1)
-  @Max(8)
+  @Max(12)
   gradeLevel!: number;
 
   @ApiProperty({ example: "Unidad 1: Textos Narrativos" })
@@ -36,6 +36,13 @@ export class CreateUnitDto {
 }
 
 export class UpdateUnitDto {
+  @ApiPropertyOptional({ minimum: 1, maximum: 12 })
+  @IsOptional()
+  @IsInt()
+  @Min(1)
+  @Max(12)
+  gradeLevel?: number;
+
   @ApiPropertyOptional()
   @IsOptional()
   @IsString()
