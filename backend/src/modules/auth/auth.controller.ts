@@ -41,7 +41,7 @@ export class AuthController {
   ) {
     const result = await this.authService.login(dto.email, dto.password);
     this.setAuthCookies(reply, result.token, result.refreshToken);
-    return { user: result.user };
+    return result;
   }
 
   @Public()
@@ -63,7 +63,7 @@ export class AuthController {
     }
     const result = await this.authService.refreshAccessToken(refreshToken);
     this.setAuthCookies(reply, result.token, result.refreshToken);
-    return { user: result.user };
+    return result;
   }
 
   @Get("me")
@@ -93,7 +93,7 @@ export class AuthController {
   ) {
     const result = await this.authService.changePassword(user.sub, dto.currentPassword, dto.newPassword);
     this.setAuthCookies(reply, result.token, result.refreshToken);
-    return { user: result.user };
+    return result;
   }
 
   @Post("logout")

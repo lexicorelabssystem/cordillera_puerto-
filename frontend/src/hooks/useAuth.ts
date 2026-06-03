@@ -1,6 +1,6 @@
 import { useState, useEffect, useRef, useCallback } from "react";
 import type { AuthUser } from "../types/api";
-import { API_BASE, api, setSessionExpiredHandler } from "../lib/api";
+import { api, clearAuthTokens, setSessionExpiredHandler } from "../lib/api";
 
 const USER_KEY = "cordillera_user";
 
@@ -20,6 +20,7 @@ export function useAuth() {
 
   const forceLogout = useCallback(() => {
     localStorage.removeItem(USER_KEY);
+    clearAuthTokens();
     setUser(null);
     setValidating(false);
   }, []);
@@ -38,10 +39,7 @@ export function useAuth() {
 
         refreshTimer = setInterval(async () => {
           try {
-            await fetch(`${API_BASE}/auth/refresh`, {
-              method: "POST",
-              credentials: "include",
-            });
+            await api.refresh();
           } catch {
             // Silent fail — next API call will trigger refresh or force logout
           }
@@ -50,6 +48,7 @@ export function useAuth() {
       .catch(() => {
         if (!mountedRef.current) return;
         localStorage.removeItem(USER_KEY);
+        clearAuthTokens();
         setUser(null);
       })
       .finally(() => {
@@ -101,6 +100,7 @@ export function useAuth() {
   async function logout() {
     await api.logout();
     localStorage.removeItem(USER_KEY);
+    clearAuthTokens();
     setUser(null);
   }
 

@@ -20,6 +20,53 @@ import type {
   UserPermissionInfo,
 } from "../types/api";
 
+type AuthResponse = {
+  token?: string;
+  refreshToken?: string;
+  user: AuthUser;
+};
+
+const ACCESS_TOKEN_KEY = "cordillera_access_token";
+const REFRESH_TOKEN_KEY = "cordillera_refresh_token";
+
+function readStoredToken(key: string): string | null {
+  try {
+    return localStorage.getItem(key);
+  } catch {
+    return null;
+  }
+}
+
+let _accessToken: string | null = readStoredToken(ACCESS_TOKEN_KEY);
+let _refreshToken: string | null = readStoredToken(REFRESH_TOKEN_KEY);
+
+function persistToken(key: string, value: string | null) {
+  try {
+    if (value) localStorage.setItem(key, value);
+    else localStorage.removeItem(key);
+  } catch {
+    // Storage can be unavailable in private contexts; in-memory tokens still work.
+  }
+}
+
+export function setAuthTokens(tokens: { token?: string; refreshToken?: string }) {
+  if (tokens.token) {
+    _accessToken = tokens.token;
+    persistToken(ACCESS_TOKEN_KEY, tokens.token);
+  }
+  if (tokens.refreshToken) {
+    _refreshToken = tokens.refreshToken;
+    persistToken(REFRESH_TOKEN_KEY, tokens.refreshToken);
+  }
+}
+
+export function clearAuthTokens() {
+  _accessToken = null;
+  _refreshToken = null;
+  persistToken(ACCESS_TOKEN_KEY, null);
+  persistToken(REFRESH_TOKEN_KEY, null);
+}
+
 function normalizeApiBase(value?: string): string {
   const raw = value?.trim();
   if (!raw) return "/api/v1";
@@ -52,10 +99,22 @@ async function refreshSession(): Promise<boolean> {
 
   _refreshPromise = (async () => {
     try {
+      const headers = new Headers();
+      let body: string | undefined;
+      if (_refreshToken) {
+        headers.set("Content-Type", "application/json");
+        body = JSON.stringify({ refreshToken: _refreshToken });
+      }
       const response = await fetch(`${API_BASE}/auth/refresh`, {
         method: "POST",
         credentials: "include",
+        headers,
+        body,
       });
+      if (response.ok) {
+        const result = (await response.json().catch(() => null)) as AuthResponse | null;
+        if (result) setAuthTokens(result);
+      }
       return response.ok;
     } catch {
       return false;
@@ -75,6 +134,9 @@ async function request<T>(path: string, init?: RequestInit): Promise<T> {
   if (init?.body !== undefined && !headers.has("Content-Type")) {
     headers.set("Content-Type", "application/json");
   }
+  if (_accessToken && !headers.has("Authorization")) {
+    headers.set("Authorization", `Bearer ${_accessToken}`);
+  }
 
   const fetchOptions: RequestInit = {
     credentials: "include",
@@ -87,6 +149,7 @@ async function request<T>(path: string, init?: RequestInit): Promise<T> {
   if (response.status === 401 && !NO_REFRESH_PATHS.includes(path)) {
     const refreshed = await refreshSession();
     if (refreshed) {
+      if (_accessToken) headers.set("Authorization", `Bearer ${_accessToken}`);
       response = await fetch(url, fetchOptions);
     } else {
       if (_onSessionExpired) _onSessionExpired();
@@ -138,22 +201,41 @@ function buildQuery(params: Record<string, string | number | boolean | undefined
 
 export const api = {
   // ─── Auth ───────────────────────────────────────
-  login: (payload: { email: string; password: string }) =>
-    request<{ user: AuthUser }>("/auth/login", {
+  login: async (payload: { email: string; password: string }) => {
+    const result = await request<AuthResponse>("/auth/login", {
       method: "POST",
       body: JSON.stringify(payload),
-    }),
+    });
+    setAuthTokens(result);
+    return result;
+  },
   me: () =>
     request<{ user: AuthUser }>("/auth/me"),
   refresh: () =>
-    request<{ user: AuthUser }>("/auth/refresh", { method: "POST" }),
-  logout: () =>
-    request<void>("/auth/logout", { method: "POST" }).catch(() => {}),
-  changePassword: (payload: { currentPassword: string; newPassword: string }) =>
-    request<{ user: AuthUser }>("/auth/change-password", {
+    request<AuthResponse>("/auth/refresh", {
+      method: "POST",
+      body: _refreshToken ? JSON.stringify({ refreshToken: _refreshToken }) : undefined,
+    }).then((result) => {
+      setAuthTokens(result);
+      return result;
+    }),
+  logout: async () => {
+    try {
+      await request<void>("/auth/logout", { method: "POST" });
+    } catch {
+      // Logout must clear local state even if the server cookie is already gone.
+    } finally {
+      clearAuthTokens();
+    }
+  },
+  changePassword: async (payload: { currentPassword: string; newPassword: string }) => {
+    const result = await request<AuthResponse>("/auth/change-password", {
       method: "POST",
       body: JSON.stringify(payload),
-    }),
+    });
+    setAuthTokens(result);
+    return result;
+  },
   forgotPassword: (email: string) =>
     request<{ ok: boolean; message: string }>("/auth/forgot-password", {
       method: "POST",
