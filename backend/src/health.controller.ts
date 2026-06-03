@@ -1,4 +1,4 @@
-import { Controller, Get } from "@nestjs/common";
+import { Controller, Get, VERSION_NEUTRAL, Version } from "@nestjs/common";
 import { ApiTags, ApiOperation } from "@nestjs/swagger";
 import { PrismaService } from "./modules/prisma/prisma.service.js";
 import { Public } from "./common/decorators/public.decorator.js";
@@ -11,6 +11,7 @@ export class HealthController {
   constructor(private readonly prisma: PrismaService) {}
 
   @Public()
+  @Version(VERSION_NEUTRAL)
   @Get("health")
   @ApiOperation({ summary: "Health check: uptime, memoria, base de datos" })
   async health() {
