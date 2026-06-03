@@ -1,6 +1,6 @@
 import { useState, useEffect, useRef, useCallback } from "react";
 import type { AuthUser } from "../types/api";
-import { api, setSessionExpiredHandler } from "../lib/api";
+import { API_BASE, api, setSessionExpiredHandler } from "../lib/api";
 
 const USER_KEY = "cordillera_user";
 
@@ -38,7 +38,7 @@ export function useAuth() {
 
         refreshTimer = setInterval(async () => {
           try {
-            await fetch(`${import.meta.env.VITE_API_BASE_URL || "/api/v1"}/auth/refresh`, {
+            await fetch(`${API_BASE}/auth/refresh`, {
               method: "POST",
               credentials: "include",
             });
@@ -75,7 +75,7 @@ export function useAuth() {
       storeUser(result.user);
     } catch (err) {
       if (err instanceof TypeError) {
-        setError("No se pudo conectar con el servidor. Verifica que backend y frontend esten ejecutandose.");
+        setError("No se pudo conectar con el servidor. Revisa que el backend de Render este activo y que VITE_API_BASE_URL apunte a la URL correcta.");
       } else {
         setError(err instanceof Error ? err.message : "No fue posible iniciar sesion");
       }

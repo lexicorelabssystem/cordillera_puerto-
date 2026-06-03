@@ -18,6 +18,8 @@
     "db:setup": "npm --workspace backend run db:setup",
     "db:reset": "npm --workspace backend run db:reset",
     "db:studio": "npm --workspace backend run prisma:studio",
+    "db:remote:status": "powershell -ExecutionPolicy Bypass -File scripts/prisma-remote.ps1 status",
+    "db:remote:deploy": "powershell -ExecutionPolicy Bypass -File scripts/prisma-remote.ps1 deploy",
     "build": "npm run build:shared && npm run build:backend && npm run build:frontend",
     "build:shared": "npm --workspace shared run build",
     "build:backend": "npm --workspace backend run build",

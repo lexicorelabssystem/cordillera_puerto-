@@ -20,7 +20,25 @@ import type {
   UserPermissionInfo,
 } from "../types/api";
 
-const API_BASE = import.meta.env.VITE_API_BASE_URL || "/api/v1";
+function normalizeApiBase(value?: string): string {
+  const raw = value?.trim();
+  if (!raw) return "/api/v1";
+
+  const withoutTrailingSlash = raw.replace(/\/+$/, "");
+  try {
+    const url = new URL(withoutTrailingSlash);
+    if (!url.pathname || url.pathname === "/") {
+      url.pathname = "/api/v1";
+      return url.toString().replace(/\/+$/, "");
+    }
+  } catch {
+    // Relative bases like /api/v1 are valid for local/proxied deployments.
+  }
+
+  return withoutTrailingSlash;
+}
+
+export const API_BASE = normalizeApiBase(import.meta.env.VITE_API_BASE_URL);
 
 let _refreshPromise: Promise<boolean> | null = null;
 let _onSessionExpired: (() => void) | null = null;

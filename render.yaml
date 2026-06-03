@@ -19,9 +19,9 @@ services:
       - key: COOKIE_SECRET
         generateValue: true
       - key: CORS_ORIGINS
-        sync: false
+        value: "https://cordillera-puerto-frontend-lexicorelabssystemgmailcoms-projects.vercel.app,*.vercel.app"
       - key: FRONTEND_URL
-        sync: false
+        value: "https://cordillera-puerto-frontend-lexicorelabssystemgmailcoms-projects.vercel.app"
       - key: ENABLE_DEMO_SEED
         value: "false"
       - key: NOTIFICATION_EMAILS_ENABLED
