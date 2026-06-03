@@ -42,7 +42,10 @@ async function main() {
   console.log(`  SIMCE Essays: ${simceTotal} (48 target: 10+10 Mat/Len 4°, 10+10 Mat/Len 6°, 8 Cie 6°)`);
   console.log(`━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━`);
   console.log(`  Demo credentials:`);
+  console.log(`    superadmin@cordillera.cl / Demo2026*`);
   console.log(`    admin@cordillera.cl / Admin2026*`);
+  console.log(`    utp@cordillera.cl / Profesor2026*`);
+  console.log(`    director@cordillera.cl / Profesor2026*`);
   console.log(`    profesor@cordillera.cl / Profesor2026*`);
   console.log(`    profe.mate@cordillera.cl / Profesor2026*`);
   console.log(`    profe.ciencias@cordillera.cl / Profesor2026*`);

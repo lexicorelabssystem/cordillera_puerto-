@@ -50,7 +50,7 @@ export function LoginPage({ onLogin, loading, error }: Props) {
         </label>
         <label className="form-field">
           <label>Contrasena</label>
-          <input value={password} onChange={(e) => setPassword(e.target.value)} type="password" placeholder="Demo2026!*" required />
+          <input value={password} onChange={(e) => setPassword(e.target.value)} type="password" placeholder="Admin2026*" required />
         </label>
         {error ? <div className="error">{error}</div> : null}
         <button disabled={loading} type="submit">

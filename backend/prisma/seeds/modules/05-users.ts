@@ -11,8 +11,29 @@ export interface UserSeedResult {
 export async function seed(prisma: PrismaClient, institutionId: string): Promise<UserSeedResult> {
   console.log("\n─── USERS ──────────────────────────────────");
 
+  const superAdminHash = await bcrypt.hash("Demo2026*", BCRYPT_ROUNDS);
   const defaultHash = await bcrypt.hash("Admin2026*", BCRYPT_ROUNDS);
   const teacherHash = await bcrypt.hash("Profesor2026*", BCRYPT_ROUNDS);
+
+  await prisma.user.upsert({
+    where: { email: "superadmin@cordillera.cl" },
+    update: {
+      passwordHash: superAdminHash,
+      isActive: true,
+      deletedAt: null,
+      mustChangePassword: false,
+      role: "SUPER_ADMIN",
+      institutionId: null,
+    },
+    create: {
+      email: "superadmin@cordillera.cl",
+      passwordHash: superAdminHash,
+      firstName: "Super",
+      lastName: "Admin",
+      role: "SUPER_ADMIN",
+    },
+  });
+  console.log("  [✓] Super Admin: superadmin@cordillera.cl / Demo2026*");
 
   const admin = await prisma.user.upsert({
     where: { email: "admin@cordillera.cl" },
@@ -21,6 +42,8 @@ export async function seed(prisma: PrismaClient, institutionId: string): Promise
       isActive: true,
       deletedAt: null,
       mustChangePassword: false,
+      role: "ADMIN",
+      institutionId,
     },
     create: {
       email: "admin@cordillera.cl",
@@ -64,12 +87,12 @@ export async function seed(prisma: PrismaClient, institutionId: string): Promise
     });
 
     if (def.role === "TEACHER") {
-      await prisma.teacher.upsert({
+      const teacher = await prisma.teacher.upsert({
         where: { userId: user.id },
         update: {},
-        create: { userId: user.id, firstName: def.firstName, lastName: def.lastName },
+        create: { userId: user.id },
       });
-      teacherIds[def.email] = user.id;
+      teacherIds[def.email] = teacher.id;
     }
   }
 
