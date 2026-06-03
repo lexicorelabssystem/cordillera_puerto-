@@ -30,6 +30,7 @@ function SuspenseWrapper({ children, label }: { children: React.ReactNode; label
 function getDefaultRouteForRole(role: AuthUser["role"]) {
   switch (role) {
     case "SUPER_ADMIN":
+    case "ADMIN":
       return "/admin";
     case "DIRECTION":
       return "/direction";
@@ -100,7 +101,7 @@ function AuthenticatedApp({ user, logout }: { user: AuthUser; logout: () => Prom
           } />
 
           <Route path="/admin/*" element={
-            <RequireRole user={user} allowed={["SUPER_ADMIN"]}>
+            <RequireRole user={user} allowed={["SUPER_ADMIN", "ADMIN"]}>
               <SuspenseWrapper label="Cargando modulo...">
                 <AdminLayout user={user} onLogout={logout} mode="admin" />
               </SuspenseWrapper>
