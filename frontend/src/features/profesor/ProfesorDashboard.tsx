@@ -986,50 +986,6 @@ export function ProfesorDashboard({ user, onLogout }: Props) {
         </div>
       </section>
 
-      <section className="teacher-course-section teacher-course-switcher">
-        <div className="teacher-section-title">
-          <div>
-            <span>Cursos</span>
-            <strong>Elige una asignación para trabajar</strong>
-          </div>
-          <small>{assignments.length} asignaciones activas</small>
-        </div>
-        <div className="teacher-course-picker">
-          <label>
-            Curso activo
-            <select value={assignmentId} onChange={(event) => setAssignmentId(event.target.value)}>
-              {assignments.map((assignment) => (
-                <option key={assignment.assignment_id} value={assignment.assignment_id}>
-                  {assignment.course_name} · {assignment.subject_name}
-                </option>
-              ))}
-            </select>
-          </label>
-          <div className="teacher-course-current">
-            <span>{selectedAssignment?.grade_level ? `${selectedAssignment.grade_level}°` : "Curso"}</span>
-            <strong>{selectedAssignment?.course_name || "Sin curso"}</strong>
-            <small>{selectedAssignment?.subject_name || "Sin asignatura"}</small>
-          </div>
-        </div>
-        <div className="teacher-course-strip" aria-label="Asignaciones del profesor">
-          {assignments.map((assignment) => {
-            const selected = assignment.assignment_id === assignmentId;
-            return (
-              <button
-                key={assignment.assignment_id}
-                type="button"
-                className={`teacher-course-pill ${selected ? "teacher-course-pill--selected" : ""}`}
-                onClick={() => setAssignmentId(assignment.assignment_id)}
-              >
-                <strong>{assignment.course_name}</strong>
-                <span>{assignment.subject_name}</span>
-                <small>{assignment.students_count ?? students.length} alumnos</small>
-              </button>
-            );
-          })}
-        </div>
-      </section>
-
       <section className="kpi-grid">
         <KpiCard label="Cursos asignados" value={assignments.length} />
         <KpiCard label="Promedio libro" value={courseBookStats?.courseAvg?.toFixed?.(2) ?? kpiData.avgGrade} />
