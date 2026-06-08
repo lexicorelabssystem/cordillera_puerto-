@@ -9,10 +9,15 @@ export class CsrfGuard implements CanActivate {
   private readonly allowedOrigins: string[];
 
   constructor() {
-    this.allowedOrigins = (process.env.CORS_ORIGINS || "http://localhost:5173")
-      .split(",")
-      .map((o) => o.trim())
-      .filter(Boolean);
+    this.allowedOrigins = [
+      ...(process.env.CORS_ORIGINS || "http://localhost:5173").split(","),
+      process.env.FRONTEND_URL,
+      "https://cordillera-puerto-frontend.vercel.app",
+      "https://cordillera-puerto-frontend-lexicorelabssystemgmailcoms-projects.vercel.app",
+      "*.vercel.app",
+    ]
+      .map((o) => o?.trim())
+      .filter((o): o is string => Boolean(o));
   }
 
   canActivate(context: ExecutionContext): boolean {

@@ -59,7 +59,13 @@ async function bootstrap() {
 
   app.enableVersioning({ type: VersioningType.URI, defaultVersion: "1" });
 
-  const rawOrigins = (process.env.CORS_ORIGINS || "http://localhost:5173").split(",").map((o) => o.trim()).filter(Boolean);
+  const rawOrigins = [
+    ...(process.env.CORS_ORIGINS || "http://localhost:5173").split(","),
+    process.env.FRONTEND_URL,
+    "https://cordillera-puerto-frontend.vercel.app",
+    "https://cordillera-puerto-frontend-lexicorelabssystemgmailcoms-projects.vercel.app",
+    "*.vercel.app",
+  ].map((o) => o?.trim()).filter((o): o is string => Boolean(o));
   const isProd = process.env.NODE_ENV === "production";
 
   if (isProd && rawOrigins.some((o) => o.includes("localhost"))) {
@@ -88,6 +94,8 @@ async function bootstrap() {
       cb(new Error(`Origen ${origin} no permitido por CORS`), false);
     },
     credentials: true,
+    methods: ["GET", "HEAD", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"],
+    allowedHeaders: ["Content-Type", "Authorization", "X-CSRF-Token"],
   });
 
   app.useGlobalPipes(
