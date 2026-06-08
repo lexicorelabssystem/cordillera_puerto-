@@ -5,6 +5,7 @@ import type { AuthUser, AdminOverview } from "../../types/api";
 import { api } from "../../lib/api";
 import { ManagementLayout } from "../../components/layout/ManagementLayout";
 import { LoadingSpinner } from "../../components/common/LoadingSpinner";
+import { useToast } from "../../components/common/Toast";
 import { useInstitution } from "../../app/InstitutionContext";
 import { useFeatureFlags } from "../../hooks/useFeatureFlags";
 import {
@@ -43,6 +44,7 @@ export function AdminLayout({ user, onLogout, mode }: Props) {
   const fileInputRef = useRef<HTMLInputElement | null>(null);
   const basePath = getManagementBasePath(mode);
   const { selectedInstitution, institutions, setInstitutionId, isLoading: institutionsLoading } = useInstitution();
+  const { toast } = useToast();
   const { isEnabled } = useFeatureFlags();
   const [sessionMenuOpen, setSessionMenuOpen] = useState(false);
   const [isEditingProfile, setIsEditingProfile] = useState(false);
@@ -126,6 +128,9 @@ export function AdminLayout({ user, onLogout, mode }: Props) {
       localStorage.setItem("cordillera_user", JSON.stringify(result.user));
       setDisplayName(result.user.name);
       setIsEditingProfile(false);
+      toast("Nombre actualizado correctamente.", "success");
+    } catch (error) {
+      toast(error instanceof Error ? error.message : "No fue posible actualizar el nombre.", "error");
     } finally {
       setProfileSaving(false);
     }
