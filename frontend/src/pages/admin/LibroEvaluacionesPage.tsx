@@ -672,49 +672,52 @@ export function LibroEvaluacionesPage() {
       {/* ─── NEW ASSESSMENT MODAL ─── */}
       {showNewAssessment && (
         <div className="libro-modal-overlay" onClick={() => setShowNewAssessment(false)}>
-          <div className="libro-modal" ref={newEvalFormRef} onClick={(e) => e.stopPropagation()}>
-            <div className="libro-modal__header">
-              <h2>Nueva Evaluacion</h2>
+          <div className="libro-modal assessment-create-modal" ref={newEvalFormRef} onClick={(e) => e.stopPropagation()}>
+            <div className="libro-modal__header assessment-create-modal__header">
+              <div>
+                <span>Nueva columna</span>
+                <h2>Nueva Evaluación</h2>
+              </div>
               <button className="libro-modal__close" onClick={() => setShowNewAssessment(false)}>&times;</button>
             </div>
-            <div className="libro-modal__body">
-              <div className="form-field">
-                <label>Titulo de la evaluacion <span style={{ color: "var(--danger)" }}>*</span></label>
+            <div className="libro-modal__body assessment-create-modal__body">
+              <div className="assessment-create-modal__summary">
+                <strong>{book?.course?.name || "Curso sin seleccionar"}</strong>
+                <span>{subjectId ? subjects.find((s) => s.id === subjectId)?.name || "Asignatura" : "Todas las asignaturas"}</span>
+              </div>
+              <div className="form-field assessment-create-field assessment-create-field--full">
+                <label>Nombre de evaluación <span>*</span></label>
                 <input type="text" placeholder="Ej: Prueba Unidad 1..." value={newEvalTitle}
                   onChange={(e) => setNewEvalTitle(e.target.value)} autoFocus
                   onKeyDown={(e) => { if (e.key === "Enter") handleCreateAssessment(); }} />
               </div>
-              <div className="form-row">
-                <div className="form-field">
-                  <label>Tipo</label>
+              <div className="assessment-create-grid">
+                <div className="form-field assessment-create-field">
+                  <label>Fase de evaluación</label>
                   <select value={newEvalType} onChange={(e) => setNewEvalType(e.target.value)}>
                     {ASSESSMENT_TYPES.map((t) => <option key={t.value} value={t.value}>{t.label}</option>)}
                   </select>
                 </div>
-                <div className="form-field">
+                <div className="form-field assessment-create-field">
                   <label>Semestre</label>
                   <select value={newEvalSemester} onChange={(e) => setNewEvalSemester(Number(e.target.value))}>
                     <option value={1}>1er Semestre</option>
                     <option value={2}>2do Semestre</option>
                   </select>
                 </div>
-                <div className="form-field">
-                  <label>Ponderacion (%)</label>
+                <div className="form-field assessment-create-field">
+                  <label>Ponderación (%)</label>
                   <input type="number" min={0} max={100} value={newEvalWeight}
                     onChange={(e) => setNewEvalWeight(Math.max(0, Math.min(100, Number(e.target.value) || 0)))} />
                 </div>
               </div>
-              <div className="libro-modal__info">
-                <p>Curso: <strong>{book?.course?.name || "\u2014"}</strong></p>
-                <p>Asignatura: <strong>{subjectId ? subjects.find((s) => s.id === subjectId)?.name || "\u2014" : "Todas"}</strong></p>
-                <p style={{ fontSize: ".78rem", color: "var(--muted)", marginTop: 8 }}>La evaluacion se creara en estado DRAFT. Luego podras ingresar las notas directamente desde el libro.</p>
-              </div>
+              <p className="assessment-create-modal__hint">La evaluación se creará como borrador. Luego podrás ingresar las notas directamente desde el libro.</p>
             </div>
-            <div className="libro-modal__footer">
+            <div className="libro-modal__footer assessment-create-modal__footer">
               <button className="btn btn--ghost" onClick={() => setShowNewAssessment(false)}>Cancelar</button>
               <button className="btn btn--primary" onClick={handleCreateAssessment}
                 disabled={createAssessmentMutation.isPending || !newEvalTitle.trim()}>
-                {createAssessmentMutation.isPending ? "Creando..." : "Crear Evaluacion"}
+                {createAssessmentMutation.isPending ? "Creando..." : "Crear Evaluación"}
               </button>
             </div>
           </div>

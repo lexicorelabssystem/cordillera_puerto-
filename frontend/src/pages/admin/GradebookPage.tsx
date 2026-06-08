@@ -470,22 +470,29 @@ export function GradebookPage() {
       {/* ═══ MODAL: NUEVA EVALUACION ═══ */}
       {showNewAssessment && (
         <div className="modal-overlay" onClick={() => setShowNewAssessment(false)}>
-          <div className="modal-container" onClick={(e) => e.stopPropagation()}>
-            <div className="modal-header">
-              <h2>Nueva Evaluacion</h2>
+          <div className="modal-container assessment-create-modal" onClick={(e) => e.stopPropagation()}>
+            <div className="modal-header assessment-create-modal__header">
+              <div>
+                <span>Nueva columna</span>
+                <h2>Nueva Evaluación</h2>
+              </div>
               <button className="modal-close" onClick={() => setShowNewAssessment(false)}>&times;</button>
             </div>
-            <div className="modal-body">
-              <div className="form-field">
-                <label>Titulo <span style={{ color: "var(--danger)" }}>*</span></label>
+            <div className="modal-body assessment-create-modal__body">
+              <div className="assessment-create-modal__summary">
+                <strong>{selectedCourse?.course_name || "Curso sin seleccionar"}</strong>
+                <span>{subjectId ? selectedSubject?.subject_name || "Asignatura" : "Todas las asignaturas"}</span>
+              </div>
+              <div className="form-field assessment-create-field assessment-create-field--full">
+                <label>Nombre de evaluación <span>*</span></label>
                 <input type="text" placeholder="Ej: Prueba Unidad 1..." value={newEvalTitle}
                   onChange={(e) => setNewEvalTitle(e.target.value)} autoFocus />
               </div>
-              <div className="form-row" style={{ marginTop: 12 }}>
-                <div className="form-field">
-                  <label>Tipo</label>
+              <div className="assessment-create-grid">
+                <div className="form-field assessment-create-field">
+                  <label>Fase de evaluación</label>
                   <select value={newEvalType} onChange={(e) => setNewEvalType(e.target.value)}>
-                    <option value="DIAGNOSTICA">Diagnostica</option>
+                    <option value="DIAGNOSTICA">Diagnóstica</option>
                     <option value="PROCESO">Proceso</option>
                     <option value="CIERRE">Cierre</option>
                     <option value="PARCIAL">Parcial</option>
@@ -493,28 +500,25 @@ export function GradebookPage() {
                     <option value="SIMCE">SIMCE</option>
                   </select>
                 </div>
-                <div className="form-field">
+                <div className="form-field assessment-create-field">
                   <label>Semestre</label>
                   <select value={newEvalSemester} onChange={(e) => setNewEvalSemester(Number(e.target.value))}>
                     <option value={1}>1er Semestre</option>
                     <option value={2}>2do Semestre</option>
                   </select>
                 </div>
-                <div className="form-field">
-                  <label>Ponderacion (%)</label>
+                <div className="form-field assessment-create-field">
+                  <label>Ponderación (%)</label>
                   <input type="number" min={0} max={100} value={newEvalWeight}
                     onChange={(e) => setNewEvalWeight(Math.max(0, Math.min(100, Number(e.target.value) || 0)))} />
                 </div>
               </div>
-              <p style={{ marginTop: 12, fontSize: ".78rem", color: "var(--muted)" }}>
-                Curso: <strong>{selectedCourse?.course_name || "\u2014"}</strong> &middot;
-                Asignatura: <strong>{subjectId ? selectedSubject?.subject_name || "\u2014" : "Todas"}</strong>
-              </p>
+              <p className="assessment-create-modal__hint">La evaluación se creará como borrador. Luego podrás ingresar las notas directamente desde el libro.</p>
             </div>
-            <div className="modal-footer">
+            <div className="modal-footer assessment-create-modal__footer">
               <button className="btn-secondary" onClick={() => setShowNewAssessment(false)}>Cancelar</button>
               <button onClick={handleCreateAssessment} disabled={createAssessmentMutation.isPending || !newEvalTitle.trim()}>
-                {createAssessmentMutation.isPending ? "Creando..." : "Crear Evaluacion"}
+                {createAssessmentMutation.isPending ? "Creando..." : "Crear Evaluación"}
               </button>
             </div>
           </div>
