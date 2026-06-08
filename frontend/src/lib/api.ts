@@ -69,7 +69,9 @@ export function clearAuthTokens() {
 
 function normalizeApiBase(value?: string): string {
   const raw = value?.trim();
-  if (!raw) return "/api/v1";
+  if (!raw) {
+    return import.meta.env.PROD ? "https://cordillera-backend.onrender.com/api/v1" : "/api/v1";
+  }
 
   const withoutTrailingSlash = raw.replace(/\/+$/, "");
   try {
@@ -144,13 +146,22 @@ async function request<T>(path: string, init?: RequestInit): Promise<T> {
     headers,
   };
 
-  let response = await fetch(url, fetchOptions);
+  let response: Response;
+  try {
+    response = await fetch(url, fetchOptions);
+  } catch {
+    throw new Error("No se pudo conectar con el servidor. Revisa que el backend este activo y que VITE_API_BASE_URL apunte a la URL correcta.");
+  }
 
   if (response.status === 401 && !NO_REFRESH_PATHS.includes(path)) {
     const refreshed = await refreshSession();
     if (refreshed) {
       if (_accessToken) headers.set("Authorization", `Bearer ${_accessToken}`);
-      response = await fetch(url, fetchOptions);
+      try {
+        response = await fetch(url, fetchOptions);
+      } catch {
+        throw new Error("No se pudo conectar con el servidor. Revisa que el backend este activo y que VITE_API_BASE_URL apunte a la URL correcta.");
+      }
     } else {
       if (_onSessionExpired) _onSessionExpired();
       throw new Error("Sesion expirada. Por favor inicia sesion nuevamente.");
