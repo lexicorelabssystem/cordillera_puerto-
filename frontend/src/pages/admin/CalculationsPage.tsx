@@ -56,9 +56,9 @@ export function CalculationsPage() {
         </p>
         <div className="form-row">
           <div className="form-field">
-            <label>Ano Academico</label>
+            <label>Año Académico</label>
             <select value={academicYearId} onChange={(e) => { setAcademicYearId(e.target.value); setPeriodId(""); }}>
-              <option value="">Seleccionar ano...</option>
+              <option value="">Seleccionar año...</option>
               {years.map((y) => (
                 <option key={y.id} value={y.id}>{y.year}</option>
               ))}

@@ -323,7 +323,7 @@ function labelFromKey(key: string) {
     correctas: "Correctas",
     logro: "Logro",
     cursos: "Cursos",
-    ano: "Ano",
+    ano: "Año",
   };
   return labels[key] || key.replace(/_/g, " ");
 }
@@ -659,7 +659,7 @@ export function ReportsPage() {
     if (raw.institutionId) parts.push(`Institucion: ${selectedInstitution?.name || text(raw.institutionId)}`);
     if (raw.academicYearId) {
       const year = (yearsQuery.data || []).find((item) => item.id === raw.academicYearId);
-      parts.push(`Ano: ${year?.year || text(raw.academicYearId)}`);
+      parts.push(`Año: ${year?.year || text(raw.academicYearId)}`);
     }
     if (raw.courseId) {
       const course = (coursesQuery.data || []).find((item) => getCourseId(item) === raw.courseId);
@@ -735,7 +735,7 @@ export function ReportsPage() {
 
         <div className="form-grid">
           <label className="form-field">
-            Ano academico
+            Año académico
             <select value={academicYearId} onChange={(event) => setAcademicYearId(event.target.value)}>
               <option value="">Todos</option>
               {(yearsQuery.data || []).map((year) => (
