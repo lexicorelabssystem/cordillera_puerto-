@@ -5211,13 +5211,79 @@ input::placeholder, textarea::placeholder { color: var(--muted-light); }
 
 .shell--teacher #teacher-grades .teacher-grade-form {
   display: grid;
-  grid-template-columns: minmax(220px, 1.5fr) minmax(140px, .8fr) minmax(140px, .8fr) minmax(130px, .7fr) minmax(150px, .8fr) auto;
-  gap: 10px;
-  align-items: center;
-  padding: 14px;
-  border: 1px solid #e3dccf;
+  grid-template-columns: minmax(240px, 1.4fr) minmax(150px, .8fr) minmax(140px, .72fr) minmax(130px, .62fr) minmax(150px, .76fr) auto;
+  gap: 12px;
+  align-items: end;
+}
+
+.shell--teacher .teacher-grade-composer {
+  margin: 14px 20px 0;
+  padding: 16px;
+  border: 1px solid #ded7c9;
+  border-radius: 14px;
+  background:
+    linear-gradient(180deg, rgba(255, 255, 255, .92), rgba(250, 247, 241, .95)),
+    #fffdf8;
+  box-shadow: 0 10px 24px rgba(52, 42, 29, .06);
+}
+
+.shell--teacher .teacher-grade-composer__intro {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 12px;
+  margin-bottom: 14px;
+  padding-bottom: 12px;
+  border-bottom: 1px solid #e8e1d3;
+}
+
+.shell--teacher .teacher-grade-composer__intro span,
+.shell--teacher .teacher-grade-field > span {
+  color: #786b5c;
+  font-size: .76rem;
+  font-weight: 900;
+  letter-spacing: .05em;
+  text-transform: uppercase;
+}
+
+.shell--teacher .teacher-grade-composer__intro strong {
+  color: #26313f;
+  font-size: 1rem;
+}
+
+.shell--teacher .teacher-grade-field {
+  display: grid;
+  gap: 7px;
+  min-width: 0;
+}
+
+.shell--teacher .teacher-grade-field input,
+.shell--teacher .teacher-grade-field select {
+  width: 100%;
+  min-height: 50px;
+  padding: 10px 14px;
+  border: 1px solid #d8d1c3;
   border-radius: 10px;
-  background: #f8f4ec;
+  background: #fff;
+  color: #241f17;
+  font-size: .96rem;
+}
+
+.shell--teacher .teacher-grade-field input:focus,
+.shell--teacher .teacher-grade-field select:focus {
+  border-color: #227867;
+  box-shadow: 0 0 0 4px rgba(34, 120, 103, .12);
+  outline: none;
+}
+
+.shell--teacher .teacher-grade-submit {
+  min-height: 50px;
+  padding: 0 18px;
+  border-radius: 10px;
+  background: #0f7c70;
+  color: #fff;
+  font-weight: 900;
+  white-space: nowrap;
 }
 
 .shell--teacher .teacher-export-actions {
@@ -5244,6 +5310,73 @@ input::placeholder, textarea::placeholder { color: var(--muted-light); }
 
 .shell--teacher .gradebook-table-scroll {
   border-top: 1px solid #e2d9ca;
+}
+
+.shell--teacher #teacher-grades .gradebook-table {
+  border-collapse: separate;
+  border-spacing: 0;
+}
+
+.shell--teacher #teacher-grades .gradebook-table thead th {
+  height: 56px;
+  background: #eef2f7;
+  color: #1f3764;
+  font-size: .78rem;
+  letter-spacing: .04em;
+}
+
+.shell--teacher #teacher-grades .gradebook-table tbody td {
+  background: #fffdf8;
+}
+
+.shell--teacher #teacher-grades .gb-col-nombre {
+  min-width: 300px;
+  width: 330px;
+}
+
+.shell--teacher .gb-student-card {
+  display: grid;
+  grid-template-columns: 38px minmax(150px, 1fr) auto;
+  gap: 10px;
+  align-items: center;
+  min-width: 0;
+}
+
+.shell--teacher .gb-student-avatar {
+  display: inline-flex;
+  width: 38px;
+  height: 38px;
+  align-items: center;
+  justify-content: center;
+  border-radius: 999px;
+  background: #2447b8;
+  color: #fff;
+  font-size: .82rem;
+  font-weight: 900;
+}
+
+.shell--teacher .gb-student-main {
+  display: grid;
+  gap: 2px;
+  min-width: 0;
+}
+
+.shell--teacher .gb-student-main strong {
+  overflow: hidden;
+  color: #162033;
+  font-size: .95rem;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.shell--teacher .gb-student-main span {
+  color: #786b5c;
+  font-size: .78rem;
+}
+
+.shell--teacher .gb-student-report {
+  min-height: 34px;
+  white-space: nowrap;
 }
 
 .shell--teacher .teacher-material-upload {
