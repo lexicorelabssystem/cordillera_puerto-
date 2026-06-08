@@ -1,5 +1,5 @@
 import jsPDF from "jspdf";
-import "jspdf-autotable";
+import autoTable from "jspdf-autotable";
 
 declare module "jspdf" {
   interface jsPDF {
@@ -122,7 +122,7 @@ export function exportGradebookToPdf(
     return row;
   });
 
-  doc.autoTable({
+  autoTable(doc, {
     columns,
     body: rows,
     startY: y,
@@ -260,7 +260,7 @@ export function exportReportToPdf(report: ReportData, generatedBy: string = "Sis
   y += 7;
 
   const summaryRows = Object.entries(report.summary).map(([key, value]) => [key, String(value)]);
-  doc.autoTable({
+  autoTable(doc, {
     columns: [
       { header: "Indicador", dataKey: "label" },
       { header: "Valor", dataKey: "value" },
@@ -286,7 +286,7 @@ export function exportReportToPdf(report: ReportData, generatedBy: string = "Sis
     doc.text("Detalle", 14, y);
     y += 6;
 
-    doc.autoTable({
+    autoTable(doc, {
       columns: [
         { header: "Item", dataKey: "label" },
         { header: "Valor", dataKey: "value" },
