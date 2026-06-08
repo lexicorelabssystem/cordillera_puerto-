@@ -5539,113 +5539,6 @@ input::placeholder, textarea::placeholder { color: var(--muted-light); }
   min-width: 320px;
 }
 
-.shell--teacher .teacher-course-switcher {
-  display: grid;
-  gap: 14px;
-}
-
-.shell--teacher .teacher-course-picker {
-  display: grid;
-  grid-template-columns: minmax(260px, 1fr) minmax(220px, .45fr);
-  gap: 14px;
-  align-items: stretch;
-}
-
-.shell--teacher .teacher-course-picker label {
-  display: grid;
-  gap: 7px;
-  color: #786b5c;
-  font-size: .78rem;
-  font-weight: 900;
-  letter-spacing: .05em;
-  text-transform: uppercase;
-}
-
-.shell--teacher .teacher-course-picker select {
-  min-height: 52px;
-  padding: 10px 14px;
-  border: 1px solid #d8d1c3;
-  border-radius: 10px;
-  background: #fff;
-  color: #1f2b24;
-  font-size: 1rem;
-  font-weight: 800;
-}
-
-.shell--teacher .teacher-course-current {
-  display: grid;
-  align-content: center;
-  gap: 2px;
-  padding: 13px 16px;
-  border: 1px solid #c8d9c1;
-  border-radius: 12px;
-  background: linear-gradient(135deg, #f0f8ef, #fffdf8);
-}
-
-.shell--teacher .teacher-course-current span {
-  width: fit-content;
-  padding: 3px 8px;
-  border-radius: 999px;
-  background: #edf2ff;
-  color: #2447b8;
-  font-size: .78rem;
-  font-weight: 900;
-}
-
-.shell--teacher .teacher-course-current strong {
-  color: #172033;
-  font-size: 1.15rem;
-}
-
-.shell--teacher .teacher-course-current small {
-  color: #786b5c;
-  font-weight: 800;
-}
-
-.shell--teacher .teacher-course-strip {
-  display: flex;
-  gap: 10px;
-  overflow-x: auto;
-  padding: 2px 2px 8px;
-  scrollbar-width: thin;
-}
-
-.shell--teacher .teacher-course-pill {
-  flex: 0 0 auto;
-  display: grid;
-  gap: 3px;
-  min-width: 160px;
-  padding: 11px 13px;
-  border: 1px solid #dfd8ca;
-  border-radius: 10px;
-  background: #fff;
-  text-align: left;
-  box-shadow: 0 6px 16px rgba(56, 45, 30, .05);
-}
-
-.shell--teacher .teacher-course-pill strong {
-  color: #1f2b24;
-  font-size: 1rem;
-}
-
-.shell--teacher .teacher-course-pill span {
-  color: #5f5448;
-  font-size: .84rem;
-  font-weight: 800;
-}
-
-.shell--teacher .teacher-course-pill small {
-  color: #227867;
-  font-size: .78rem;
-  font-weight: 900;
-}
-
-.shell--teacher .teacher-course-pill--selected {
-  border-color: #2447b8;
-  background: linear-gradient(135deg, #eef3ff, #fff);
-  box-shadow: 0 10px 22px rgba(36, 71, 184, .14);
-}
-
 .assessment-create-modal {
   overflow: hidden;
   border: 1px solid rgba(255, 255, 255, .75);
@@ -5778,8 +5671,7 @@ input::placeholder, textarea::placeholder { color: var(--muted-light); }
   .shell--teacher .teacher-overview.teacher-workspace-hero,
   .shell--teacher .teacher-complete-grid,
   .shell--teacher #teacher-grades .teacher-grade-form,
-  .shell--teacher .teacher-material-upload,
-  .shell--teacher .teacher-course-picker {
+  .shell--teacher .teacher-material-upload {
     grid-template-columns: 1fr;
   }
 
@@ -5790,8 +5682,7 @@ input::placeholder, textarea::placeholder { color: var(--muted-light); }
 }
 
 @media (max-width: 640px) {
-  .shell--teacher .teacher-overview.teacher-workspace-hero,
-  .shell--teacher .teacher-course-section {
+  .shell--teacher .teacher-overview.teacher-workspace-hero {
     padding: 16px;
   }
 
