@@ -58,6 +58,25 @@ interface MaterialFileRow {
   createdAt: string;
 }
 
+const MATERIAL_ACCEPT_ALL = ".pdf,.ppt,.pptx,.doc,.docx,.xls,.xlsx,.png,.jpg,.jpeg,.webp,.txt";
+const MATERIAL_TYPE_LABELS: Record<string, string> = {
+  CLASS_MATERIAL: "Material",
+  GUIDE: "Guía",
+  PRESENTATION: "Presentación",
+  WORKSHEET: "Actividad",
+  PRINTABLE_TEST: "Evaluación imprimible",
+  SIMCE_PDF: "PDF SIMCE",
+};
+
+function getTeacherMaterialLabel(resource: LearningResourceRow) {
+  const title = resource.title?.toLowerCase() || "";
+  const description = resource.description?.toLowerCase() || "";
+  if (resource.type === "PRINTABLE_TEST" && (title.includes("simce") || description.includes("simce"))) {
+    return "PDF SIMCE";
+  }
+  return MATERIAL_TYPE_LABELS[resource.type || ""] || resource.type || "RECURSO";
+}
+
 interface LearningObjectiveRow {
   id: string;
   code: string;
@@ -222,6 +241,7 @@ export function ProfesorDashboard({ user, onLogout }: Props) {
   const [materialFile, setMaterialFile] = useState<File | null>(null);
   const [selectedMaterial, setSelectedMaterial] = useState<LearningResourceRow | null>(null);
   const [observation, setObservation] = useState("");
+  const isSimcePdfMaterial = materialType === "SIMCE_PDF";
   const gradesEditedRef = useRef(false);
   const prevCourseIdRef = useRef(courseId);
   const { toast } = useToast();
@@ -378,18 +398,26 @@ export function ProfesorDashboard({ user, onLogout }: Props) {
       if (!user.institutionId) throw new Error("No se pudo identificar la institucion del profesor.");
       if (!courseId || !subjectId) throw new Error("Selecciona un curso/asignatura antes de subir material.");
       if (!materialFile) throw new Error("Selecciona un archivo.");
+      if (isSimcePdfMaterial && materialFile.type !== "application/pdf" && !materialFile.name.toLowerCase().endsWith(".pdf")) {
+        throw new Error("El material SIMCE debe ser un archivo PDF.");
+      }
 
       const title = materialTitle.trim() || materialFile.name.replace(/\.[^.]+$/, "");
+      const backendResourceType = isSimcePdfMaterial ? "PRINTABLE_TEST" : materialType;
+      const description = materialDescription.trim()
+        || (isSimcePdfMaterial ? "Ensayo SIMCE en PDF para el curso activo." : undefined);
       const resource = await api.createLearningResource({
         institutionId: user.institutionId,
         title,
-        description: materialDescription.trim() || undefined,
-        type: materialType,
+        description,
+        type: backendResourceType,
         subjectId,
         courseId,
         gradeLevel: selectedAssignment?.grade_level,
-        guideType: materialType === "GUIDE" ? "CONTENT" : undefined,
-        presentationType: materialType === "PRESENTATION" ? materialFile.type || "PDF" : undefined,
+        guideType: backendResourceType === "GUIDE" ? "CONTENT" : undefined,
+        presentationType: backendResourceType === "PRESENTATION" ? materialFile.type || "PDF" : undefined,
+        instructions: isSimcePdfMaterial ? "PDF SIMCE subido por profesor para práctica, impresión o revisión del curso." : undefined,
+        isPrintable: isSimcePdfMaterial || backendResourceType === "PRINTABLE_TEST" ? true : undefined,
       }) as { id: string };
 
       await api.uploadFile("resource", resource.id, materialFile);
@@ -1087,7 +1115,7 @@ export function ProfesorDashboard({ user, onLogout }: Props) {
             <div className="panel-heading">
               <div>
                 <h3>Material Pedagógico</h3>
-                <p>Sube, organiza y visualiza recursos del curso activo: PDF, PPT, guías, imágenes y material de apoyo.</p>
+                <p>Sube, organiza y visualiza recursos del curso activo: PDF SIMCE, PPT, guías, imágenes y material de apoyo.</p>
               </div>
             </div>
 
@@ -1100,6 +1128,7 @@ export function ProfesorDashboard({ user, onLogout }: Props) {
                 <label>Tipo</label>
                 <select value={materialType} onChange={(e) => setMaterialType(e.target.value)}>
                   <option value="CLASS_MATERIAL">Material</option>
+                  <option value="SIMCE_PDF">PDF SIMCE</option>
                   <option value="GUIDE">Guía</option>
                   <option value="PRESENTATION">Presentación</option>
                   <option value="WORKSHEET">Actividad</option>
@@ -1110,7 +1139,7 @@ export function ProfesorDashboard({ user, onLogout }: Props) {
                 <label>Archivo</label>
                 <input
                   type="file"
-                  accept=".pdf,.ppt,.pptx,.doc,.docx,.xls,.xlsx,.png,.jpg,.jpeg,.webp,.txt"
+                  accept={isSimcePdfMaterial ? ".pdf,application/pdf" : MATERIAL_ACCEPT_ALL}
                   onChange={(e) => setMaterialFile(e.target.files?.[0] ?? null)}
                 />
               </div>
@@ -1119,7 +1148,11 @@ export function ProfesorDashboard({ user, onLogout }: Props) {
               </button>
               <div className="form-field teacher-material-upload__description">
                 <label>Descripción breve</label>
-                <input value={materialDescription} onChange={(e) => setMaterialDescription(e.target.value)} placeholder="Para qué sirve este recurso..." />
+                <input
+                  value={materialDescription}
+                  onChange={(e) => setMaterialDescription(e.target.value)}
+                  placeholder={isSimcePdfMaterial ? "Ej: Ensayo SIMCE Lectura 4° básico..." : "Para qué sirve este recurso..."}
+                />
               </div>
             </div>
 
@@ -1129,7 +1162,7 @@ export function ProfesorDashboard({ user, onLogout }: Props) {
                   key={resource.id || `${resource.title}-${index}`}
                   className="teacher-material-card"
                 >
-                  <span className="teacher-material-card__type">{resource.type || "RECURSO"}</span>
+                  <span className="teacher-material-card__type">{getTeacherMaterialLabel(resource)}</span>
                   <strong>{resource.title || "Material sin título"}</strong>
                   <p>{resource.description || "Disponible para este curso."}</p>
                   <small>{resource.status || "DRAFT"}</small>

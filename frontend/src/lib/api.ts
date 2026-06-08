@@ -675,6 +675,8 @@ export const api = {
     gradeLevel?: number;
     guideType?: string;
     presentationType?: string;
+    instructions?: string;
+    isPrintable?: boolean;
   }) =>
     request<unknown>("/resources", { method: "POST", body: JSON.stringify(payload) }),
   updateLearningResource: (id: string, payload: Record<string, unknown>) =>
