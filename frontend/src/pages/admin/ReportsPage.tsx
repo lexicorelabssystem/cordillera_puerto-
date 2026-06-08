@@ -1,7 +1,7 @@
 import { useMemo, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import jsPDF from "jspdf";
-import "jspdf-autotable";
+import autoTable from "jspdf-autotable";
 import { api } from "../../lib/api";
 import { useInstitution } from "../../app/InstitutionContext";
 import { useToast } from "../../components/common/Toast";
@@ -358,7 +358,7 @@ function downloadPdf(report: ReportResult) {
   doc.setFontSize(10);
   doc.text("Resumen", 14, 38);
 
-  doc.autoTable({
+  autoTable(doc, {
     columns: [
       { header: "Indicador", dataKey: "indicador" },
       { header: "Valor", dataKey: "valor" },
@@ -383,7 +383,7 @@ function downloadPdf(report: ReportResult) {
 
   if (rows.length) {
     const headers = Object.keys(rows[0]);
-    doc.autoTable({
+    autoTable(doc, {
       columns: headers.map((key) => ({ header: labelFromKey(key), dataKey: key })),
       body: rows.map((row) => Object.fromEntries(headers.map((key) => [key, text(row[key])]))),
       startY: finalY + 14,
