@@ -9,7 +9,7 @@ import { Modal } from "../../components/common/Modal";
 import { LoadingSpinner } from "../../components/common/LoadingSpinner";
 import { api } from "../../lib/api";
 import { exportGradebookToPdf } from "../../lib/pdf";
-import type { AdminCourseRow, AuthUser, CourseStudentRow } from "../../types/api";
+import type { AuthUser, CourseStudentRow } from "../../types/api";
 
 interface Props {
   user: AuthUser;
@@ -153,6 +153,7 @@ function getStudentField(student: CourseStudentRow, snakeKey: "student_id" | "fi
 }
 
 export function ProfesorDashboard({ user, onLogout }: Props) {
+  const fileInputRef = useRef<HTMLInputElement | null>(null);
   const queryClient = useQueryClient();
   const assignmentsQuery = useQuery({
     queryKey: ["teacher-assignments"],
@@ -191,11 +192,6 @@ export function ProfesorDashboard({ user, onLogout }: Props) {
   const selectedAssignment = assignments.find((assignment) => assignment.assignment_id === assignmentId);
   const courseId = selectedAssignment?.course_id || "";
   const subjectId = selectedAssignment?.subject_id || "";
-  const assignedCourseIds = useMemo(
-    () => new Set(assignments.map((assignment) => assignment.course_id)),
-    [assignments]
-  );
-
   useEffect(() => {
     if (firstAssignment && !assignmentId) {
       setAssignmentId(firstAssignment.assignment_id);
@@ -262,10 +258,27 @@ export function ProfesorDashboard({ user, onLogout }: Props) {
   const [materialUploadProgress, setMaterialUploadProgress] = useState<MaterialUploadProgress | null>(null);
   const [selectedMaterial, setSelectedMaterial] = useState<LearningResourceRow | null>(null);
   const [observation, setObservation] = useState("");
+  const [sessionMenuOpen, setSessionMenuOpen] = useState(false);
+  const [isEditingProfile, setIsEditingProfile] = useState(false);
+  const [displayName, setDisplayName] = useState(user.name);
+  const [avatarUrl, setAvatarUrl] = useState<string | null>(null);
+  const [profileForm, setProfileForm] = useState(() => {
+    const [firstName = "", ...rest] = user.name.split(" ").filter(Boolean);
+    return { firstName, lastName: rest.join(" ") };
+  });
+  const [profileSaving, setProfileSaving] = useState(false);
   const isSimcePdfMaterial = materialType === "SIMCE_PDF";
   const gradesEditedRef = useRef(false);
   const prevCourseIdRef = useRef(courseId);
   const { toast } = useToast();
+  const avatarStorageKey = `cordillera_avatar_${user.sub}`;
+  const userInitials = displayName
+    .split(" ")
+    .filter(Boolean)
+    .slice(0, 2)
+    .map((part) => part[0])
+    .join("")
+    .toUpperCase();
   const materialFilesQuery = useQuery({
     queryKey: ["teacher-resource-files", selectedMaterial?.id],
     queryFn: () => api.listEntityFiles("resource", selectedMaterial?.id || "") as Promise<MaterialFileRow[]>,
@@ -276,6 +289,44 @@ export function ProfesorDashboard({ user, onLogout }: Props) {
     queryFn: () => api.getLearningResourceUsage(selectedMaterial?.id || "") as Promise<ResourceUsageRow[]>,
     enabled: Boolean(selectedMaterial?.id),
   });
+
+  useEffect(() => {
+    setDisplayName(user.name);
+    const [firstName = "", ...rest] = user.name.split(" ").filter(Boolean);
+    setProfileForm({ firstName, lastName: rest.join(" ") });
+    setAvatarUrl(localStorage.getItem(avatarStorageKey));
+  }, [avatarStorageKey, user.name]);
+
+  async function handleProfileSave() {
+    if (!profileForm.firstName.trim() || !profileForm.lastName.trim()) return;
+    setProfileSaving(true);
+    try {
+      const result = await api.updateMyProfile({
+        firstName: profileForm.firstName.trim(),
+        lastName: profileForm.lastName.trim(),
+      });
+      localStorage.setItem("cordillera_user", JSON.stringify(result.user));
+      setDisplayName(result.user.name);
+      setIsEditingProfile(false);
+      toast("Nombre actualizado correctamente.", "success");
+    } catch (error) {
+      toast(error instanceof Error ? error.message : "No fue posible actualizar el nombre.", "error");
+    } finally {
+      setProfileSaving(false);
+    }
+  }
+
+  function handleAvatarFile(file?: File) {
+    if (!file || !file.type.startsWith("image/")) return;
+    const reader = new FileReader();
+    reader.onload = () => {
+      const nextAvatar = typeof reader.result === "string" ? reader.result : null;
+      if (!nextAvatar) return;
+      localStorage.setItem(avatarStorageKey, nextAvatar);
+      setAvatarUrl(nextAvatar);
+    };
+    reader.readAsDataURL(file);
+  }
 
   async function finalizarProcesoNota(assessmentId: string, status?: string) {
     let currentStatus = status || "ACTIVE";
@@ -592,24 +643,6 @@ export function ProfesorDashboard({ user, onLogout }: Props) {
     [teacherAssessmentsQuery.data]
   );
   const courseBookStats = gradeBookQuery.data?.stats;
-  const visibleCourses = useMemo(() => {
-    const courses = coursesQuery.data || [];
-    const base = courses.length ? courses : assignments.map((assignment) => ({
-      course_id: assignment.course_id,
-      course_name: assignment.course_name,
-      grade_level: assignment.grade_level ?? 0,
-      students_count: assignment.students_count ?? 0,
-      section: null,
-    }));
-    return [...base].sort((a, b) => {
-      const aActive = assignedCourseIds.has(a.course_id) ? 0 : 1;
-      const bActive = assignedCourseIds.has(b.course_id) ? 0 : 1;
-      return aActive - bActive
-        || (a.grade_level ?? 0) - (b.grade_level ?? 0)
-        || a.course_name.localeCompare(b.course_name);
-    });
-  }, [coursesQuery.data, assignments, assignedCourseIds]);
-
   useEffect(() => {
     if (!studentsQuery.data?.length) return;
 
@@ -832,14 +865,91 @@ export function ProfesorDashboard({ user, onLogout }: Props) {
   return (
     <ShellLayout
       title="Pantalla Profesor"
-      subtitle={`Bienvenido ${user.name}. Gestiona tus cursos, libro de clases, OA, evaluaciones, notas y material.`}
+      subtitle={`Bienvenido ${displayName}. Gestiona tus cursos, libro de clases, OA, evaluaciones, notas y material.`}
       right={
         <div className="header-actions">
-          <div className="header-user">
-            <span className="header-user__role">TEACHER</span>
-            <span className="header-user__name">{user.name}</span>
+          <div className="header-user-menu teacher-session-menu">
+            <button
+              className="header-user"
+              type="button"
+              onClick={() => setSessionMenuOpen((open) => !open)}
+              aria-haspopup="menu"
+              aria-expanded={sessionMenuOpen}
+            >
+              <div className="header-user__copy">
+                <span className="header-user__eyebrow">Sesión</span>
+                <span className="header-user__name">{displayName}</span>
+                <span className="header-user__role">TEACHER</span>
+              </div>
+              <span className="header-user__avatar" aria-hidden="true">
+                {avatarUrl ? <img src={avatarUrl} alt="" /> : userInitials || "P"}
+              </span>
+            </button>
+            {sessionMenuOpen ? (
+              <div className="session-menu" role="menu">
+                {isEditingProfile ? (
+                  <div className="session-menu__form">
+                    <label>
+                      Nombre
+                      <input
+                        value={profileForm.firstName}
+                        onChange={(event) => setProfileForm((form) => ({ ...form, firstName: event.target.value }))}
+                      />
+                    </label>
+                    <label>
+                      Apellido
+                      <input
+                        value={profileForm.lastName}
+                        onChange={(event) => setProfileForm((form) => ({ ...form, lastName: event.target.value }))}
+                      />
+                    </label>
+                    <div className="session-menu__row">
+                      <button type="button" onClick={handleProfileSave} disabled={profileSaving}>
+                        {profileSaving ? "Guardando..." : "Guardar"}
+                      </button>
+                      <button type="button" className="btn-secondary" onClick={() => setIsEditingProfile(false)}>
+                        Cancelar
+                      </button>
+                    </div>
+                  </div>
+                ) : (
+                  <>
+                    <button type="button" onClick={() => setIsEditingProfile(true)} role="menuitem">
+                      Editar nombre
+                    </button>
+                    <button type="button" onClick={() => fileInputRef.current?.click()} role="menuitem">
+                      Cambiar foto
+                    </button>
+                    {avatarUrl ? (
+                      <button
+                        type="button"
+                        onClick={() => {
+                          localStorage.removeItem(avatarStorageKey);
+                          setAvatarUrl(null);
+                        }}
+                        role="menuitem"
+                      >
+                        Quitar foto
+                      </button>
+                    ) : null}
+                    <button type="button" className="session-menu__logout" onClick={onLogout} role="menuitem">
+                      Salir
+                    </button>
+                  </>
+                )}
+                <input
+                  ref={fileInputRef}
+                  type="file"
+                  accept="image/png,image/jpeg,image/webp"
+                  hidden
+                  onChange={(event) => {
+                    handleAvatarFile(event.target.files?.[0]);
+                    event.target.value = "";
+                  }}
+                />
+              </div>
+            ) : null}
           </div>
-          <button className="btn-logout" onClick={onLogout}>Salir</button>
         </div>
       }
       className="shell--teacher"
@@ -876,31 +986,44 @@ export function ProfesorDashboard({ user, onLogout }: Props) {
         </div>
       </section>
 
-      <section className="teacher-course-section">
+      <section className="teacher-course-section teacher-course-switcher">
         <div className="teacher-section-title">
           <div>
             <span>Cursos</span>
-            <strong>Asignaciones disponibles</strong>
+            <strong>Elige una asignación para trabajar</strong>
           </div>
           <small>{assignments.length} asignaciones activas</small>
         </div>
-        <div className="teacher-course-grid" aria-label="Cursos del colegio">
-          {visibleCourses.map((course: AdminCourseRow) => {
-            const active = assignedCourseIds.has(course.course_id);
-            const assignment = assignments.find((item) => item.course_id === course.course_id);
-            const selected = assignment?.assignment_id === assignmentId;
+        <div className="teacher-course-picker">
+          <label>
+            Curso activo
+            <select value={assignmentId} onChange={(event) => setAssignmentId(event.target.value)}>
+              {assignments.map((assignment) => (
+                <option key={assignment.assignment_id} value={assignment.assignment_id}>
+                  {assignment.course_name} · {assignment.subject_name}
+                </option>
+              ))}
+            </select>
+          </label>
+          <div className="teacher-course-current">
+            <span>{selectedAssignment?.grade_level ? `${selectedAssignment.grade_level}°` : "Curso"}</span>
+            <strong>{selectedAssignment?.course_name || "Sin curso"}</strong>
+            <small>{selectedAssignment?.subject_name || "Sin asignatura"}</small>
+          </div>
+        </div>
+        <div className="teacher-course-strip" aria-label="Asignaciones del profesor">
+          {assignments.map((assignment) => {
+            const selected = assignment.assignment_id === assignmentId;
             return (
               <button
-                key={course.course_id}
-                className={`teacher-course-card ${active ? "teacher-course-card--active" : "teacher-course-card--locked"} ${selected ? "teacher-course-card--selected" : ""}`}
+                key={assignment.assignment_id}
                 type="button"
-                disabled={!active || !assignment}
-                onClick={() => assignment && setAssignmentId(assignment.assignment_id)}
+                className={`teacher-course-pill ${selected ? "teacher-course-pill--selected" : ""}`}
+                onClick={() => setAssignmentId(assignment.assignment_id)}
               >
-                <span className="teacher-course-card__level">{course.grade_level ? `${course.grade_level}°` : "Curso"}</span>
-                <strong>{course.course_name}</strong>
-                <span>{active ? assignment?.subject_name : "Sin información"}</span>
-                <small>{active ? `${course.students_count ?? students.length} alumnos` : "No asignado"}</small>
+                <strong>{assignment.course_name}</strong>
+                <span>{assignment.subject_name}</span>
+                <small>{assignment.students_count ?? students.length} alumnos</small>
               </button>
             );
           })}
