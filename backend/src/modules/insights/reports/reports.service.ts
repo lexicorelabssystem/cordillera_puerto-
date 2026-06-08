@@ -173,7 +173,15 @@ export class ReportsService {
     // Student summaries
     const studentMap: Record<string, {
       id: string; name: string;
-      grades: { assessmentTitle: string; subjectName: string; grade: number; percentage: number | null }[];
+      grades: {
+        assessmentTitle: string;
+        subjectName: string;
+        grade: number;
+        percentage: number | null;
+        score: number | null;
+        comments: string | null;
+        recordedAt: string;
+      }[];
     }> = {};
 
     for (const enrollment of course.enrollments) {
@@ -194,6 +202,9 @@ export class ReportsService {
             subjectName: a.subject.name,
             grade: g.grade,
             percentage: g.percentage,
+            score: g.score,
+            comments: g.comments,
+            recordedAt: g.createdAt.toISOString(),
           });
         }
       }
