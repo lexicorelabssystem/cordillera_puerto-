@@ -321,6 +321,7 @@ model User {
   notifications           Notification[]
   attendances             Attendance[]
   createdSimceAssessments SimceAssessment[]
+  resourceUsageLogs       ResourceUsageLog[]
 
   @@index([email, isActive])
   @@index([institutionId, role])
@@ -440,6 +441,7 @@ model Course {
   observations       Observation[]
   classBookEntries   ClassBookEntry[]
   simceAssessments   SimceAssessment[]
+  resourceUsageLogs  ResourceUsageLog[]
 
   @@unique([academicYearId, name])
   @@index([institutionId, gradeLevel])
@@ -495,6 +497,7 @@ model Subject {
   lessons            Lesson[]
   classBookEntries   ClassBookEntry[]
   simceAssessments   SimceAssessment[]
+  resourceUsageLogs  ResourceUsageLog[]
 
   @@map("subjects")
 }
@@ -1028,12 +1031,34 @@ model LearningResource {
   guide             Guide?
   presentation      Presentation?
   lessonResources   LessonResource[]
+  usageLogs         ResourceUsageLog[]
 
   @@index([institutionId, type, status])
   @@index([learningObjectiveId])
   @@index([courseId])
   @@index([assessmentId])
   @@map("learning_resources")
+}
+
+model ResourceUsageLog {
+  id         String   @id @default(uuid()) @db.Uuid
+  resourceId String   @db.Uuid
+  courseId   String   @db.Uuid
+  subjectId  String?  @db.Uuid
+  usedById   String   @db.Uuid
+  action     String   @default("USED")
+  usedAt     DateTime @default(now()) @db.Timestamptz()
+  notes      String?
+
+  resource LearningResource @relation(fields: [resourceId], references: [id], onDelete: Cascade)
+  course   Course           @relation(fields: [courseId], references: [id], onDelete: Cascade)
+  subject  Subject?         @relation(fields: [subjectId], references: [id])
+  usedBy   User             @relation(fields: [usedById], references: [id])
+
+  @@index([resourceId, usedAt])
+  @@index([courseId, usedAt])
+  @@index([usedById, usedAt])
+  @@map("resource_usage_logs")
 }
 
 model Guide {

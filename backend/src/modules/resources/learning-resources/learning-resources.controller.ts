@@ -5,7 +5,7 @@ import {
 import { ApiTags, ApiOperation, ApiBearerAuth, ApiQuery } from "@nestjs/swagger";
 import { ResourceType } from "@prisma/client";
 import { LearningResourcesService } from "./learning-resources.service.js";
-import { CreateResourceDto, UpdateResourceDto } from "./dto/create-resource.dto.js";
+import { CreateResourceDto, ResourceUsageDto, UpdateResourceDto } from "./dto/create-resource.dto.js";
 import { JwtAuthGuard } from "../../auth/jwt-auth.guard.js";
 import { RolesGuard } from "../../../common/guards/roles.guard.js";
 import { Roles } from "../../../common/decorators/roles.decorator.js";
@@ -66,6 +66,13 @@ export class LearningResourcesController {
     return this.service.findById(id);
   }
 
+  @Get(":id/usage")
+  @Roles("ADMIN", "SUPER_ADMIN", "DIRECTION", "UTP", "TEACHER")
+  @ApiOperation({ summary: "Historial de uso de un recurso por curso, fecha y profesor" })
+  usageHistory(@Param("id", ParseUUIDPipe) id: string) {
+    return this.service.usageHistory(id);
+  }
+
   @Patch(":id")
   @Roles("ADMIN", "SUPER_ADMIN", "UTP", "TEACHER")
   @ApiOperation({ summary: "Actualizar recurso (incrementa versión)" })
@@ -84,9 +91,9 @@ export class LearningResourcesController {
   @Post(":id/mark-used")
   @HttpCode(HttpStatus.OK)
   @Roles("ADMIN", "SUPER_ADMIN", "UTP", "TEACHER")
-  @ApiOperation({ summary: "Marcar recurso como usado en clase" })
-  markUsed(@Param("id", ParseUUIDPipe) id: string) {
-    return this.service.markUsed(id);
+  @ApiOperation({ summary: "Registrar uso de recurso sin impedir reutilizarlo" })
+  markUsed(@Param("id", ParseUUIDPipe) id: string, @Body() dto: ResourceUsageDto, @CurrentUser() user: JwtPayload) {
+    return this.service.markUsed(id, dto, user.sub);
   }
 
   @Post(":id/archive")

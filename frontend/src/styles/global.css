@@ -5261,6 +5261,73 @@ input::placeholder, textarea::placeholder { color: var(--muted-light); }
   grid-column: 1 / -1;
 }
 
+.shell--teacher .teacher-material-upload small {
+  display: block;
+  margin-top: 6px;
+  color: #6c6255;
+  font-size: .78rem;
+  font-weight: 700;
+}
+
+.shell--teacher .teacher-material-card__usage {
+  display: grid;
+  gap: 3px;
+  margin-top: 8px;
+  padding: 8px 10px;
+  border-radius: 8px;
+  background: #f4f0e8;
+  color: #5c5247;
+  font-size: .78rem;
+}
+
+.shell--teacher .teacher-material-card__usage span {
+  font-weight: 800;
+}
+
+.shell--teacher .teacher-material-card__usage time {
+  color: #786b5c;
+}
+
+.shell--teacher .teacher-material-usage {
+  display: grid;
+  gap: 10px;
+  margin-top: 18px;
+  padding: 14px;
+  border: 1px solid #e1ddcf;
+  border-radius: 10px;
+  background: #fffdf8;
+}
+
+.shell--teacher .teacher-material-usage__heading,
+.shell--teacher .teacher-material-usage__item {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.shell--teacher .teacher-material-usage__heading span {
+  color: #786b5c;
+  font-size: .84rem;
+  font-weight: 800;
+}
+
+.shell--teacher .teacher-material-usage__item {
+  padding: 10px 0;
+  border-top: 1px solid #eee7d9;
+}
+
+.shell--teacher .teacher-material-usage__item div {
+  display: grid;
+  gap: 2px;
+}
+
+.shell--teacher .teacher-material-usage__item span,
+.shell--teacher .teacher-material-usage__item time {
+  color: #716556;
+  font-size: .82rem;
+}
+
 @media (max-width: 1080px) {
   .shell--teacher .teacher-overview.teacher-workspace-hero,
   .shell--teacher .teacher-complete-grid,

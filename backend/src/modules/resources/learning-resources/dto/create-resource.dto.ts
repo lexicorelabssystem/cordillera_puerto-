@@ -119,6 +119,27 @@ export class UpdateResourceDto {
   assessmentId?: string;
 }
 
+export class ResourceUsageDto {
+  @ApiProperty({ description: "ID del curso donde se usa el recurso" })
+  @IsUUID()
+  courseId!: string;
+
+  @ApiPropertyOptional({ description: "ID de la asignatura asociada" })
+  @IsOptional()
+  @IsUUID()
+  subjectId?: string;
+
+  @ApiPropertyOptional({ description: "Acción realizada: VIEW, DOWNLOAD, PRINT o USED" })
+  @IsOptional()
+  @IsString()
+  action?: string;
+
+  @ApiPropertyOptional({ description: "Nota opcional para la bitácora" })
+  @IsOptional()
+  @IsString()
+  notes?: string;
+}
+
 export class ResourceFilterDto {
   @ApiPropertyOptional()
   @IsOptional()
