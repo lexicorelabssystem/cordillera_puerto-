@@ -20,6 +20,9 @@ type ReportResult = {
   reportId: string;
   type: ReportType;
   generatedAt: string;
+  course?: Record<string, unknown>;
+  student?: Record<string, unknown>;
+  institution?: Record<string, unknown>;
   courseAverage?: number;
   institutionalAverage?: number;
   overallAverage?: number;
@@ -30,6 +33,7 @@ type ReportResult = {
   lowAchievementCount?: number;
   assessmentCount?: number;
   students?: unknown[];
+  subjects?: unknown[];
   courses?: unknown[];
   objectives?: unknown[];
 };
@@ -86,6 +90,312 @@ function compactFilters(filters: Record<string, unknown> | null) {
   return entries.length ? entries.map(([key, value]) => `${key}: ${String(value)}`).join(" | ") : "-";
 }
 
+function asRecord(value: unknown): Record<string, unknown> {
+  return value && typeof value === "object" && !Array.isArray(value) ? value as Record<string, unknown> : {};
+}
+
+function asArray(value: unknown): Record<string, unknown>[] {
+  return Array.isArray(value) ? value.map(asRecord) : [];
+}
+
+function reportSummary(report: GeneratedReport): ReportResult | null {
+  const filters = asRecord(report.filters);
+  const summary = asRecord(filters.summary);
+  const legacy = filters.type ? filters : null;
+  const data = Object.keys(summary).length ? summary : legacy;
+  return data ? { reportId: report.id, ...data } as ReportResult : null;
+}
+
+function text(value: unknown) {
+  if (value == null || value === "") return "";
+  return String(value);
+}
+
+function csvValue(value: unknown) {
+  const raw = text(value).replace(/\r?\n/g, " ");
+  return /[",;]/.test(raw) ? `"${raw.replace(/"/g, '""')}"` : raw;
+}
+
+function downloadFile(fileName: string, content: string, type: string) {
+  const blob = new Blob([content], { type });
+  const url = URL.createObjectURL(blob);
+  const link = document.createElement("a");
+  link.href = url;
+  link.download = fileName;
+  document.body.appendChild(link);
+  link.click();
+  link.remove();
+  URL.revokeObjectURL(url);
+}
+
+function buildCsvRows(report: ReportResult): Record<string, unknown>[] {
+  if (report.type === "COURSE") {
+    const course = asRecord(report.course);
+    const rows: Record<string, unknown>[] = [];
+    for (const student of asArray(report.students)) {
+      const grades = asArray(student.grades);
+      if (!grades.length) {
+        rows.push({
+          curso: course.name,
+          alumno: student.name,
+          promedio_alumno: student.average,
+          nivel: student.level,
+          evaluacion: "",
+          asignatura: "",
+          nota: "",
+          porcentaje: "",
+          puntaje: "",
+          comentarios: "",
+          fecha_registro: "",
+        });
+      }
+      for (const grade of grades) {
+        rows.push({
+          curso: course.name,
+          alumno: student.name,
+          promedio_alumno: student.average,
+          nivel: student.level,
+          evaluacion: grade.assessmentTitle,
+          asignatura: grade.subjectName,
+          nota: grade.grade,
+          porcentaje: grade.percentage,
+          puntaje: grade.score,
+          comentarios: grade.comments,
+          fecha_registro: grade.recordedAt,
+        });
+      }
+    }
+    return rows;
+  }
+
+  if (report.type === "STUDENT") {
+    const student = asRecord(report.student);
+    const course = asRecord(report.course);
+    const rows: Record<string, unknown>[] = [];
+    for (const subject of asArray(report.subjects)) {
+      for (const grade of asArray(subject.grades)) {
+        rows.push({
+          alumno: student.name,
+          curso: course.name,
+          asignatura: subject.subjectName,
+          promedio_asignatura: subject.average,
+          evaluacion: grade.title,
+          periodo: grade.periodName,
+          nota: grade.grade,
+          porcentaje: grade.percentage,
+        });
+      }
+    }
+    return rows;
+  }
+
+  if (report.type === "INSTITUTIONAL") {
+    return asArray(report.courses).map((course) => ({
+      curso: course.courseName,
+      nivel: course.gradeLevel,
+      ano: course.year,
+      alumnos: course.students,
+      evaluaciones: course.assessments,
+      promedio: course.average,
+      nivel_logro: course.level,
+      alumnos_riesgo: course.atRiskCount,
+    }));
+  }
+
+  if (report.type === "RISK") {
+    return asArray(report.students).map((student) => ({
+      alumno: student.studentName,
+      curso: student.courseName,
+      promedio: student.average,
+      nivel: student.level,
+      notas: student.gradeCount,
+      asignaturas: asArray(student.subjects).map((subject) => `${text(subject.subjectName)} ${text(subject.average)}`).join(" | "),
+    }));
+  }
+
+  if (report.type === "OA") {
+    return asArray(report.objectives).map((objective) => ({
+      oa: objective.code,
+      descripcion: objective.description,
+      nivel: objective.gradeLevel,
+      respuestas: objective.totalAnswers,
+      correctas: objective.correctAnswers,
+      logro: objective.achievement,
+      cursos: asArray(objective.courses).map((course) => `${text(course.courseName)} ${text(course.achievement)}%`).join(" | "),
+    }));
+  }
+
+  return [];
+}
+
+function downloadCsv(report: ReportResult) {
+  const rows = buildCsvRows(report);
+  if (!rows.length) return;
+  const headers = Object.keys(rows[0]);
+  const csv = [
+    headers.join(";"),
+    ...rows.map((row) => headers.map((header) => csvValue(row[header])).join(";")),
+  ].join("\n");
+  downloadFile(`reporte-${report.type.toLowerCase()}-${report.reportId}.csv`, csv, "text/csv;charset=utf-8");
+}
+
+function downloadJson(report: ReportResult) {
+  downloadFile(
+    `reporte-${report.type.toLowerCase()}-${report.reportId}.json`,
+    JSON.stringify(report, null, 2),
+    "application/json;charset=utf-8",
+  );
+}
+
+function ReportDetail({ report, onCsv, onJson }: { report: ReportResult; onCsv: () => void; onJson: () => void }) {
+  const course = asRecord(report.course);
+  const student = asRecord(report.student);
+
+  return (
+    <section className="panel">
+      <div className="panel-heading">
+        <div>
+          <h3>Detalle del informe</h3>
+          <p>
+            {report.type === "COURSE" ? `Curso ${text(course.name)} | Promedio ${text(report.courseAverage)}` : null}
+            {report.type === "STUDENT" ? `${text(student.name)} | Promedio ${text(report.overallAverage)}` : null}
+            {report.type === "INSTITUTIONAL" ? `Promedio institucional ${text(report.institutionalAverage)}` : null}
+            {report.type === "RISK" ? `${text(report.atRiskCount)} alumnos bajo el corte` : null}
+            {report.type === "OA" ? `${text(report.objectiveCount)} objetivos analizados` : null}
+          </p>
+        </div>
+        <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
+          <button type="button" className="btn-small" onClick={onCsv}>Descargar CSV</button>
+          <button type="button" className="btn-small btn-secondary" onClick={onJson}>Descargar JSON</button>
+        </div>
+      </div>
+
+      {report.type === "COURSE" ? <CourseReportTable report={report} /> : null}
+      {report.type === "STUDENT" ? <StudentReportTable report={report} /> : null}
+      {report.type === "INSTITUTIONAL" ? <InstitutionReportTable report={report} /> : null}
+      {report.type === "RISK" ? <RiskReportTable report={report} /> : null}
+      {report.type === "OA" ? <OaReportTable report={report} /> : null}
+    </section>
+  );
+}
+
+function CourseReportTable({ report }: { report: ReportResult }) {
+  const rows = buildCsvRows(report);
+  return (
+    <div className="table-wrap">
+      <table className="table">
+        <thead><tr><th>Alumno</th><th>Promedio</th><th>Evaluacion</th><th>Asignatura</th><th>Nota</th><th>%</th><th>Puntaje</th><th>Fecha</th></tr></thead>
+        <tbody>
+          {rows.map((row, index) => (
+            <tr key={index}>
+              <td><strong>{text(row.alumno)}</strong></td>
+              <td>{text(row.promedio_alumno)}</td>
+              <td>{text(row.evaluacion) || "Sin notas"}</td>
+              <td>{text(row.asignatura)}</td>
+              <td>{text(row.nota)}</td>
+              <td>{text(row.porcentaje)}</td>
+              <td>{text(row.puntaje)}</td>
+              <td>{row.fecha_registro ? new Date(text(row.fecha_registro)).toLocaleDateString("es-CL") : ""}</td>
+            </tr>
+          ))}
+        </tbody>
+      </table>
+    </div>
+  );
+}
+
+function StudentReportTable({ report }: { report: ReportResult }) {
+  const rows = buildCsvRows(report);
+  return (
+    <div className="table-wrap">
+      <table className="table">
+        <thead><tr><th>Asignatura</th><th>Promedio</th><th>Evaluacion</th><th>Periodo</th><th>Nota</th><th>%</th></tr></thead>
+        <tbody>
+          {rows.map((row, index) => (
+            <tr key={index}>
+              <td><strong>{text(row.asignatura)}</strong></td>
+              <td>{text(row.promedio_asignatura)}</td>
+              <td>{text(row.evaluacion)}</td>
+              <td>{text(row.periodo)}</td>
+              <td>{text(row.nota)}</td>
+              <td>{text(row.porcentaje)}</td>
+            </tr>
+          ))}
+        </tbody>
+      </table>
+    </div>
+  );
+}
+
+function InstitutionReportTable({ report }: { report: ReportResult }) {
+  const rows = buildCsvRows(report);
+  return (
+    <div className="table-wrap">
+      <table className="table">
+        <thead><tr><th>Curso</th><th>Alumnos</th><th>Evaluaciones</th><th>Promedio</th><th>Nivel</th><th>Riesgo</th></tr></thead>
+        <tbody>
+          {rows.map((row, index) => (
+            <tr key={index}>
+              <td><strong>{text(row.curso)}</strong></td>
+              <td>{text(row.alumnos)}</td>
+              <td>{text(row.evaluaciones)}</td>
+              <td>{text(row.promedio)}</td>
+              <td>{text(row.nivel_logro)}</td>
+              <td>{text(row.alumnos_riesgo)}</td>
+            </tr>
+          ))}
+        </tbody>
+      </table>
+    </div>
+  );
+}
+
+function RiskReportTable({ report }: { report: ReportResult }) {
+  const rows = buildCsvRows(report);
+  return (
+    <div className="table-wrap">
+      <table className="table">
+        <thead><tr><th>Alumno</th><th>Curso</th><th>Promedio</th><th>Nivel</th><th>Notas</th><th>Asignaturas</th></tr></thead>
+        <tbody>
+          {rows.map((row, index) => (
+            <tr key={index}>
+              <td><strong>{text(row.alumno)}</strong></td>
+              <td>{text(row.curso)}</td>
+              <td>{text(row.promedio)}</td>
+              <td>{text(row.nivel)}</td>
+              <td>{text(row.notas)}</td>
+              <td>{text(row.asignaturas)}</td>
+            </tr>
+          ))}
+        </tbody>
+      </table>
+    </div>
+  );
+}
+
+function OaReportTable({ report }: { report: ReportResult }) {
+  const rows = buildCsvRows(report);
+  return (
+    <div className="table-wrap">
+      <table className="table">
+        <thead><tr><th>OA</th><th>Descripcion</th><th>Respuestas</th><th>Correctas</th><th>Logro</th><th>Cursos</th></tr></thead>
+        <tbody>
+          {rows.map((row, index) => (
+            <tr key={index}>
+              <td><strong>{text(row.oa)}</strong></td>
+              <td>{text(row.descripcion)}</td>
+              <td>{text(row.respuestas)}</td>
+              <td>{text(row.correctas)}</td>
+              <td>{text(row.logro)}%</td>
+              <td>{text(row.cursos)}</td>
+            </tr>
+          ))}
+        </tbody>
+      </table>
+    </div>
+  );
+}
+
 export function ReportsPage() {
   const queryClient = useQueryClient();
   const { selectedInstitution } = useInstitution();
@@ -98,6 +408,7 @@ export function ReportsPage() {
   const [learningObjectiveId, setLearningObjectiveId] = useState("");
   const [threshold, setThreshold] = useState("4.0");
   const [lastResult, setLastResult] = useState<ReportResult | null>(null);
+  const [selectedReport, setSelectedReport] = useState<ReportResult | null>(null);
 
   const coursesQuery = useQuery({
     queryKey: ["reports-courses", selectedInstitution?.id, academicYearId],
@@ -171,6 +482,7 @@ export function ReportsPage() {
     }) as Promise<ReportResult>,
     onSuccess: (result) => {
       setLastResult(result);
+      setSelectedReport(result);
       toast("Reporte generado correctamente.", "success");
       queryClient.invalidateQueries({ queryKey: ["reports-list"] });
     },
@@ -178,6 +490,33 @@ export function ReportsPage() {
   });
 
   const reports = reportsQuery.data || [];
+  const formatFilters = (filters: Record<string, unknown> | null) => {
+    const raw = asRecord(filters);
+    const parts: string[] = [];
+    if (raw.institutionId) parts.push(`Institucion: ${selectedInstitution?.name || text(raw.institutionId)}`);
+    if (raw.academicYearId) {
+      const year = (yearsQuery.data || []).find((item) => item.id === raw.academicYearId);
+      parts.push(`Ano: ${year?.year || text(raw.academicYearId)}`);
+    }
+    if (raw.courseId) {
+      const course = (coursesQuery.data || []).find((item) => getCourseId(item) === raw.courseId);
+      parts.push(`Curso: ${course ? getCourseName(course) : text(raw.courseId)}`);
+    }
+    if (raw.subjectId) {
+      const subject = (subjectsQuery.data || []).find((item) => item.id === raw.subjectId);
+      parts.push(`Asignatura: ${subject?.name || text(raw.subjectId)}`);
+    }
+    if (raw.studentId) {
+      const student = (studentsQuery.data || []).find((item) => item.student_id === raw.studentId);
+      parts.push(`Alumno: ${student ? `${student.first_name} ${student.last_name}` : text(raw.studentId)}`);
+    }
+    if (raw.learningObjectiveId) {
+      const objective = (objectivesQuery.data || []).find((item) => item.id === raw.learningObjectiveId);
+      parts.push(`OA: ${objective?.code || text(raw.learningObjectiveId)}`);
+    }
+    if (raw.threshold) parts.push(`Corte: ${text(raw.threshold)}`);
+    return parts.length ? parts.join(" | ") : compactFilters(filters);
+  };
 
   return (
     <>
@@ -198,6 +537,7 @@ export function ReportsPage() {
               onClick={() => {
                 setType(report.type);
                 setLastResult(null);
+                setSelectedReport(null);
                 if (report.type === "INSTITUTIONAL") {
                   setCourseId("");
                   setStudentId("");
@@ -327,25 +667,49 @@ export function ReportsPage() {
         </section>
       ) : null}
 
+      {selectedReport ? (
+        <ReportDetail
+          report={selectedReport}
+          onCsv={() => downloadCsv(selectedReport)}
+          onJson={() => downloadJson(selectedReport)}
+        />
+      ) : null}
+
       <section className="panel">
         <h3>Reportes generados ({reports.length})</h3>
         <div className="table-wrap">
           <table className="table">
             <thead>
-              <tr><th>Tipo</th><th>Formato</th><th>Filtros</th><th>Estado</th><th>Fecha</th></tr>
+              <tr><th>Tipo</th><th>Formato</th><th>Filtros</th><th>Estado</th><th>Fecha</th><th>Acciones</th></tr>
             </thead>
             <tbody>
-              {reports.map((report) => (
-                <tr key={report.id}>
-                  <td><strong>{REPORT_TYPES.find((item) => item.type === report.type)?.label || report.type}</strong></td>
-                  <td><span className="badge badge--role">{report.format}</span></td>
-                  <td style={{ fontSize: ".78rem" }}>{compactFilters(report.filters)}</td>
-                  <td><span className={`badge ${report.status === "GENERATED" ? "badge--active" : "badge--warning"}`}>{report.status}</span></td>
-                  <td style={{ whiteSpace: "nowrap" }}>{report.generatedAt ? new Date(report.generatedAt).toLocaleDateString("es-CL") : "-"}</td>
-                </tr>
-              ))}
+              {reports.map((report) => {
+                const summary = reportSummary(report);
+                return (
+                  <tr key={report.id}>
+                    <td><strong>{REPORT_TYPES.find((item) => item.type === report.type)?.label || report.type}</strong></td>
+                    <td><span className="badge badge--role">{report.format}</span></td>
+                    <td style={{ fontSize: ".78rem" }}>{formatFilters(report.filters)}</td>
+                    <td><span className={`badge ${report.status === "GENERATED" ? "badge--active" : "badge--warning"}`}>{report.status}</span></td>
+                    <td style={{ whiteSpace: "nowrap" }}>{report.generatedAt ? new Date(report.generatedAt).toLocaleDateString("es-CL") : "-"}</td>
+                    <td>
+                      <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
+                        <button type="button" className="btn-small" disabled={!summary} onClick={() => summary && setSelectedReport(summary)}>
+                          Ver
+                        </button>
+                        <button type="button" className="btn-small btn-secondary" disabled={!summary} onClick={() => summary && downloadCsv(summary)}>
+                          CSV
+                        </button>
+                        <button type="button" className="btn-small btn-secondary" disabled={!summary} onClick={() => summary && downloadJson(summary)}>
+                          JSON
+                        </button>
+                      </div>
+                    </td>
+                  </tr>
+                );
+              })}
               {!reports.length ? (
-                <tr><td colSpan={5}>No hay reportes generados para este tipo.</td></tr>
+                <tr><td colSpan={6}>No hay reportes generados para este tipo.</td></tr>
               ) : null}
             </tbody>
           </table>
