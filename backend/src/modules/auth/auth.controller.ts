@@ -2,6 +2,7 @@ import {
   Controller,
   Post,
   Get,
+  Patch,
   Body,
   HttpCode,
   HttpStatus,
@@ -14,7 +15,7 @@ import { Throttle } from "@nestjs/throttler";
 import { ApiTags, ApiOperation, ApiResponse, ApiBearerAuth, ApiBody } from "@nestjs/swagger";
 import type { FastifyRequest, FastifyReply } from "fastify";
 import { AuthService } from "./auth.service.js";
-import { LoginDto, ChangePasswordDto, RefreshTokenDto, LoginResponseDto } from "./dto/login.dto.js";
+import { LoginDto, ChangePasswordDto, RefreshTokenDto, LoginResponseDto, UpdateProfileDto } from "./dto/login.dto.js";
 import { JwtAuthGuard } from "./jwt-auth.guard.js";
 import { Public } from "../../common/decorators/public.decorator.js";
 import { CurrentUser, JwtPayload } from "../../common/decorators/current-user.decorator.js";
@@ -75,6 +76,23 @@ export class AuthController {
   @ApiResponse({ status: 401, description: "Token inválido o expirado" })
   async me(@CurrentUser() user: JwtPayload) {
     return { user };
+  }
+
+  @Patch("me")
+  @HttpCode(HttpStatus.OK)
+  @UseGuards(JwtAuthGuard)
+  @ApiBearerAuth("access-token")
+  @ApiOperation({ summary: "Actualizar perfil propio", description: "Permite editar nombre y apellido del usuario autenticado." })
+  @ApiBody({ type: UpdateProfileDto })
+  @ApiResponse({ status: 200, description: "Perfil actualizado", type: LoginResponseDto })
+  async updateProfile(
+    @CurrentUser() user: JwtPayload,
+    @Body() dto: UpdateProfileDto,
+    @Res({ passthrough: true }) reply: FastifyReply,
+  ) {
+    const result = await this.authService.updateProfile(user.sub, dto.firstName, dto.lastName);
+    this.setAuthCookies(reply, result.token, result.refreshToken);
+    return result;
   }
 
   @Post("change-password")

@@ -54,7 +54,7 @@ export class SubjectsController {
 
   @Delete(":id/permanent")
   @HttpCode(HttpStatus.OK)
-  @Roles("ADMIN", "SUPER_ADMIN", "DIRECTION", "UTP")
+  @Roles("SUPER_ADMIN")
   @ApiOperation({ summary: "Eliminar asignatura definitivamente si no tiene dependencias" })
   removePermanent(@Param("id", ParseUUIDPipe) id: string) {
     return this.service.deletePermanent(id);

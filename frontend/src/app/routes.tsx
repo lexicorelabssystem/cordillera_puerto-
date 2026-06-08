@@ -4,7 +4,7 @@ import { useQuery } from "@tanstack/react-query";
 import { LoadingSpinner } from "../components/common/LoadingSpinner";
 import { ErrorBoundary } from "../components/common/ErrorBoundary";
 import { api } from "../lib/api";
-import type { AdminOverview, RoleAlerts } from "../types/api";
+import type { AdminOverview, AuthUser, RoleAlerts } from "../types/api";
 import { useFeatureFlags } from "../hooks/useFeatureFlags";
 import { DEFAULT_FEATURES, type FeatureFlag } from "@cordillera/shared/features.js";
 
@@ -18,6 +18,7 @@ function Lazy({ children }: { children: React.ReactNode }) {
 
 interface AdminContext {
   overview: AdminOverview;
+  user: AuthUser;
 }
 
 function useAdminContext() {

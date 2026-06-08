@@ -1,12 +1,19 @@
 import { useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import type { Institution } from "../../types/api";
+import { useOutletContext } from "react-router-dom";
+import type { AuthUser, Institution } from "../../types/api";
 import { api } from "../../lib/api";
 import { useToast } from "../../components/common/Toast";
+
+interface AdminOutletContext {
+  user: AuthUser;
+}
 
 export function InstitutionsView() {
   const queryClient = useQueryClient();
   const { toast } = useToast();
+  const { user } = useOutletContext<AdminOutletContext>();
+  const isSuperAdmin = user.role === "SUPER_ADMIN";
   const [editingId, setEditingId] = useState<string | null>(null);
   const [form, setForm] = useState({
     name: "",
@@ -50,14 +57,30 @@ export function InstitutionsView() {
       toast(err instanceof Error ? err.message : "Error al actualizar institucion.", "error"),
   });
 
-  const deleteMutation = useMutation({
-    mutationFn: api.deleteInstitution,
+  const deleteMutation = useMutation<unknown, Error, string>({
+    mutationFn: (id: string) => {
+      const institution = (institutions.data || []).find((inst) => inst.id === id);
+      return institution?.isActive === false
+        ? api.updateInstitution(id, { isActive: true })
+        : api.deleteInstitution(id);
+    },
     onSuccess: () => {
-      toast("Institucion desactivada correctamente.", "success");
+      toast("Estado de institucion actualizado correctamente.", "success");
       queryClient.invalidateQueries({ queryKey: ["institutions"] });
     },
     onError: (err) =>
-      toast(err instanceof Error ? err.message : "Error al desactivar institucion.", "error"),
+      toast(err instanceof Error ? err.message : "Error al actualizar estado de institucion.", "error"),
+  });
+
+  const deletePermanentMutation = useMutation({
+    mutationFn: api.deleteInstitutionPermanent,
+    onSuccess: () => {
+      toast("Institucion eliminada definitivamente.", "success");
+      queryClient.invalidateQueries({ queryKey: ["institutions"] });
+      queryClient.invalidateQueries({ queryKey: ["admin-overview"] });
+    },
+    onError: (err) =>
+      toast(err instanceof Error ? err.message : "Error al eliminar definitivamente la institucion.", "error"),
   });
 
   function startEdit(inst: Institution) {
@@ -294,6 +317,19 @@ export function InstitutionsView() {
                         >
                           {inst.isActive ? "Desactivar" : "Activar"}
                         </button>
+                        {isSuperAdmin && !inst.isActive ? (
+                          <button
+                            className="btn-small btn-danger"
+                            onClick={() => {
+                              if (window.confirm(`Eliminar definitivamente "${inst.name}"? Esta accion no se puede deshacer.`)) {
+                                deletePermanentMutation.mutate(inst.id);
+                              }
+                            }}
+                            disabled={deletePermanentMutation.isPending}
+                          >
+                            Eliminar definitivo
+                          </button>
+                        ) : null}
                       </div>
                     </td>
                   </tr>
