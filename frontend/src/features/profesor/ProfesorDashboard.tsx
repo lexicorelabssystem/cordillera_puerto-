@@ -1003,32 +1003,53 @@ export function ProfesorDashboard({ user, onLogout }: Props) {
               </div>
               <span className="badge badge--role">{gradeBookQuery.data?.students.length ?? 0} alumnos</span>
             </div>
-            <div className="form-row teacher-grade-form">
-              <input value={title} onChange={(e) => setTitle(e.target.value)} placeholder="Nombre de evaluación" />
-              <select value={assessmentType} onChange={(e) => setAssessmentType(e.target.value)}>
-                <option value="DIAGNOSTICA">Diagnóstica</option>
-                <option value="PROCESO">Proceso</option>
-                <option value="CIERRE">Cierre</option>
-                <option value="PARCIAL">Parcial</option>
-                <option value="FINAL">Final</option>
-              </select>
-              <select value={semester} onChange={(e) => setSemester(Number(e.target.value))}>
-                <option value={1}>Semestre 1</option>
-                <option value={2}>Semestre 2</option>
-              </select>
-              <input
-                type="number"
-                min={0}
-                max={100}
-                value={assessmentWeight}
-                onChange={(e) => setAssessmentWeight(Number(e.target.value))}
-                placeholder="Ponderación %"
-                title="Ponderación de la evaluación (%)"
-              />
-              <input type="date" value={appliedAt} onChange={(e) => setAppliedAt(e.target.value)} />
-              <button onClick={crearColumnaLibro} disabled={!courseId || !subjectId || createAssessment.isPending}>
-                {createAssessment.isPending ? "Creando..." : "+ Calificacion"}
-              </button>
+            <div className="teacher-grade-composer">
+              <div className="teacher-grade-composer__intro">
+                <span>Nueva evaluación</span>
+                <strong>Configura la columna antes de agregarla al libro</strong>
+              </div>
+              <div className="form-row teacher-grade-form">
+                <label className="teacher-grade-field teacher-grade-field--title">
+                  <span>Nombre de evaluación</span>
+                  <input value={title} onChange={(e) => setTitle(e.target.value)} placeholder="Ej: Control unidad 1" />
+                </label>
+                <label className="teacher-grade-field">
+                  <span>Fase de evaluación</span>
+                  <select value={assessmentType} onChange={(e) => setAssessmentType(e.target.value)}>
+                    <option value="DIAGNOSTICA">Diagnóstica</option>
+                    <option value="PROCESO">Proceso</option>
+                    <option value="CIERRE">Cierre</option>
+                    <option value="PARCIAL">Parcial</option>
+                    <option value="FINAL">Final</option>
+                  </select>
+                </label>
+                <label className="teacher-grade-field">
+                  <span>Semestre</span>
+                  <select value={semester} onChange={(e) => setSemester(Number(e.target.value))}>
+                    <option value={1}>Semestre 1</option>
+                    <option value={2}>Semestre 2</option>
+                  </select>
+                </label>
+                <label className="teacher-grade-field">
+                  <span>Ponderación</span>
+                  <input
+                    type="number"
+                    min={0}
+                    max={100}
+                    value={assessmentWeight}
+                    onChange={(e) => setAssessmentWeight(Number(e.target.value))}
+                    placeholder="%"
+                    title="Ponderación de la evaluación (%)"
+                  />
+                </label>
+                <label className="teacher-grade-field">
+                  <span>Fecha</span>
+                  <input type="date" value={appliedAt} onChange={(e) => setAppliedAt(e.target.value)} />
+                </label>
+                <button className="teacher-grade-submit" onClick={crearColumnaLibro} disabled={!courseId || !subjectId || createAssessment.isPending}>
+                  {createAssessment.isPending ? "Creando..." : "+ Calificación"}
+                </button>
+              </div>
             </div>
 
             <div style={{ marginTop: 12 }}>
@@ -1120,16 +1141,22 @@ export function ProfesorDashboard({ user, onLogout }: Props) {
                           <tr key={student.studentId}>
                             <td className="gb-col-nro">{index + 1}</td>
                             <td className="gb-col-nombre">
-                              <strong>{student.lastName}, {student.firstName}</strong>
-                              {student.rut ? <span style={{ display: "block", color: "var(--muted)", fontSize: ".75rem" }}>{student.rut}</span> : null}
-                              <button
-                                type="button"
-                                className="btn-small btn-secondary"
-                                style={{ marginTop: 6 }}
-                                onClick={() => descargarInformeAlumno(student as TeacherGradebookStudent)}
-                              >
-                                Informe PDF
-                              </button>
+                              <div className="gb-student-card">
+                                <span className="gb-student-avatar">
+                                  {(student.firstName?.[0] || "A").toUpperCase()}{(student.lastName?.[0] || "").toUpperCase()}
+                                </span>
+                                <div className="gb-student-main">
+                                  <strong>{student.lastName}, {student.firstName}</strong>
+                                  {student.rut ? <span>{student.rut}</span> : <span>Sin RUT registrado</span>}
+                                </div>
+                                <button
+                                  type="button"
+                                  className="btn-small btn-secondary gb-student-report"
+                                  onClick={() => descargarInformeAlumno(student as TeacherGradebookStudent)}
+                                >
+                                  Informe PDF
+                                </button>
+                              </div>
                             </td>
                             {gradeBookQuery.data.assessments.map((assessment) => {
                               const grade = student.grades.find((item) => item.assessmentId === assessment.id);
