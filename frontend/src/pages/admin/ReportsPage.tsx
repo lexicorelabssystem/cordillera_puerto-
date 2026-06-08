@@ -7,6 +7,12 @@ import type { AdminCourseRow, AdminSubject, AcademicYear, CourseStudentRow } fro
 
 type ReportType = "INSTITUTIONAL" | "COURSE" | "STUDENT" | "OA" | "RISK";
 
+type ReportStudentOption = CourseStudentRow & {
+  id?: string;
+  firstName?: string;
+  lastName?: string;
+};
+
 type GeneratedReport = {
   id: string;
   type: ReportType | string;
@@ -82,6 +88,24 @@ function getCourseId(course: AdminCourseRow) {
 
 function getCourseName(course: AdminCourseRow) {
   return course.course_name;
+}
+
+function getStudentId(student: ReportStudentOption) {
+  return student.student_id ?? student.id ?? "";
+}
+
+function getStudentFirstName(student: ReportStudentOption) {
+  return student.first_name ?? student.firstName ?? "";
+}
+
+function getStudentLastName(student: ReportStudentOption) {
+  return student.last_name ?? student.lastName ?? "";
+}
+
+function getStudentLabel(student: ReportStudentOption) {
+  const firstName = getStudentFirstName(student);
+  const lastName = getStudentLastName(student);
+  return [lastName, firstName].filter(Boolean).join(", ") || "Alumno sin nombre";
 }
 
 function compactFilters(filters: Record<string, unknown> | null) {
@@ -432,7 +456,7 @@ export function ReportsPage() {
 
   const studentsQuery = useQuery({
     queryKey: ["reports-students", courseId],
-    queryFn: () => api.listStudents({ courseId, limit: 200 }).then((r) => r.data as CourseStudentRow[]),
+    queryFn: () => api.listStudents({ courseId, limit: 200 }).then((r) => r.data as ReportStudentOption[]),
     enabled: Boolean(courseId),
   });
 
@@ -507,8 +531,8 @@ export function ReportsPage() {
       parts.push(`Asignatura: ${subject?.name || text(raw.subjectId)}`);
     }
     if (raw.studentId) {
-      const student = (studentsQuery.data || []).find((item) => item.student_id === raw.studentId);
-      parts.push(`Alumno: ${student ? `${student.first_name} ${student.last_name}` : text(raw.studentId)}`);
+      const student = (studentsQuery.data || []).find((item) => getStudentId(item) === raw.studentId);
+      parts.push(`Alumno: ${student ? getStudentLabel(student) : text(raw.studentId)}`);
     }
     if (raw.learningObjectiveId) {
       const objective = (objectivesQuery.data || []).find((item) => item.id === raw.learningObjectiveId);
@@ -624,8 +648,8 @@ export function ReportsPage() {
               <select value={studentId} onChange={(event) => setStudentId(event.target.value)} disabled={!courseId}>
                 <option value="">Seleccionar alumno</option>
                 {(studentsQuery.data || []).map((student) => (
-                  <option key={student.student_id} value={student.student_id}>
-                    {student.last_name}, {student.first_name}
+                  <option key={getStudentId(student)} value={getStudentId(student)}>
+                    {getStudentLabel(student)}
                   </option>
                 ))}
               </select>
