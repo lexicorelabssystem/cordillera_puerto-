@@ -23,7 +23,7 @@ services:
       - key: FRONTEND_URL
         value: "https://cordillera-puerto-frontend-lexicorelabssystemgmailcoms-projects.vercel.app"
       - key: ENABLE_DEMO_SEED
-        value: "false"
+        value: "true"
       - key: NOTIFICATION_EMAILS_ENABLED
         value: "false"
 

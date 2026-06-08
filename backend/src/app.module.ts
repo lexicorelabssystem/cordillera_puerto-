@@ -19,6 +19,7 @@ import { NotificationsModule } from "./modules/notifications/notifications.modul
 import { CacheModule } from "./modules/cache/cache.module.js";
 import { SimceModule } from "./modules/simce/simce.module.js";
 import { HealthController } from "./health.controller.js";
+import { DemoSeedService } from "./demo-seed.service.js";
 
 @Module({
   imports: [
@@ -53,6 +54,7 @@ import { HealthController } from "./health.controller.js";
       provide: APP_GUARD,
       useClass: ThrottlerGuard,
     },
+    DemoSeedService,
   ],
 })
 export class AppModule {}
