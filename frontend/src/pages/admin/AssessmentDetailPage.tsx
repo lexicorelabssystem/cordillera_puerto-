@@ -28,6 +28,47 @@ const STATUS_LABELS: Record<string, string> = {
 
 const DIST_COLORS = ["var(--success)", "var(--accent)", "var(--warning)", "var(--danger)"];
 
+type GradeRow = {
+  studentId: string;
+  studentName: string;
+  score: number | null;
+  percentage: number | null;
+  grade: number | null;
+};
+
+type AttemptRow = {
+  id: string;
+  studentId: string;
+  student: { firstName: string; lastName: string };
+  status: string;
+  totalScore: number | null;
+  percentage: number | null;
+  answers?: { isCorrect: boolean | null }[];
+  _count?: { answers?: number };
+};
+
+function asRecord(value: unknown): Record<string, unknown> {
+  return value && typeof value === "object" && !Array.isArray(value) ? value as Record<string, unknown> : {};
+}
+
+function arrayFrom(value: unknown, keys: string[] = ["data", "items", "results", "details"]): unknown[] {
+  if (Array.isArray(value)) return value;
+  const record = asRecord(value);
+  for (const key of keys) {
+    if (Array.isArray(record[key])) return record[key] as unknown[];
+  }
+  return [];
+}
+
+function normalizeGrades(summary: unknown): GradeRow[] {
+  const record = asRecord(summary);
+  return arrayFrom(record.grades, ["details", "data", "items"]).map((row) => row as GradeRow);
+}
+
+function normalizeAttempts(value: unknown): AttemptRow[] {
+  return arrayFrom(value, ["data", "attempts", "items", "results"]).map((row) => row as AttemptRow);
+}
+
 export function AssessmentDetailPage() {
   const { id } = useParams<{ id: string }>();
   const navigate = useNavigate();
@@ -57,19 +98,19 @@ export function AssessmentDetailPage() {
     queryFn: () => api.getGradingSummary(id!) as Promise<{
       assessmentId: string; title: string; totalQuestions: number; totalAttempts: number;
       answersByStatus: Record<string, number>;
-      grades: { studentId: string; studentName: string; score: number | null; percentage: number | null; grade: number }[];
+      grades: { count: number; average: number; details: GradeRow[] } | GradeRow[];
     }>,
     enabled: Boolean(id),
   });
 
   const a = assessmentQuery.data as Record<string, unknown> | undefined;
-  const attempts = (attemptsQuery.data || []) as unknown[];
+  const attempts = normalizeAttempts(attemptsQuery.data);
   const summary = gradingSummaryQuery.data;
 
   if (assessmentQuery.isLoading) return <LoadingSpinner label="Cargando evaluacion..." />;
   if (!a) return <div className="panel"><p className="error">Evaluacion no encontrada.</p></div>;
 
-  const grades = summary?.grades || [];
+  const grades = normalizeGrades(summary);
   const avgGrade = grades.length > 0
     ? Number((grades.reduce((s, g) => s + (g.grade ?? 0), 0) / grades.length).toFixed(1))
     : null;
@@ -84,7 +125,7 @@ export function AssessmentDetailPage() {
     { name: "<4.0", value: below4 },
   ].filter((d) => d.value > 0);
 
-  const questions = (a.questions as { questionId: string; points: number; question?: { id: string; statement: string; type: string } }[]) || [];
+  const questions = arrayFrom(a.questions).map((question) => question as { questionId: string; points: number; question?: { id: string; statement: string; type: string } });
 
   return (
     <div className="assessment-detail">
@@ -269,13 +310,14 @@ export function AssessmentDetailPage() {
                   <table className="table">
                     <thead><tr><th>#</th><th>Estudiante</th><th>Estado</th><th>Puntaje</th><th>%</th><th>Respuestas</th></tr></thead>
                     <tbody>
-                      {(attempts as { id: string; studentId: string; student: { firstName: string; lastName: string }; status: string; totalScore: number | null; percentage: number | null; answers: { isCorrect: boolean | null }[] }[]).map((att, i) => {
-                        const correct = att.answers?.filter((r) => r.isCorrect === true).length || 0;
-                        const total = att.answers?.length || 0;
+                      {attempts.map((att, i) => {
+                        const answers = Array.isArray(att.answers) ? att.answers : [];
+                        const correct = answers.filter((r) => r.isCorrect === true).length;
+                        const total = answers.length || att._count?.answers || 0;
                         return (
                           <tr key={att.id}>
                             <td>{i + 1}</td>
-                            <td><strong>{att.student.firstName} {att.student.lastName}</strong></td>
+                            <td><strong>{att.student?.firstName || ""} {att.student?.lastName || ""}</strong></td>
                             <td><span className={`badge ${att.status === "COMPLETED" ? "badge--active" : "badge--warning"}`}>{att.status}</span></td>
                             <td style={{ textAlign: "center", fontWeight: 600 }}>{att.totalScore ?? "\u2014"}</td>
                             <td style={{ textAlign: "center" }}>{att.percentage != null ? `${att.percentage}%` : "\u2014"}</td>
