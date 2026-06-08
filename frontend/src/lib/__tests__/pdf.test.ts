@@ -80,7 +80,9 @@ vi.mock("jspdf", () => ({
   default: MockJsPDF,
 }));
 
-vi.mock("jspdf-autotable", () => ({}));
+vi.mock("jspdf-autotable", () => ({
+  default: (doc: typeof mockJsPDFInstance, options: Record<string, unknown>) => doc.autoTable(options),
+}));
 
 import {
   exportGradebookToPdf,

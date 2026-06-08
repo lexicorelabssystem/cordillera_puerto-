@@ -8,6 +8,7 @@ import { useToast } from "../../components/common/Toast";
 import { Modal } from "../../components/common/Modal";
 import { LoadingSpinner } from "../../components/common/LoadingSpinner";
 import { api } from "../../lib/api";
+import { exportGradebookToPdf } from "../../lib/pdf";
 import type { AdminCourseRow, AuthUser, CourseStudentRow } from "../../types/api";
 
 interface Props {
@@ -75,6 +76,24 @@ interface TeacherAssignmentView {
 }
 
 type CeldaLibro = { estudianteId: string; evaluacionId: string } | null;
+
+type TeacherGradebookStudent = {
+  studentId: string;
+  firstName: string;
+  lastName: string;
+  rut?: string;
+  average: number | null;
+  hasPending: boolean;
+  grades: { assessmentId: string; grade: number | null }[];
+};
+
+type TeacherGradebookAssessment = {
+  id: string;
+  title: string;
+  type: string;
+  status: string;
+  weight: number;
+};
 
 function formatearNota(n: number | null | undefined): string {
   if (n === null || n === undefined) return "-";
@@ -185,6 +204,7 @@ export function ProfesorDashboard({ user, onLogout }: Props) {
   const [title, setTitle] = useState("Control unidad 1");
   const [assessmentType, setAssessmentType] = useState("PROCESO");
   const [semester, setSemester] = useState(1);
+  const [assessmentWeight, setAssessmentWeight] = useState(25);
   const [appliedAt, setAppliedAt] = useState(new Date().toISOString().slice(0, 10));
   const [lessonDate, setLessonDate] = useState(new Date().toISOString().slice(0, 10));
   const [lessonTopic, setLessonTopic] = useState("Clase de la unidad");
@@ -240,6 +260,7 @@ export function ProfesorDashboard({ user, onLogout }: Props) {
         title: string;
         assessmentType: string;
         semester: number;
+        weight?: number;
         description?: string;
         startDate: string;
         deliveryMode: string;
@@ -498,6 +519,10 @@ export function ProfesorDashboard({ user, onLogout }: Props) {
       toast("No hay alumnos en el curso seleccionado.", "warning");
       return;
     }
+    if (Number.isNaN(assessmentWeight) || assessmentWeight < 0 || assessmentWeight > 100) {
+      toast("La ponderacion debe estar entre 0% y 100%.", "warning");
+      return;
+    }
 
     const invalid = students.find((s) => {
       const studentId = getStudentField(s, "student_id", "studentId");
@@ -516,6 +541,7 @@ export function ProfesorDashboard({ user, onLogout }: Props) {
         title,
         assessmentType,
         semester,
+        weight: assessmentWeight,
         description: observation,
         startDate: `${appliedAt}T12:00:00.000Z`,
         deliveryMode: "PRINTED",
@@ -540,6 +566,10 @@ export function ProfesorDashboard({ user, onLogout }: Props) {
       toast("El nombre de la evaluacion es obligatorio.", "warning");
       return;
     }
+    if (Number.isNaN(assessmentWeight) || assessmentWeight < 0 || assessmentWeight > 100) {
+      toast("La ponderacion debe estar entre 0% y 100%.", "warning");
+      return;
+    }
 
     createAssessment.mutate({
       assessment: {
@@ -548,6 +578,7 @@ export function ProfesorDashboard({ user, onLogout }: Props) {
         title: title.trim(),
         assessmentType,
         semester,
+        weight: assessmentWeight,
         description: observation,
         startDate: `${appliedAt}T12:00:00.000Z`,
         deliveryMode: "PRINTED",
@@ -589,6 +620,71 @@ export function ProfesorDashboard({ user, onLogout }: Props) {
       directGradeMutation.mutate({ assessmentId: evaluacionId, studentId: estudianteId, grade: nota }, { onSettled });
     }
     setCeldaLibro(null);
+  }
+
+  function descargarLibroExcel() {
+    const book = gradeBookQuery.data;
+    if (!book) return;
+    const assessments = (book.assessments || []) as TeacherGradebookAssessment[];
+    const students = (book.students || []) as TeacherGradebookStudent[];
+    const headers = ["N", "Estudiante", "RUT", ...assessments.map((assessment) => `${assessment.title} (${assessment.weight || 0}%)`), "Promedio"];
+    const rows = students.map((student, index) => [
+      String(index + 1),
+      `${student.lastName}, ${student.firstName}`,
+      student.rut || "",
+      ...assessments.map((assessment) => {
+        const grade = student.grades.find((item) => item.assessmentId === assessment.id)?.grade;
+        return grade == null ? "" : String(grade).replace(".", ",");
+      }),
+      student.average == null ? "" : String(student.average).replace(".", ","),
+    ]);
+    const csv = [headers, ...rows]
+      .map((row) => row.map((value) => `"${String(value).replace(/"/g, '""')}"`).join(";"))
+      .join("\n");
+    const blob = new Blob([csv], { type: "text/csv;charset=utf-8" });
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement("a");
+    link.href = url;
+    link.download = `libro-${selectedAssignment?.course_name || "curso"}-${selectedAssignment?.subject_name || "asignatura"}.csv`;
+    document.body.appendChild(link);
+    link.click();
+    link.remove();
+    URL.revokeObjectURL(url);
+  }
+
+  function descargarLibroPdf() {
+    const book = gradeBookQuery.data;
+    if (!book || !selectedAssignment) return;
+    exportGradebookToPdf(
+      selectedAssignment.course_name,
+      selectedAssignment.subject_name,
+      (book.students || []) as TeacherGradebookStudent[],
+      (book.assessments || []) as TeacherGradebookAssessment[],
+      book.stats,
+      user.name,
+    );
+  }
+
+  function imprimirLibro() {
+    window.print();
+  }
+
+  function descargarInformeAlumno(student: TeacherGradebookStudent) {
+    const assessments = (gradeBookQuery.data?.assessments || []) as TeacherGradebookAssessment[];
+    const rows = assessments.map((assessment) => ({
+      id: assessment.id,
+      title: `${assessment.title} (${assessment.weight || 0}%)`,
+      type: assessment.type,
+      weight: assessment.weight,
+    }));
+    exportGradebookToPdf(
+      `${selectedAssignment?.course_name || "Curso"} - ${student.lastName}, ${student.firstName}`,
+      selectedAssignment?.subject_name,
+      [student],
+      rows,
+      null,
+      user.name,
+    );
   }
 
   return (
@@ -753,6 +849,15 @@ export function ProfesorDashboard({ user, onLogout }: Props) {
                 <option value={1}>Semestre 1</option>
                 <option value={2}>Semestre 2</option>
               </select>
+              <input
+                type="number"
+                min={0}
+                max={100}
+                value={assessmentWeight}
+                onChange={(e) => setAssessmentWeight(Number(e.target.value))}
+                placeholder="Ponderacion %"
+                title="Ponderacion de la evaluacion (%)"
+              />
               <input type="date" value={appliedAt} onChange={(e) => setAppliedAt(e.target.value)} />
               <button onClick={crearColumnaLibro} disabled={!courseId || !subjectId || createAssessment.isPending}>
                 {createAssessment.isPending ? "Creando..." : "+ Calificacion"}
@@ -779,6 +884,18 @@ export function ProfesorDashboard({ user, onLogout }: Props) {
                   <div className="gradebook-kpi-card"><div><span>Aprobacion</span><strong>{gradeBookQuery.data.stats.approvalRate}%</strong></div></div>
                   <div className="gradebook-kpi-card"><div><span>Evaluaciones</span><strong>{gradeBookQuery.data.assessments.length}</strong></div></div>
                   <div className="gradebook-kpi-card"><div><span>Pendientes</span><strong>{gradeBookQuery.data.stats.pendingsCount}</strong></div></div>
+                </div>
+
+                <div className="form-row" style={{ marginTop: 12, justifyContent: "flex-end" }}>
+                  <button type="button" onClick={descargarLibroPdf} disabled={!gradeBookQuery.data.assessments.length}>
+                    Descargar PDF
+                  </button>
+                  <button type="button" onClick={descargarLibroExcel} disabled={!gradeBookQuery.data.assessments.length}>
+                    Descargar Excel
+                  </button>
+                  <button type="button" onClick={imprimirLibro} disabled={!gradeBookQuery.data.assessments.length}>
+                    Imprimir
+                  </button>
                 </div>
 
                 {gradeBookQuery.data.students.length === 0 ? (
@@ -838,6 +955,14 @@ export function ProfesorDashboard({ user, onLogout }: Props) {
                             <td className="gb-col-nombre">
                               <strong>{student.lastName}, {student.firstName}</strong>
                               {student.rut ? <span style={{ display: "block", color: "var(--muted)", fontSize: ".75rem" }}>{student.rut}</span> : null}
+                              <button
+                                type="button"
+                                className="btn-small btn-secondary"
+                                style={{ marginTop: 6 }}
+                                onClick={() => descargarInformeAlumno(student as TeacherGradebookStudent)}
+                              >
+                                Informe PDF
+                              </button>
                             </td>
                             {gradeBookQuery.data.assessments.map((assessment) => {
                               const grade = student.grades.find((item) => item.assessmentId === assessment.id);
