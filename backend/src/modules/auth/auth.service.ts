@@ -199,6 +199,50 @@ export class AuthService {
     };
   }
 
+  async updateProfile(userId: string, firstName: string, lastName: string) {
+    const updated = await this.prisma.user.update({
+      where: { id: userId },
+      data: {
+        firstName: firstName.trim(),
+        lastName: lastName.trim(),
+      },
+    });
+
+    await this.auditLog.log({
+      actorId: userId,
+      action: "PROFILE_UPDATED",
+      entityType: "auth",
+      entityId: userId,
+      metadata: JSON.stringify({ firstName: updated.firstName, lastName: updated.lastName }),
+    });
+
+    const payload: JwtPayload = {
+      sub: updated.id,
+      role: updated.role,
+      email: updated.email,
+      name: `${updated.firstName} ${updated.lastName}`,
+      institutionId: updated.institutionId ?? undefined,
+    };
+
+    const [accessToken, refreshToken] = await Promise.all([
+      this.jwtService.signAsync(payload),
+      this.generateRefreshToken(updated.id),
+    ]);
+
+    return {
+      token: accessToken,
+      refreshToken,
+      user: {
+        sub: updated.id,
+        role: updated.role,
+        name: `${updated.firstName} ${updated.lastName}`,
+        email: updated.email,
+        institutionId: updated.institutionId,
+        mustChangePassword: updated.mustChangePassword,
+      },
+    };
+  }
+
   async logout(userId: string) {
     await this.prisma.refreshToken.updateMany({
       where: { userId, revokedAt: null },

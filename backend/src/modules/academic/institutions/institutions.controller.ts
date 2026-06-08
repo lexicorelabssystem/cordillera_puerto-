@@ -47,6 +47,14 @@ export class InstitutionsController {
     return this.service.update(id, dto);
   }
 
+  @Delete(":id/permanent")
+  @HttpCode(HttpStatus.OK)
+  @Roles("SUPER_ADMIN")
+  @ApiOperation({ summary: "Eliminar institución definitivamente si no tiene dependencias" })
+  removePermanent(@Param("id", ParseUUIDPipe) id: string) {
+    return this.service.deletePermanent(id);
+  }
+
   @Delete(":id")
   @HttpCode(HttpStatus.NO_CONTENT)
   @Roles("ADMIN", "SUPER_ADMIN")

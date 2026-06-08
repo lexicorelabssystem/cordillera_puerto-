@@ -1,4 +1,4 @@
-import { useMemo } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { Outlet, useLocation } from "react-router-dom";
 import { useQuery } from "@tanstack/react-query";
 import type { AuthUser, AdminOverview } from "../../types/api";
@@ -40,9 +40,19 @@ interface Props {
 
 export function AdminLayout({ user, onLogout, mode }: Props) {
   const location = useLocation();
+  const fileInputRef = useRef<HTMLInputElement | null>(null);
   const basePath = getManagementBasePath(mode);
   const { selectedInstitution, institutions, setInstitutionId, isLoading: institutionsLoading } = useInstitution();
   const { isEnabled } = useFeatureFlags();
+  const [sessionMenuOpen, setSessionMenuOpen] = useState(false);
+  const [isEditingProfile, setIsEditingProfile] = useState(false);
+  const [displayName, setDisplayName] = useState(user.name);
+  const [avatarUrl, setAvatarUrl] = useState<string | null>(null);
+  const [profileForm, setProfileForm] = useState(() => {
+    const [firstName = "", ...rest] = user.name.split(" ").filter(Boolean);
+    return { firstName, lastName: rest.join(" ") };
+  });
+  const [profileSaving, setProfileSaving] = useState(false);
 
   const categories = useMemo(() => {
     const allCategories = buildManagementCategories(basePath, mode);
@@ -88,14 +98,58 @@ export function AdminLayout({ user, onLogout, mode }: Props) {
   ];
 
   const shouldRenderSidebar = !ADMIN_ONLY_PATHS.includes(currentPath) || mode === "admin";
+  const canSwitchInstitution = user.role === "SUPER_ADMIN";
+  const avatarStorageKey = `cordillera_avatar_${user.sub}`;
+  const userInitials = displayName
+    .split(" ")
+    .filter(Boolean)
+    .slice(0, 2)
+    .map((part) => part[0])
+    .join("")
+    .toUpperCase();
+
+  useEffect(() => {
+    setDisplayName(user.name);
+    const [firstName = "", ...rest] = user.name.split(" ").filter(Boolean);
+    setProfileForm({ firstName, lastName: rest.join(" ") });
+    setAvatarUrl(localStorage.getItem(avatarStorageKey));
+  }, [avatarStorageKey, user.name]);
+
+  async function handleProfileSave() {
+    if (!profileForm.firstName.trim() || !profileForm.lastName.trim()) return;
+    setProfileSaving(true);
+    try {
+      const result = await api.updateMyProfile({
+        firstName: profileForm.firstName.trim(),
+        lastName: profileForm.lastName.trim(),
+      });
+      localStorage.setItem("cordillera_user", JSON.stringify(result.user));
+      setDisplayName(result.user.name);
+      setIsEditingProfile(false);
+    } finally {
+      setProfileSaving(false);
+    }
+  }
+
+  function handleAvatarFile(file?: File) {
+    if (!file || !file.type.startsWith("image/")) return;
+    const reader = new FileReader();
+    reader.onload = () => {
+      const nextAvatar = typeof reader.result === "string" ? reader.result : null;
+      if (!nextAvatar) return;
+      localStorage.setItem(avatarStorageKey, nextAvatar);
+      setAvatarUrl(nextAvatar);
+    };
+    reader.readAsDataURL(file);
+  }
 
   return (
     <ManagementLayout
       title={title}
       subtitle={subtitle}
       right={
-        <div className="header-actions">
-          {institutions.length > 0 && (
+        <div className={`header-actions ${canSwitchInstitution ? "" : "header-actions--session-only"}`}>
+          {canSwitchInstitution && institutions.length > 0 && (
             <select
               className="institution-select"
               value={selectedInstitution?.id || ""}
@@ -109,13 +163,88 @@ export function AdminLayout({ user, onLogout, mode }: Props) {
               ))}
             </select>
           )}
-          <div className="header-user">
-            <span className="header-user__role">{user.role}</span>
-            <span className="header-user__name">{user.name}</span>
+          <div className="header-user-menu">
+            <button
+              className="header-user"
+              type="button"
+              onClick={() => setSessionMenuOpen((open) => !open)}
+              aria-haspopup="menu"
+              aria-expanded={sessionMenuOpen}
+            >
+              <div className="header-user__copy">
+                <span className="header-user__eyebrow">Sesion</span>
+                <span className="header-user__name">{displayName}</span>
+                <span className="header-user__role">{user.role}</span>
+              </div>
+              <span className="header-user__avatar" aria-hidden="true">
+                {avatarUrl ? <img src={avatarUrl} alt="" /> : userInitials || "U"}
+              </span>
+            </button>
+            {sessionMenuOpen ? (
+              <div className="session-menu" role="menu">
+                {isEditingProfile ? (
+                  <div className="session-menu__form">
+                    <label>
+                      Nombre
+                      <input
+                        value={profileForm.firstName}
+                        onChange={(event) => setProfileForm((form) => ({ ...form, firstName: event.target.value }))}
+                      />
+                    </label>
+                    <label>
+                      Apellido
+                      <input
+                        value={profileForm.lastName}
+                        onChange={(event) => setProfileForm((form) => ({ ...form, lastName: event.target.value }))}
+                      />
+                    </label>
+                    <div className="session-menu__row">
+                      <button type="button" onClick={handleProfileSave} disabled={profileSaving}>
+                        {profileSaving ? "Guardando..." : "Guardar"}
+                      </button>
+                      <button type="button" className="btn-secondary" onClick={() => setIsEditingProfile(false)}>
+                        Cancelar
+                      </button>
+                    </div>
+                  </div>
+                ) : (
+                  <>
+                    <button type="button" onClick={() => setIsEditingProfile(true)} role="menuitem">
+                      Editar nombre
+                    </button>
+                    <button type="button" onClick={() => fileInputRef.current?.click()} role="menuitem">
+                      Agregar imagen
+                    </button>
+                    {avatarUrl ? (
+                      <button
+                        type="button"
+                        onClick={() => {
+                          localStorage.removeItem(avatarStorageKey);
+                          setAvatarUrl(null);
+                        }}
+                        role="menuitem"
+                      >
+                        Quitar imagen
+                      </button>
+                    ) : null}
+                    <button type="button" className="session-menu__logout" onClick={onLogout} role="menuitem">
+                      Salir
+                    </button>
+                  </>
+                )}
+                <input
+                  ref={fileInputRef}
+                  type="file"
+                  accept="image/png,image/jpeg,image/webp"
+                  hidden
+                  onChange={(event) => {
+                    handleAvatarFile(event.target.files?.[0]);
+                    event.target.value = "";
+                  }}
+                />
+              </div>
+            ) : null}
           </div>
-          <button className="btn-logout" onClick={onLogout}>
-            Salir
-          </button>
         </div>
       }
       sidebarCategories={shouldRenderSidebar ? categories : []}
@@ -134,7 +263,7 @@ export function AdminLayout({ user, onLogout, mode }: Props) {
               </p>
             </section>
           )}
-          <Outlet context={{ overview: overviewData }} />
+          <Outlet context={{ overview: overviewData, user }} />
         </>
       )}
     </ManagementLayout>

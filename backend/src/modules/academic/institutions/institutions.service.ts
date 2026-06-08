@@ -1,5 +1,6 @@
 ﻿import { Injectable, NotFoundException, ConflictException } from "@nestjs/common";
 import { PrismaService } from "../../prisma/prisma.service.js";
+import { BadRequestException } from "@nestjs/common";
 import type { CreateInstitutionDto, UpdateInstitutionDto, CreateInstitutionConfigDto, UpdateInstitutionConfigDto } from "./dto/create-institution.dto.js";
 
 @Injectable()
@@ -50,7 +51,13 @@ export class InstitutionsService {
       const existing = await this.prisma.institution.findUnique({ where: { rbd: dto.rbd } });
       if (existing && existing.id !== id) throw new ConflictException("El RBD ya está en uso");
     }
-    return this.prisma.institution.update({ where: { id }, data: dto });
+    return this.prisma.institution.update({
+      where: { id },
+      data: {
+        ...dto,
+        ...(dto.isActive === true ? { deletedAt: null } : {}),
+      },
+    });
   }
 
   async softDelete(id: string) {
@@ -59,6 +66,47 @@ export class InstitutionsService {
       where: { id },
       data: { deletedAt: new Date(), isActive: false },
     });
+  }
+
+  async deletePermanent(id: string) {
+    const institution = await this.prisma.institution.findUnique({
+      where: { id },
+      select: {
+        id: true,
+        isActive: true,
+        _count: {
+          select: {
+            users: true,
+            courses: true,
+            academicYears: true,
+            learningResources: true,
+            lessons: true,
+          },
+        },
+      },
+    });
+    if (!institution) throw new NotFoundException("Institución no encontrada");
+
+    if (institution.isActive) {
+      throw new BadRequestException("Primero debes desactivar la institución antes de eliminarla definitivamente.");
+    }
+
+    const totalDependencies = Object.values(institution._count).reduce((total, count) => total + count, 0);
+    if (totalDependencies > 0) {
+      throw new BadRequestException(
+        "No se puede eliminar definitivamente una institución con usuarios, cursos, años académicos, material o clases asociados. Desactívala para conservar el historial.",
+      );
+    }
+
+    await this.prisma.$transaction(async (tx) => {
+      await tx.auditLog.updateMany({
+        where: { institutionId: id },
+        data: { institutionId: null },
+      });
+      await tx.institution.delete({ where: { id } });
+    });
+
+    return { ok: true, id };
   }
 
   async getConfig(institutionId: string) {

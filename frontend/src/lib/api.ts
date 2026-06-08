@@ -211,6 +211,14 @@ export const api = {
   },
   me: () =>
     request<{ user: AuthUser }>("/auth/me"),
+  updateMyProfile: async (payload: { firstName: string; lastName: string }) => {
+    const result = await request<AuthResponse>("/auth/me", {
+      method: "PATCH",
+      body: JSON.stringify(payload),
+    });
+    setAuthTokens(result);
+    return result;
+  },
   refresh: () =>
     request<AuthResponse>("/auth/refresh", {
       method: "POST",
@@ -274,6 +282,8 @@ export const api = {
     }),
   deleteInstitution: (id: string) =>
     request<{ ok: boolean }>(`/institutions/${id}`, { method: "DELETE" }),
+  deleteInstitutionPermanent: (id: string) =>
+    request<{ ok: boolean; id: string }>(`/institutions/${id}/permanent`, { method: "DELETE" }),
   getInstitutionConfig: (institutionId: string) =>
     request<InstitutionConfig>(`/institutions/${institutionId}/config`),
   updateInstitutionConfig: (institutionId: string, payload: {
@@ -497,8 +507,18 @@ export const api = {
     request<RoleAlerts>(`/alerts/institutional/${institutionId}`),
 
   // ─── Reports ────────────────────────────────────
-  generateReport: (payload: { type: string; studentId?: string; courseId?: string; subjectId?: string; institutionId?: string }) =>
-    request<{ reportId: string }>("/reports/generate", {
+  generateReport: (payload: {
+    type: string;
+    studentId?: string;
+    courseId?: string;
+    subjectId?: string;
+    institutionId?: string;
+    academicYearId?: string;
+    learningObjectiveId?: string;
+    threshold?: number;
+    format?: string;
+  }) =>
+    request<{ reportId: string; type?: string }>("/reports/generate", {
       method: "POST",
       body: JSON.stringify(payload)
     }),

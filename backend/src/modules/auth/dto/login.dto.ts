@@ -42,6 +42,18 @@ export class ChangePasswordDto {
   newPassword!: string;
 }
 
+export class UpdateProfileDto {
+  @ApiProperty()
+  @IsString()
+  @MinLength(2)
+  firstName!: string;
+
+  @ApiProperty()
+  @IsString()
+  @MinLength(2)
+  lastName!: string;
+}
+
 export class RefreshTokenDto {
   @ApiPropertyOptional({ description: "Refresh token obtenido en el login (opcional si se envía vía cookie httpOnly)" })
   @IsOptional()

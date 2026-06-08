@@ -1,6 +1,7 @@
 import { useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import type { AdminCourseRow, AdminSubject, CourseStudentRow, AdminTeacher } from "../../types/api";
+import { useOutletContext } from "react-router-dom";
+import type { AdminCourseRow, AdminSubject, CourseStudentRow, AdminTeacher, AuthUser } from "../../types/api";
 import { useInstitution } from "../../app/InstitutionContext";
 import { api } from "../../lib/api";
 import { Modal } from "../../components/common/Modal";
@@ -22,9 +23,15 @@ const GRADE_LEVELS = [
   { value: 12, label: "4° medio" },
 ];
 
+interface AdminOutletContext {
+  user: AuthUser;
+}
+
 export function CoursesView() {
   const queryClient = useQueryClient();
   const { toast } = useToast();
+  const { user } = useOutletContext<AdminOutletContext>();
+  const isSuperAdmin = user.role === "SUPER_ADMIN";
   const [showInactive, setShowInactive] = useState(false);
   const { selectedInstitution } = useInstitution();
 
@@ -206,11 +213,13 @@ export function CoursesView() {
                           ) : (
                             <>
                               <button className="btn-small" onClick={() => restoreCourse.mutate(c.course_id)}>Reactivar</button>
+                              {isSuperAdmin ? (
                               <button className="btn-small btn-danger" onClick={() => {
                                 if (window.confirm(`¿Eliminar definitivamente ${c.course_name}? Esta acción no se puede deshacer.`)) {
                                   deleteCoursePermanent.mutate(c.course_id);
                                 }
                               }}>Eliminar definitivo</button>
+                              ) : null}
                             </>
                           )}
                         </div>
@@ -294,11 +303,13 @@ export function CoursesView() {
                           ) : (
                             <>
                               <button className="btn-small" onClick={() => restoreSubject.mutate(s.id)}>Reactivar</button>
+                              {isSuperAdmin ? (
                               <button className="btn-small btn-danger" onClick={() => {
                                 if (window.confirm(`¿Eliminar definitivamente ${s.name}? Esta acción no se puede deshacer.`)) {
                                   deleteSubjectPermanent.mutate(s.id);
                                 }
                               }}>Eliminar definitivo</button>
+                              ) : null}
                             </>
                           )}
                         </div>

@@ -61,7 +61,7 @@ export class CoursesController {
 
   @Delete(":id/permanent")
   @HttpCode(HttpStatus.OK)
-  @Roles("ADMIN", "SUPER_ADMIN", "DIRECTION", "UTP")
+  @Roles("SUPER_ADMIN")
   @ApiOperation({ summary: "Eliminar curso definitivamente si no tiene dependencias" })
   removePermanent(@Param("id", ParseUUIDPipe) id: string, @CurrentUser() user: JwtPayload) {
     return this.service.deletePermanent(id, user);

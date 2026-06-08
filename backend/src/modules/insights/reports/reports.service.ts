@@ -1,9 +1,22 @@
 import { Injectable, NotFoundException, BadRequestException } from "@nestjs/common";
+import type { Prisma } from "@prisma/client";
 import { PrismaService } from "../../prisma/prisma.service.js";
 
 @Injectable()
 export class ReportsService {
   constructor(private readonly prisma: PrismaService) {}
+
+  private average(values: number[]) {
+    return values.length ? Number((values.reduce((sum, value) => sum + value, 0) / values.length).toFixed(2)) : 0;
+  }
+
+  private level(avg: number) {
+    if (avg <= 0) return "Sin datos";
+    if (avg < 4) return "Critico";
+    if (avg < 5) return "Basico";
+    if (avg < 6) return "Adecuado";
+    return "Avanzado";
+  }
 
   // ══════════════════════════════════════════════════════
   //  STUDENT REPORT
@@ -313,7 +326,265 @@ export class ReportsService {
   //  REPORT MANAGEMENT
   // ══════════════════════════════════════════════════════
 
-  async saveReport(type: string, entityId: string | null, data: unknown, userId: string) {
+  async generateLearningObjectiveReport(filters: {
+    institutionId?: string;
+    academicYearId?: string;
+    courseId?: string;
+    subjectId?: string;
+    learningObjectiveId?: string;
+  }) {
+    const assessments = await this.prisma.assessment.findMany({
+      where: {
+        status: "GRADED",
+        ...(filters.courseId ? { courseId: filters.courseId } : {}),
+        ...(filters.subjectId ? { subjectId: filters.subjectId } : {}),
+        course: {
+          ...(filters.institutionId ? { institutionId: filters.institutionId } : {}),
+          ...(filters.academicYearId ? { academicYearId: filters.academicYearId } : {}),
+        },
+        questions: {
+          some: {
+            question: {
+              ...(filters.learningObjectiveId ? { learningObjectiveId: filters.learningObjectiveId } : {}),
+              ...(filters.subjectId ? { subjectId: filters.subjectId } : {}),
+            },
+          },
+        },
+      },
+      include: {
+        course: { select: { id: true, name: true, gradeLevel: true } },
+        subject: { select: { id: true, name: true } },
+        questions: {
+          where: {
+            question: {
+              ...(filters.learningObjectiveId ? { learningObjectiveId: filters.learningObjectiveId } : {}),
+              ...(filters.subjectId ? { subjectId: filters.subjectId } : {}),
+            },
+          },
+          include: {
+            question: {
+              include: {
+                learningObjective: { select: { id: true, code: true, description: true, gradeLevel: true } },
+              },
+            },
+          },
+        },
+        attempts: {
+          where: { status: { in: ["COMPLETED", "CLOSED"] } },
+          include: {
+            student: { select: { id: true, firstName: true, lastName: true } },
+            answers: {
+              include: {
+                question: {
+                  select: {
+                    id: true,
+                    learningObjectiveId: true,
+                    learningObjective: { select: { id: true, code: true, description: true, gradeLevel: true } },
+                  },
+                },
+              },
+            },
+          },
+        },
+      },
+      orderBy: [{ course: { gradeLevel: "asc" } }, { title: "asc" }],
+    });
+
+    const objectiveMap: Record<string, {
+      id: string;
+      code: string;
+      description: string;
+      gradeLevel: number;
+      totalAnswers: number;
+      correctAnswers: number;
+      scores: number[];
+      courses: Record<string, { courseId: string; courseName: string; totalAnswers: number; correctAnswers: number }>;
+      students: Record<string, { studentId: string; studentName: string; totalAnswers: number; correctAnswers: number }>;
+    }> = {};
+
+    for (const assessment of assessments) {
+      for (const assessmentQuestion of assessment.questions) {
+        const oa = assessmentQuestion.question.learningObjective;
+        if (!oa) continue;
+        objectiveMap[oa.id] ??= {
+          id: oa.id,
+          code: oa.code,
+          description: oa.description,
+          gradeLevel: oa.gradeLevel,
+          totalAnswers: 0,
+          correctAnswers: 0,
+          scores: [],
+          courses: {},
+          students: {},
+        };
+      }
+
+      for (const attempt of assessment.attempts) {
+        for (const answer of attempt.answers) {
+          const oa = answer.question.learningObjective;
+          if (!oa || !objectiveMap[oa.id]) continue;
+
+          const bucket = objectiveMap[oa.id];
+          const isCorrect = answer.isCorrect === true || (answer.score ?? 0) > 0;
+          bucket.totalAnswers++;
+          if (isCorrect) bucket.correctAnswers++;
+          if (answer.score != null) bucket.scores.push(answer.score);
+
+          bucket.courses[assessment.course.id] ??= {
+            courseId: assessment.course.id,
+            courseName: assessment.course.name,
+            totalAnswers: 0,
+            correctAnswers: 0,
+          };
+          bucket.courses[assessment.course.id].totalAnswers++;
+          if (isCorrect) bucket.courses[assessment.course.id].correctAnswers++;
+
+          bucket.students[attempt.student.id] ??= {
+            studentId: attempt.student.id,
+            studentName: `${attempt.student.firstName} ${attempt.student.lastName}`,
+            totalAnswers: 0,
+            correctAnswers: 0,
+          };
+          bucket.students[attempt.student.id].totalAnswers++;
+          if (isCorrect) bucket.students[attempt.student.id].correctAnswers++;
+        }
+      }
+    }
+
+    const objectives = Object.values(objectiveMap).map((oa) => ({
+      id: oa.id,
+      code: oa.code,
+      description: oa.description,
+      gradeLevel: oa.gradeLevel,
+      totalAnswers: oa.totalAnswers,
+      correctAnswers: oa.correctAnswers,
+      achievement: oa.totalAnswers ? Number(((oa.correctAnswers / oa.totalAnswers) * 100).toFixed(1)) : 0,
+      averageScore: this.average(oa.scores),
+      courses: Object.values(oa.courses).map((course) => ({
+        ...course,
+        achievement: course.totalAnswers ? Number(((course.correctAnswers / course.totalAnswers) * 100).toFixed(1)) : 0,
+      })),
+      students: Object.values(oa.students)
+        .map((student) => ({
+          ...student,
+          achievement: student.totalAnswers ? Number(((student.correctAnswers / student.totalAnswers) * 100).toFixed(1)) : 0,
+        }))
+        .sort((a, b) => a.achievement - b.achievement),
+    })).sort((a, b) => a.achievement - b.achievement);
+
+    return {
+      type: "OA",
+      generatedAt: new Date().toISOString(),
+      filters,
+      assessmentCount: assessments.length,
+      objectiveCount: objectives.length,
+      lowAchievementCount: objectives.filter((oa) => oa.totalAnswers > 0 && oa.achievement < 60).length,
+      objectives,
+    };
+  }
+
+  async generateRiskReport(filters: {
+    institutionId?: string;
+    academicYearId?: string;
+    courseId?: string;
+    subjectId?: string;
+    threshold?: number;
+  }) {
+    const threshold = filters.threshold ?? 4;
+    const grades = await this.prisma.grade.findMany({
+      where: {
+        assessment: {
+          status: "GRADED",
+          ...(filters.courseId ? { courseId: filters.courseId } : {}),
+          ...(filters.subjectId ? { subjectId: filters.subjectId } : {}),
+          course: {
+            ...(filters.institutionId ? { institutionId: filters.institutionId } : {}),
+            ...(filters.academicYearId ? { academicYearId: filters.academicYearId } : {}),
+          },
+        },
+      },
+      include: {
+        student: { select: { id: true, firstName: true, lastName: true } },
+        assessment: {
+          select: {
+            subject: { select: { id: true, name: true } },
+            course: { select: { id: true, name: true, gradeLevel: true } },
+          },
+        },
+      },
+      orderBy: { grade: "asc" },
+    });
+
+    const studentMap: Record<string, {
+      studentId: string;
+      studentName: string;
+      courseId: string;
+      courseName: string;
+      grades: number[];
+      subjects: Record<string, { subjectId: string; subjectName: string; grades: number[] }>;
+    }> = {};
+
+    for (const grade of grades) {
+      studentMap[grade.studentId] ??= {
+        studentId: grade.studentId,
+        studentName: `${grade.student.firstName} ${grade.student.lastName}`,
+        courseId: grade.assessment.course.id,
+        courseName: grade.assessment.course.name,
+        grades: [],
+        subjects: {},
+      };
+
+      const student = studentMap[grade.studentId];
+      student.grades.push(grade.grade);
+      const subjectId = grade.assessment.subject.id;
+      student.subjects[subjectId] ??= {
+        subjectId,
+        subjectName: grade.assessment.subject.name,
+        grades: [],
+      };
+      student.subjects[subjectId].grades.push(grade.grade);
+    }
+
+    const students = Object.values(studentMap)
+      .map((student) => {
+        const average = this.average(student.grades);
+        return {
+          studentId: student.studentId,
+          studentName: student.studentName,
+          courseId: student.courseId,
+          courseName: student.courseName,
+          average,
+          level: this.level(average),
+          gradeCount: student.grades.length,
+          subjects: Object.values(student.subjects).map((subject) => ({
+            subjectId: subject.subjectId,
+            subjectName: subject.subjectName,
+            average: this.average(subject.grades),
+            gradeCount: subject.grades.length,
+          })),
+        };
+      })
+      .filter((student) => student.gradeCount > 0 && student.average < threshold)
+      .sort((a, b) => a.average - b.average);
+
+    return {
+      type: "RISK",
+      generatedAt: new Date().toISOString(),
+      filters: { ...filters, threshold },
+      threshold,
+      totalStudentsWithGrades: Object.keys(studentMap).length,
+      atRiskCount: students.length,
+      students,
+    };
+  }
+
+  async saveReport(
+    type: string,
+    entityId: string | null,
+    data: unknown,
+    userId: string,
+    meta?: { courseId?: string; subjectId?: string; studentId?: string; format?: string; filters?: Record<string, unknown> },
+  ) {
     const existing = await this.prisma.report.findFirst({
       where: { type, entityId, status: "GENERATED" },
       orderBy: { version: "desc" },
@@ -325,10 +596,16 @@ export class ReportsService {
       data: {
         type,
         entityId,
+        courseId: meta?.courseId ?? null,
+        subjectId: meta?.subjectId ?? null,
+        studentId: meta?.studentId ?? null,
         version,
         status: "GENERATED",
-        format: "JSON",
-        filters: data as object,
+        format: meta?.format ?? "JSON",
+        filters: {
+          ...(meta?.filters ?? {}),
+          summary: data,
+        } as Prisma.InputJsonValue,
         generatedBy: userId,
         generatedAt: new Date(),
       },
