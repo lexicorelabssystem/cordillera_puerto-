@@ -1,5 +1,7 @@
 import { useMemo, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import jsPDF from "jspdf";
+import "jspdf-autotable";
 import { api } from "../../lib/api";
 import { useInstitution } from "../../app/InstitutionContext";
 import { useToast } from "../../components/common/Toast";
@@ -271,7 +273,144 @@ function downloadJson(report: ReportResult) {
   );
 }
 
-function ReportDetail({ report, onCsv, onJson }: { report: ReportResult; onCsv: () => void; onJson: () => void }) {
+function reportTitle(type: ReportType | string) {
+  return REPORT_TYPES.find((item) => item.type === type)?.label || `Reporte ${type}`;
+}
+
+function reportSummaryRows(report: ReportResult): Record<string, string>[] {
+  const course = asRecord(report.course);
+  const student = asRecord(report.student);
+  const institution = asRecord(report.institution);
+  const rows = [
+    { indicador: "Tipo", valor: reportTitle(report.type) },
+    { indicador: "Institucion", valor: text(institution.name) || "-" },
+    { indicador: "Curso", valor: text(course.name) || "-" },
+    { indicador: "Alumno", valor: text(student.name) || "-" },
+    { indicador: "Promedio", valor: text(report.courseAverage ?? report.institutionalAverage ?? report.overallAverage) || "-" },
+    { indicador: "Alumnos", valor: text(report.totalStudents ?? asArray(report.students).length) || "-" },
+    { indicador: "Riesgo", valor: text(report.totalAtRisk ?? report.atRiskCount ?? report.lowAchievementCount) || "-" },
+    { indicador: "Evaluaciones", valor: text(report.assessmentCount) || "-" },
+    { indicador: "Generado", valor: report.generatedAt ? new Date(report.generatedAt).toLocaleString("es-CL") : "-" },
+  ];
+  return rows.filter((row) => row.valor !== "-");
+}
+
+function labelFromKey(key: string) {
+  const labels: Record<string, string> = {
+    alumno: "Alumno",
+    curso: "Curso",
+    nivel: "Nivel",
+    evaluacion: "Evaluacion",
+    asignatura: "Asignatura",
+    nota: "Nota",
+    porcentaje: "%",
+    puntaje: "Puntaje",
+    comentarios: "Comentarios",
+    fecha_registro: "Fecha",
+    promedio_alumno: "Promedio alumno",
+    promedio_asignatura: "Promedio asignatura",
+    periodo: "Periodo",
+    alumnos: "Alumnos",
+    evaluaciones: "Evaluaciones",
+    promedio: "Promedio",
+    nivel_logro: "Nivel logro",
+    alumnos_riesgo: "Alumnos riesgo",
+    notas: "Notas",
+    asignaturas: "Asignaturas",
+    oa: "OA",
+    descripcion: "Descripcion",
+    respuestas: "Respuestas",
+    correctas: "Correctas",
+    logro: "Logro",
+    cursos: "Cursos",
+    ano: "Ano",
+  };
+  return labels[key] || key.replace(/_/g, " ");
+}
+
+function safeFileName(value: string) {
+  return value
+    .trim()
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, "-")
+    .replace(/(^-|-$)/g, "") || "reporte";
+}
+
+function downloadPdf(report: ReportResult) {
+  const rows = buildCsvRows(report);
+  const doc = new jsPDF("landscape", "mm", "a4");
+  const title = reportTitle(report.type);
+  const generatedAt = report.generatedAt ? new Date(report.generatedAt).toLocaleString("es-CL") : new Date().toLocaleString("es-CL");
+  const pageWidth = doc.internal.pageSize.width;
+
+  doc.setFillColor(30, 64, 175);
+  doc.rect(0, 0, pageWidth, 28, "F");
+  doc.setTextColor(255, 255, 255);
+  doc.setFont("helvetica", "bold");
+  doc.setFontSize(15);
+  doc.text(title, 14, 17);
+  doc.setFont("helvetica", "normal");
+  doc.setFontSize(8);
+  doc.text(`Generado: ${generatedAt}`, 14, 24);
+
+  doc.setTextColor(30, 64, 175);
+  doc.setFont("helvetica", "bold");
+  doc.setFontSize(10);
+  doc.text("Resumen", 14, 38);
+
+  doc.autoTable({
+    columns: [
+      { header: "Indicador", dataKey: "indicador" },
+      { header: "Valor", dataKey: "valor" },
+    ],
+    body: reportSummaryRows(report),
+    startY: 42,
+    styles: { fontSize: 7.5, cellPadding: 2, lineColor: [220, 220, 220], lineWidth: 0.1 },
+    headStyles: { fillColor: [30, 64, 175], textColor: [255, 255, 255], fontStyle: "bold" },
+    alternateRowStyles: { fillColor: [248, 250, 252] },
+    columnStyles: {
+      indicador: { cellWidth: 45, fontStyle: "bold" },
+      valor: { cellWidth: 90 },
+    },
+    margin: { left: 14, right: 14 },
+  });
+
+  const finalY = (doc as jsPDF & { lastAutoTable?: { finalY: number } }).lastAutoTable?.finalY ?? 60;
+  doc.setTextColor(30, 64, 175);
+  doc.setFont("helvetica", "bold");
+  doc.setFontSize(10);
+  doc.text("Detalle", 14, finalY + 10);
+
+  if (rows.length) {
+    const headers = Object.keys(rows[0]);
+    doc.autoTable({
+      columns: headers.map((key) => ({ header: labelFromKey(key), dataKey: key })),
+      body: rows.map((row) => Object.fromEntries(headers.map((key) => [key, text(row[key])]))),
+      startY: finalY + 14,
+      styles: { fontSize: headers.length > 7 ? 6.2 : 7, cellPadding: 1.8, lineColor: [220, 220, 220], lineWidth: 0.1, overflow: "linebreak" },
+      headStyles: { fillColor: [30, 64, 175], textColor: [255, 255, 255], fontStyle: "bold", fontSize: headers.length > 7 ? 6 : 7 },
+      alternateRowStyles: { fillColor: [248, 250, 252] },
+      margin: { left: 14, right: 14 },
+    });
+  } else {
+    doc.setTextColor(80, 80, 80);
+    doc.setFont("helvetica", "normal");
+    doc.setFontSize(9);
+    doc.text("No hay filas de detalle para este informe.", 14, finalY + 18);
+  }
+
+  const pageCount = doc.getNumberOfPages();
+  for (let page = 1; page <= pageCount; page++) {
+    doc.setPage(page);
+    doc.setFontSize(7);
+    doc.setTextColor(140, 140, 140);
+    doc.text(`Cordillera SaaS - Pagina ${page} de ${pageCount}`, pageWidth / 2, doc.internal.pageSize.height - 8, { align: "center" });
+  }
+
+  doc.save(`${safeFileName(title)}-${report.reportId}.pdf`);
+}
+
+function ReportDetail({ report, onCsv, onJson, onPdf }: { report: ReportResult; onCsv: () => void; onJson: () => void; onPdf: () => void }) {
   const course = asRecord(report.course);
   const student = asRecord(report.student);
 
@@ -289,6 +428,7 @@ function ReportDetail({ report, onCsv, onJson }: { report: ReportResult; onCsv: 
           </p>
         </div>
         <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
+          <button type="button" className="btn-small" onClick={onPdf}>Descargar PDF</button>
           <button type="button" className="btn-small" onClick={onCsv}>Descargar CSV</button>
           <button type="button" className="btn-small btn-secondary" onClick={onJson}>Descargar JSON</button>
         </div>
@@ -696,6 +836,7 @@ export function ReportsPage() {
           report={selectedReport}
           onCsv={() => downloadCsv(selectedReport)}
           onJson={() => downloadJson(selectedReport)}
+          onPdf={() => downloadPdf(selectedReport)}
         />
       ) : null}
 
@@ -720,6 +861,9 @@ export function ReportsPage() {
                       <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
                         <button type="button" className="btn-small" disabled={!summary} onClick={() => summary && setSelectedReport(summary)}>
                           Ver
+                        </button>
+                        <button type="button" className="btn-small" disabled={!summary} onClick={() => summary && downloadPdf(summary)}>
+                          PDF
                         </button>
                         <button type="button" className="btn-small btn-secondary" disabled={!summary} onClick={() => summary && downloadCsv(summary)}>
                           CSV
