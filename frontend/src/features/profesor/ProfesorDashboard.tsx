@@ -71,6 +71,13 @@ interface ResourceUsageRow {
   usedBy?: { id: string; firstName: string; lastName: string } | null;
 }
 
+interface MaterialUploadProgress {
+  total: number;
+  completed: number;
+  currentFile: string;
+  phase: "idle" | "creating" | "uploading" | "publishing" | "done" | "error";
+}
+
 const MATERIAL_ACCEPT_ALL = ".pdf,.ppt,.pptx,.doc,.docx,.xls,.xlsx,.png,.jpg,.jpeg,.webp,.txt";
 const MATERIAL_TYPE_LABELS: Record<string, string> = {
   CLASS_MATERIAL: "Material",
@@ -252,6 +259,7 @@ export function ProfesorDashboard({ user, onLogout }: Props) {
   const [materialType, setMaterialType] = useState("CLASS_MATERIAL");
   const [materialDescription, setMaterialDescription] = useState("");
   const [materialFiles, setMaterialFiles] = useState<File[]>([]);
+  const [materialUploadProgress, setMaterialUploadProgress] = useState<MaterialUploadProgress | null>(null);
   const [selectedMaterial, setSelectedMaterial] = useState<LearningResourceRow | null>(null);
   const [observation, setObservation] = useState("");
   const isSimcePdfMaterial = materialType === "SIMCE_PDF";
@@ -423,7 +431,19 @@ export function ProfesorDashboard({ user, onLogout }: Props) {
 
       const backendResourceType = isSimcePdfMaterial ? "PRINTABLE_TEST" : materialType;
       const created = [];
+      setMaterialUploadProgress({
+        total: materialFiles.length,
+        completed: 0,
+        currentFile: materialFiles[0]?.name || "",
+        phase: "creating",
+      });
       for (const [index, file] of materialFiles.entries()) {
+        setMaterialUploadProgress({
+          total: materialFiles.length,
+          completed: index,
+          currentFile: file.name,
+          phase: "creating",
+        });
         const baseName = file.name.replace(/\.[^.]+$/, "");
         const title = materialTitle.trim()
           ? (materialFiles.length > 1 ? `${materialTitle.trim()} ${index + 1}` : materialTitle.trim())
@@ -444,9 +464,27 @@ export function ProfesorDashboard({ user, onLogout }: Props) {
           isPrintable: isSimcePdfMaterial || backendResourceType === "PRINTABLE_TEST" ? true : undefined,
         }) as { id: string };
 
+        setMaterialUploadProgress({
+          total: materialFiles.length,
+          completed: index,
+          currentFile: file.name,
+          phase: "uploading",
+        });
         await api.uploadFile("resource", resource.id, file);
+        setMaterialUploadProgress({
+          total: materialFiles.length,
+          completed: index,
+          currentFile: file.name,
+          phase: "publishing",
+        });
         await api.publishLearningResource(resource.id).catch(() => null);
         created.push(resource);
+        setMaterialUploadProgress({
+          total: materialFiles.length,
+          completed: index + 1,
+          currentFile: file.name,
+          phase: index + 1 === materialFiles.length ? "done" : "creating",
+        });
       }
       return created;
     },
@@ -455,9 +493,11 @@ export function ProfesorDashboard({ user, onLogout }: Props) {
       setMaterialTitle("");
       setMaterialDescription("");
       setMaterialFiles([]);
+      setMaterialUploadProgress((current) => current ? { ...current, phase: "done", completed: current.total } : null);
       resourcesQuery.refetch();
     },
     onError: (error) => {
+      setMaterialUploadProgress((current) => current ? { ...current, phase: "error" } : null);
       toast(error instanceof Error ? error.message : "No se pudo subir el material.", "error");
     },
   });
@@ -1209,7 +1249,10 @@ export function ProfesorDashboard({ user, onLogout }: Props) {
                   type="file"
                   multiple
                   accept={isSimcePdfMaterial ? ".pdf,application/pdf" : MATERIAL_ACCEPT_ALL}
-                  onChange={(e) => setMaterialFiles(Array.from(e.target.files || []))}
+                  onChange={(e) => {
+                    setMaterialFiles(Array.from(e.target.files || []));
+                    setMaterialUploadProgress(null);
+                  }}
                 />
                 {materialFiles.length ? <small>{materialFiles.length} archivo(s) seleccionado(s)</small> : null}
               </div>
@@ -1224,6 +1267,36 @@ export function ProfesorDashboard({ user, onLogout }: Props) {
                   placeholder={isSimcePdfMaterial ? "Ej: Ensayo SIMCE Lectura 4° básico..." : "Para qué sirve este recurso..."}
                 />
               </div>
+              {materialUploadProgress ? (
+                <div className={`teacher-material-upload-progress teacher-material-upload-progress--${materialUploadProgress.phase}`}>
+                  <div className="teacher-material-upload-progress__header">
+                    <strong>
+                      {materialUploadProgress.phase === "done"
+                        ? "Carga completada"
+                        : materialUploadProgress.phase === "error"
+                          ? "Carga interrumpida"
+                          : "Subiendo archivos"}
+                    </strong>
+                    <span>
+                      {Math.round((materialUploadProgress.completed / Math.max(materialUploadProgress.total, 1)) * 100)}%
+                    </span>
+                  </div>
+                  <div className="teacher-material-upload-progress__track" aria-hidden="true">
+                    <span style={{ width: `${Math.round((materialUploadProgress.completed / Math.max(materialUploadProgress.total, 1)) * 100)}%` }} />
+                  </div>
+                  <div className="teacher-material-upload-progress__meta">
+                    <span>{materialUploadProgress.completed}/{materialUploadProgress.total} archivo(s)</span>
+                    <span>
+                      {materialUploadProgress.phase === "creating" ? "Preparando" : null}
+                      {materialUploadProgress.phase === "uploading" ? "Subiendo" : null}
+                      {materialUploadProgress.phase === "publishing" ? "Publicando" : null}
+                      {materialUploadProgress.phase === "done" ? "Todo listo" : null}
+                      {materialUploadProgress.phase === "error" ? "Revisa el último archivo" : null}
+                      {materialUploadProgress.currentFile && materialUploadProgress.phase !== "done" ? `: ${materialUploadProgress.currentFile}` : ""}
+                    </span>
+                  </div>
+                </div>
+              ) : null}
             </div>
 
             <div className="teacher-material-grid">

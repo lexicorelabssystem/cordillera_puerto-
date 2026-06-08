@@ -5269,6 +5269,68 @@ input::placeholder, textarea::placeholder { color: var(--muted-light); }
   font-weight: 700;
 }
 
+.shell--teacher .teacher-material-upload-progress {
+  grid-column: 1 / -1;
+  display: grid;
+  gap: 8px;
+  padding: 12px 14px;
+  border: 1px solid #d9d4c7;
+  border-radius: 10px;
+  background: #fffdf8;
+}
+
+.shell--teacher .teacher-material-upload-progress__header,
+.shell--teacher .teacher-material-upload-progress__meta {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.shell--teacher .teacher-material-upload-progress__header strong {
+  color: #26313f;
+}
+
+.shell--teacher .teacher-material-upload-progress__header span {
+  color: #2447b8;
+  font-weight: 900;
+}
+
+.shell--teacher .teacher-material-upload-progress__track {
+  height: 10px;
+  overflow: hidden;
+  border-radius: 999px;
+  background: #e9e2d5;
+}
+
+.shell--teacher .teacher-material-upload-progress__track span {
+  display: block;
+  height: 100%;
+  border-radius: inherit;
+  background: linear-gradient(90deg, #227867, #2447b8);
+  transition: width .22s ease;
+}
+
+.shell--teacher .teacher-material-upload-progress__meta {
+  color: #6c6255;
+  font-size: .82rem;
+  font-weight: 700;
+}
+
+.shell--teacher .teacher-material-upload-progress--done {
+  border-color: #b9d9bf;
+  background: #f0f8ef;
+}
+
+.shell--teacher .teacher-material-upload-progress--error {
+  border-color: #efc2c2;
+  background: #fff3f3;
+}
+
+.shell--teacher .teacher-material-upload-progress--error .teacher-material-upload-progress__track span {
+  background: #b91c1c;
+}
+
 .shell--teacher .teacher-material-card__usage {
   display: grid;
   gap: 3px;
