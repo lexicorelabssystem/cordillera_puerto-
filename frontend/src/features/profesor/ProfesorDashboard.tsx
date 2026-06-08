@@ -269,7 +269,7 @@ export function ProfesorDashboard({ user, onLogout }: Props) {
     }) => {
       const assessment = await api.createAssessment(payload.assessment);
       const assessmentId = assessment.assessmentId ?? assessment.id;
-      if (!assessmentId) throw new Error("No fue posible identificar la evaluacion creada.");
+      if (!assessmentId) throw new Error("No fue posible identificar la evaluación creada.");
       if (payload.grades.length > 0) {
         const bulk = await api.bulkDirectGrades({
           grades: payload.grades.map((grade) => ({
@@ -288,7 +288,7 @@ export function ProfesorDashboard({ user, onLogout }: Props) {
     onSuccess: () => {
       setGrades({});
       gradesEditedRef.current = false;
-      toast("Planilla registrada. Puedes revisar las notas y cerrar la evaluacion cuando este completa.", "success");
+      toast("Planilla registrada. Puedes revisar las notas y cerrar la evaluación cuando esté completa.", "success");
       studentsQuery.refetch();
       queryClient.invalidateQueries({ queryKey: ["teacher-course-book", courseId, subjectId] });
       queryClient.invalidateQueries({ queryKey: ["teacher-profile-assessments", courseId, subjectId] });
@@ -316,7 +316,7 @@ export function ProfesorDashboard({ user, onLogout }: Props) {
       queryClient.invalidateQueries({ queryKey: ["my-alerts"] });
     },
     onError: (error) => {
-      toast(error instanceof Error ? error.message : "No se pudo cerrar la evaluacion.", "error");
+      toast(error instanceof Error ? error.message : "No se pudo cerrar la evaluación.", "error");
     },
     onSettled: (_data, _error, variables) => {
       setFinalizandoEvaluaciones((prev) => {
@@ -458,15 +458,21 @@ export function ProfesorDashboard({ user, onLogout }: Props) {
   const courseBookStats = gradeBookQuery.data?.stats;
   const visibleCourses = useMemo(() => {
     const courses = coursesQuery.data || [];
-    if (courses.length) return courses;
-    return assignments.map((assignment) => ({
+    const base = courses.length ? courses : assignments.map((assignment) => ({
       course_id: assignment.course_id,
       course_name: assignment.course_name,
       grade_level: assignment.grade_level ?? 0,
       students_count: assignment.students_count ?? 0,
       section: null,
     }));
-  }, [coursesQuery.data, assignments]);
+    return [...base].sort((a, b) => {
+      const aActive = assignedCourseIds.has(a.course_id) ? 0 : 1;
+      const bActive = assignedCourseIds.has(b.course_id) ? 0 : 1;
+      return aActive - bActive
+        || (a.grade_level ?? 0) - (b.grade_level ?? 0)
+        || a.course_name.localeCompare(b.course_name);
+    });
+  }, [coursesQuery.data, assignments, assignedCourseIds]);
 
   useEffect(() => {
     if (!studentsQuery.data?.length) return;
@@ -512,7 +518,7 @@ export function ProfesorDashboard({ user, onLogout }: Props) {
   function submitGradebook() {
     
     if (!title.trim()) {
-      toast("El nombre de la evaluacion es obligatorio.", "warning");
+      toast("El nombre de la evaluación es obligatorio.", "warning");
       return;
     }
     if (!students.length) {
@@ -563,7 +569,7 @@ export function ProfesorDashboard({ user, onLogout }: Props) {
       return;
     }
     if (!title.trim()) {
-      toast("El nombre de la evaluacion es obligatorio.", "warning");
+      toast("El nombre de la evaluación es obligatorio.", "warning");
       return;
     }
     if (Number.isNaN(assessmentWeight) || assessmentWeight < 0 || assessmentWeight > 100) {
@@ -705,39 +711,64 @@ export function ProfesorDashboard({ user, onLogout }: Props) {
       {assignmentsQuery.isLoading ? <section className="panel"><p>Cargando asignaciones...</p></section> : null}
       {assignmentsQuery.isError ? <section className="panel"><p>No se pudieron cargar las asignaciones.</p></section> : null}
 
-      <section className="teacher-overview">
+      <section className="teacher-overview teacher-workspace-hero">
         <div className="teacher-overview__main">
-          <span>Curso activo</span>
+          <span>Espacio de trabajo docente</span>
           <strong>{selectedAssignment ? `${selectedAssignment.course_name} - ${selectedAssignment.subject_name}` : "Sin curso asignado"}</strong>
-          <p>Los cursos asignados quedan habilitados para editar libro, notas, OA y evaluaciones. Los demas cursos se muestran sin informacion.</p>
+          <p>Libro de notas, evaluaciones, recursos, reportes y registro de clase del curso activo en una vista preparada para trabajo diario.</p>
+          <div className="teacher-hero-actions">
+            <a href="#teacher-grades">Notas</a>
+            <a href="#teacher-classbook">Clase</a>
+            <a href="#teacher-material">Materiales</a>
+            <a href="#teacher-analysis">Reportes</a>
+          </div>
         </div>
-        <select value={assignmentId} onChange={(event) => setAssignmentId(event.target.value)}>
-          {assignments.map((assignment) => (
-            <option key={assignment.assignment_id} value={assignment.assignment_id}>
-              {assignment.course_name} - {assignment.subject_name}
-            </option>
-          ))}
-        </select>
+        <div className="teacher-active-card">
+          <label>Asignación activa</label>
+          <select value={assignmentId} onChange={(event) => setAssignmentId(event.target.value)}>
+            {assignments.map((assignment) => (
+              <option key={assignment.assignment_id} value={assignment.assignment_id}>
+                {assignment.course_name} - {assignment.subject_name}
+              </option>
+            ))}
+          </select>
+          <div className="teacher-active-card__meta">
+            <span>{gradeBookQuery.data?.students.length ?? selectedAssignment?.students_count ?? 0} alumnos</span>
+            <span>{gradeBookQuery.data?.assessments.length ?? 0} evaluaciones</span>
+            <span>{courseBookStats?.approvalRate ?? 0}% aprobación</span>
+          </div>
+        </div>
       </section>
 
-      <section className="teacher-course-grid" aria-label="Cursos del colegio">
-        {visibleCourses.map((course: AdminCourseRow) => {
-          const active = assignedCourseIds.has(course.course_id);
-          const assignment = assignments.find((item) => item.course_id === course.course_id);
-          return (
-            <button
-              key={course.course_id}
-              className={`teacher-course-card ${active ? "teacher-course-card--active" : "teacher-course-card--locked"}`}
-              type="button"
-              disabled={!active || !assignment}
-              onClick={() => assignment && setAssignmentId(assignment.assignment_id)}
-            >
-              <strong>{course.course_name}</strong>
-              <span>{active ? assignment?.subject_name : "Sin informacion"}</span>
-              <small>{active ? `${course.students_count ?? students.length} alumnos` : "No asignado"}</small>
-            </button>
-          );
-        })}
+      <section className="teacher-course-section">
+        <div className="teacher-section-title">
+          <div>
+            <span>Cursos</span>
+            <strong>Asignaciones disponibles</strong>
+          </div>
+          <small>{assignments.length} asignaciones activas</small>
+        </div>
+        <div className="teacher-course-grid" aria-label="Cursos del colegio">
+          {visibleCourses.map((course: AdminCourseRow) => {
+            const active = assignedCourseIds.has(course.course_id);
+            const assignment = assignments.find((item) => item.course_id === course.course_id);
+            const selected = assignment?.assignment_id === assignmentId;
+            return (
+              <button
+                key={course.course_id}
+                className={`teacher-course-card ${active ? "teacher-course-card--active" : "teacher-course-card--locked"} ${selected ? "teacher-course-card--selected" : ""}`}
+                type="button"
+                disabled={!active || !assignment}
+                onClick={() => assignment && setAssignmentId(assignment.assignment_id)}
+              >
+                <span className="teacher-course-card__level">{course.grade_level ? `${course.grade_level}°` : "Curso"}</span>
+                <strong>{course.course_name}</strong>
+                <span>{active ? assignment?.subject_name : "Sin información"}</span>
+                <small>{active ? `${course.students_count ?? students.length} alumnos` : "No asignado"}</small>
+              </button>
+            );
+          })}
+        </div>
       </section>
 
       <section className="kpi-grid">
@@ -748,19 +779,19 @@ export function ProfesorDashboard({ user, onLogout }: Props) {
       </section>
 
       <div className="teacher-complete-grid">
-        <aside className="teacher-module-rail" aria-label="Modulos del profesor">
-          <a href="#teacher-curricular">Diseno Curricular</a>
-          <a href="#teacher-classbook">Libro de clases</a>
-          <a href="#teacher-grades">Evaluaciones y Notas</a>
-          <a href="#teacher-analysis">Analisis y Reportes</a>
-          <a href="#teacher-material">Material Pedagogico</a>
+        <aside className="teacher-module-rail" aria-label="Módulos del profesor">
+          <a href="#teacher-grades">Notas</a>
+          <a href="#teacher-classbook">Clase diaria</a>
+          <a href="#teacher-material">Materiales</a>
+          <a href="#teacher-curricular">Curriculum</a>
+          <a href="#teacher-analysis">Reportes</a>
         </aside>
 
         <main className="teacher-complete-content">
-          <section id="teacher-curricular" className="panel">
+          <section id="teacher-curricular" className="panel teacher-work-panel">
             <div className="panel-heading">
               <div>
-                <h3>Diseno Curricular</h3>
+                <h3>Diseño Curricular</h3>
                 <p>OA del curso activo y objetivos descendidos desde el libro de notas.</p>
               </div>
               <span className="badge badge--role">{selectedCourse?.grade_level ? `${selectedCourse.grade_level} basico/medio` : "Curso activo"}</span>
@@ -776,7 +807,7 @@ export function ProfesorDashboard({ user, onLogout }: Props) {
               {!objectivesQuery.isLoading && !objectivesQuery.data?.length ? (
                 <div className="empty-inline">
                   <strong>Sin OA cargados para esta asignatura.</strong>
-                  <span>Cuando UTP registre objetivos, apareceran aqui para planificar y evaluar.</span>
+                  <span>Cuando UTP registre objetivos, aparecerán aquí para planificar y evaluar.</span>
                 </div>
               ) : null}
             </div>
@@ -790,7 +821,7 @@ export function ProfesorDashboard({ user, onLogout }: Props) {
             ) : null}
           </section>
 
-          <section id="teacher-classbook" className="panel">
+          <section id="teacher-classbook" className="panel teacher-work-panel">
             <div className="panel-heading">
               <div>
                 <h3>Libro de clases</h3>
@@ -828,18 +859,18 @@ export function ProfesorDashboard({ user, onLogout }: Props) {
             </div>
           </section>
 
-          <section id="teacher-grades" className="panel">
+          <section id="teacher-grades" className="panel teacher-work-panel teacher-gradebook-panel">
             <div className="panel-heading">
               <div>
                 <h3>Libro de Calificaciones</h3>
-                <p>{selectedAssignment ? `${selectedAssignment.course_name} - ${selectedAssignment.subject_name}` : "Selecciona una asignacion para ver el libro."}</p>
+                <p>{selectedAssignment ? `${selectedAssignment.course_name} - ${selectedAssignment.subject_name}` : "Selecciona una asignación para ver el libro."}</p>
               </div>
               <span className="badge badge--role">{gradeBookQuery.data?.students.length ?? 0} alumnos</span>
             </div>
-            <div className="form-row">
-              <input value={title} onChange={(e) => setTitle(e.target.value)} placeholder="Nombre de evaluacion" />
+            <div className="form-row teacher-grade-form">
+              <input value={title} onChange={(e) => setTitle(e.target.value)} placeholder="Nombre de evaluación" />
               <select value={assessmentType} onChange={(e) => setAssessmentType(e.target.value)}>
-                <option value="DIAGNOSTICA">Diagnostica</option>
+                <option value="DIAGNOSTICA">Diagnóstica</option>
                 <option value="PROCESO">Proceso</option>
                 <option value="CIERRE">Cierre</option>
                 <option value="PARCIAL">Parcial</option>
@@ -855,8 +886,8 @@ export function ProfesorDashboard({ user, onLogout }: Props) {
                 max={100}
                 value={assessmentWeight}
                 onChange={(e) => setAssessmentWeight(Number(e.target.value))}
-                placeholder="Ponderacion %"
-                title="Ponderacion de la evaluacion (%)"
+                placeholder="Ponderación %"
+                title="Ponderación de la evaluación (%)"
               />
               <input type="date" value={appliedAt} onChange={(e) => setAppliedAt(e.target.value)} />
               <button onClick={crearColumnaLibro} disabled={!courseId || !subjectId || createAssessment.isPending}>
@@ -868,7 +899,7 @@ export function ProfesorDashboard({ user, onLogout }: Props) {
               <VoiceTextarea
                 value={observation}
                 onChange={setObservation}
-                label="Observaciones de la evaluacion"
+                label="Observaciones de la evaluación"
                 placeholder="Dicta o escribe observaciones generales..."
                 rows={2}
               />
@@ -881,12 +912,12 @@ export function ProfesorDashboard({ user, onLogout }: Props) {
               <>
                 <div className="gradebook-kpi-grid" style={{ marginTop: 16 }}>
                   <div className="gradebook-kpi-card"><div><span>Promedio</span><strong style={{ color: colorNota(gradeBookQuery.data.stats.courseAvg) }}>{formatearNota(gradeBookQuery.data.stats.courseAvg)}</strong></div></div>
-                  <div className="gradebook-kpi-card"><div><span>Aprobacion</span><strong>{gradeBookQuery.data.stats.approvalRate}%</strong></div></div>
+                  <div className="gradebook-kpi-card"><div><span>Aprobación</span><strong>{gradeBookQuery.data.stats.approvalRate}%</strong></div></div>
                   <div className="gradebook-kpi-card"><div><span>Evaluaciones</span><strong>{gradeBookQuery.data.assessments.length}</strong></div></div>
                   <div className="gradebook-kpi-card"><div><span>Pendientes</span><strong>{gradeBookQuery.data.stats.pendingsCount}</strong></div></div>
                 </div>
 
-                <div className="form-row" style={{ marginTop: 12, justifyContent: "flex-end" }}>
+                <div className="teacher-export-actions">
                   <button type="button" onClick={descargarLibroPdf} disabled={!gradeBookQuery.data.assessments.length}>
                     Descargar PDF
                   </button>
@@ -901,7 +932,7 @@ export function ProfesorDashboard({ user, onLogout }: Props) {
                 {gradeBookQuery.data.students.length === 0 ? (
                   <div className="empty-inline" style={{ marginTop: 16 }}>
                     <strong>Este curso no tiene alumnos matriculados.</strong>
-                    <span>Cuando se asignen alumnos al curso, apareceran aqui automaticamente.</span>
+                    <span>Cuando se asignen alumnos al curso, aparecerán aquí automáticamente.</span>
                   </div>
                 ) : (
                   <div className="gradebook-table-scroll" style={{ marginTop: 16 }}>
@@ -932,7 +963,7 @@ export function ProfesorDashboard({ user, onLogout }: Props) {
                                       type="button"
                                       className="gb-finalize-btn"
                                       disabled={!canCloseGrade || isFinalizing}
-                                      title={canCloseGrade ? "Cerrar evaluacion y bloquear notas" : `Faltan ${missingCount} nota(s)`}
+                                      title={canCloseGrade ? "Cerrar evaluación y bloquear notas" : `Faltan ${missingCount} nota(s)`}
                                       onClick={() => {
                                         setFinalizandoEvaluaciones((prev) => new Set(prev).add(assessment.id));
                                         finalizarEvaluacion.mutate({ assessmentId: assessment.id, status: assessment.status, missingCount });
@@ -1028,16 +1059,16 @@ export function ProfesorDashboard({ user, onLogout }: Props) {
           <EvaluacionesProfesorPanel courseId={courseId} subjectId={subjectId} />
           <AnswersInspectionPanel courseId={courseId} subjectId={subjectId} />
 
-          <section id="teacher-analysis" className="panel">
+          <section id="teacher-analysis" className="panel teacher-work-panel">
             <div className="panel-heading">
               <div>
-                <h3>Analisis y Reportes</h3>
-                <p>Promedios, alumnos en riesgo y salud academica del curso.</p>
+                <h3>Análisis y Reportes</h3>
+                <p>Promedios, alumnos en riesgo y salud académica del curso.</p>
               </div>
             </div>
             <div className="kpi-grid">
               <KpiCard label="Notas libro" value={courseBookStats?.totalNotes ?? kpiData.totalGrades} />
-              <KpiCard label="Aprobacion" value={courseBookStats ? `${courseBookStats.approvalRate}%` : kpiData.avgPercent} />
+              <KpiCard label="Aprobación" value={courseBookStats ? `${courseBookStats.approvalRate}%` : kpiData.avgPercent} />
               <KpiCard label="Pendientes" value={courseBookStats?.pendingsCount ?? 0} />
             </div>
             <GradeBarChart data={chartData} />
@@ -1052,27 +1083,27 @@ export function ProfesorDashboard({ user, onLogout }: Props) {
             </div>
           </section>
 
-          <section id="teacher-material" className="panel">
+          <section id="teacher-material" className="panel teacher-work-panel">
             <div className="panel-heading">
               <div>
-                <h3>Material Pedagogico</h3>
-                <p>Sube, organiza y visualiza recursos del curso activo: PDF, PPT, guias, imagenes y material de apoyo.</p>
+                <h3>Material Pedagógico</h3>
+                <p>Sube, organiza y visualiza recursos del curso activo: PDF, PPT, guías, imágenes y material de apoyo.</p>
               </div>
             </div>
 
             <div className="teacher-material-upload">
               <div className="form-field">
-                <label>Titulo</label>
-                <input value={materialTitle} onChange={(e) => setMaterialTitle(e.target.value)} placeholder="Ej: Guia unidad 2" />
+                <label>Título</label>
+                <input value={materialTitle} onChange={(e) => setMaterialTitle(e.target.value)} placeholder="Ej: Guía unidad 2" />
               </div>
               <div className="form-field">
                 <label>Tipo</label>
                 <select value={materialType} onChange={(e) => setMaterialType(e.target.value)}>
                   <option value="CLASS_MATERIAL">Material</option>
-                  <option value="GUIDE">Guia</option>
-                  <option value="PRESENTATION">Presentacion</option>
+                  <option value="GUIDE">Guía</option>
+                  <option value="PRESENTATION">Presentación</option>
                   <option value="WORKSHEET">Actividad</option>
-                  <option value="PRINTABLE_TEST">Evaluacion imprimible</option>
+                  <option value="PRINTABLE_TEST">Evaluación imprimible</option>
                 </select>
               </div>
               <div className="form-field">
@@ -1087,8 +1118,8 @@ export function ProfesorDashboard({ user, onLogout }: Props) {
                 {uploadMaterial.isPending ? "Subiendo..." : "Subir material"}
               </button>
               <div className="form-field teacher-material-upload__description">
-                <label>Descripcion breve</label>
-                <input value={materialDescription} onChange={(e) => setMaterialDescription(e.target.value)} placeholder="Para que sirve este recurso..." />
+                <label>Descripción breve</label>
+                <input value={materialDescription} onChange={(e) => setMaterialDescription(e.target.value)} placeholder="Para qué sirve este recurso..." />
               </div>
             </div>
 
@@ -1099,7 +1130,7 @@ export function ProfesorDashboard({ user, onLogout }: Props) {
                   className="teacher-material-card"
                 >
                   <span className="teacher-material-card__type">{resource.type || "RECURSO"}</span>
-                  <strong>{resource.title || "Material sin titulo"}</strong>
+                  <strong>{resource.title || "Material sin título"}</strong>
                   <p>{resource.description || "Disponible para este curso."}</p>
                   <small>{resource.status || "DRAFT"}</small>
                   <div className="teacher-material-card__actions">
@@ -1199,7 +1230,7 @@ export function ProfesorDashboard({ user, onLogout }: Props) {
           {!materialFilesQuery.isLoading && !materialFilesQuery.data?.length ? (
             <div className="empty-inline">
               <strong>Este recurso no tiene archivo asociado.</strong>
-              <span>Sube un archivo nuevo para visualizarlo aqui.</span>
+              <span>Sube un archivo nuevo para visualizarlo aquí.</span>
             </div>
           ) : null}
         </div>
