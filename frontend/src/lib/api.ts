@@ -683,6 +683,10 @@ export const api = {
     request<unknown>(`/resources/${id}`, { method: "PATCH", body: JSON.stringify(payload) }),
   publishLearningResource: (id: string) =>
     request<unknown>(`/resources/${id}/publish`, { method: "POST" }),
+  markLearningResourceUsed: (id: string, payload: { courseId: string; subjectId?: string; action?: string; notes?: string }) =>
+    request<unknown>(`/resources/${id}/mark-used`, { method: "POST", body: JSON.stringify(payload) }),
+  getLearningResourceUsage: (id: string) =>
+    request<unknown[]>(`/resources/${id}/usage`),
   archiveLearningResource: (id: string) =>
     request<unknown>(`/resources/${id}/archive`, { method: "POST" }),
   uploadFile: (entityType: string, entityId: string, file: File) => {

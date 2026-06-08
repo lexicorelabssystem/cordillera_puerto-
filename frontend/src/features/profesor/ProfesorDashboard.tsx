@@ -46,6 +46,9 @@ interface LearningResourceRow {
   type?: string;
   status?: string;
   createdAt?: string;
+  usedAt?: string | null;
+  usageLogs?: ResourceUsageRow[];
+  _count?: { usageLogs?: number; lessonResources?: number };
 }
 
 interface MaterialFileRow {
@@ -56,6 +59,16 @@ interface MaterialFileRow {
   size: number;
   url: string | null;
   createdAt: string;
+}
+
+interface ResourceUsageRow {
+  id: string;
+  action: string;
+  usedAt: string;
+  notes?: string | null;
+  course?: { id: string; name: string; gradeLevel?: number | null; section?: string | null } | null;
+  subject?: { id: string; name: string } | null;
+  usedBy?: { id: string; firstName: string; lastName: string } | null;
 }
 
 const MATERIAL_ACCEPT_ALL = ".pdf,.ppt,.pptx,.doc,.docx,.xls,.xlsx,.png,.jpg,.jpeg,.webp,.txt";
@@ -238,7 +251,7 @@ export function ProfesorDashboard({ user, onLogout }: Props) {
   const [materialTitle, setMaterialTitle] = useState("");
   const [materialType, setMaterialType] = useState("CLASS_MATERIAL");
   const [materialDescription, setMaterialDescription] = useState("");
-  const [materialFile, setMaterialFile] = useState<File | null>(null);
+  const [materialFiles, setMaterialFiles] = useState<File[]>([]);
   const [selectedMaterial, setSelectedMaterial] = useState<LearningResourceRow | null>(null);
   const [observation, setObservation] = useState("");
   const isSimcePdfMaterial = materialType === "SIMCE_PDF";
@@ -248,6 +261,11 @@ export function ProfesorDashboard({ user, onLogout }: Props) {
   const materialFilesQuery = useQuery({
     queryKey: ["teacher-resource-files", selectedMaterial?.id],
     queryFn: () => api.listEntityFiles("resource", selectedMaterial?.id || "") as Promise<MaterialFileRow[]>,
+    enabled: Boolean(selectedMaterial?.id),
+  });
+  const materialUsageQuery = useQuery({
+    queryKey: ["teacher-resource-usage", selectedMaterial?.id],
+    queryFn: () => api.getLearningResourceUsage(selectedMaterial?.id || "") as Promise<ResourceUsageRow[]>,
     enabled: Boolean(selectedMaterial?.id),
   });
 
@@ -397,38 +415,46 @@ export function ProfesorDashboard({ user, onLogout }: Props) {
     mutationFn: async () => {
       if (!user.institutionId) throw new Error("No se pudo identificar la institucion del profesor.");
       if (!courseId || !subjectId) throw new Error("Selecciona un curso/asignatura antes de subir material.");
-      if (!materialFile) throw new Error("Selecciona un archivo.");
-      if (isSimcePdfMaterial && materialFile.type !== "application/pdf" && !materialFile.name.toLowerCase().endsWith(".pdf")) {
+      if (!materialFiles.length) throw new Error("Selecciona uno o más archivos.");
+      const invalidSimceFile = materialFiles.find((file) => file.type !== "application/pdf" && !file.name.toLowerCase().endsWith(".pdf"));
+      if (isSimcePdfMaterial && invalidSimceFile) {
         throw new Error("El material SIMCE debe ser un archivo PDF.");
       }
 
-      const title = materialTitle.trim() || materialFile.name.replace(/\.[^.]+$/, "");
       const backendResourceType = isSimcePdfMaterial ? "PRINTABLE_TEST" : materialType;
-      const description = materialDescription.trim()
-        || (isSimcePdfMaterial ? "Ensayo SIMCE en PDF para el curso activo." : undefined);
-      const resource = await api.createLearningResource({
-        institutionId: user.institutionId,
-        title,
-        description,
-        type: backendResourceType,
-        subjectId,
-        courseId,
-        gradeLevel: selectedAssignment?.grade_level,
-        guideType: backendResourceType === "GUIDE" ? "CONTENT" : undefined,
-        presentationType: backendResourceType === "PRESENTATION" ? materialFile.type || "PDF" : undefined,
-        instructions: isSimcePdfMaterial ? "PDF SIMCE subido por profesor para práctica, impresión o revisión del curso." : undefined,
-        isPrintable: isSimcePdfMaterial || backendResourceType === "PRINTABLE_TEST" ? true : undefined,
-      }) as { id: string };
+      const created = [];
+      for (const [index, file] of materialFiles.entries()) {
+        const baseName = file.name.replace(/\.[^.]+$/, "");
+        const title = materialTitle.trim()
+          ? (materialFiles.length > 1 ? `${materialTitle.trim()} ${index + 1}` : materialTitle.trim())
+          : baseName;
+        const description = materialDescription.trim()
+          || (isSimcePdfMaterial ? "Ensayo SIMCE en PDF para el curso activo." : undefined);
+        const resource = await api.createLearningResource({
+          institutionId: user.institutionId,
+          title,
+          description,
+          type: backendResourceType,
+          subjectId,
+          courseId,
+          gradeLevel: selectedAssignment?.grade_level,
+          guideType: backendResourceType === "GUIDE" ? "CONTENT" : undefined,
+          presentationType: backendResourceType === "PRESENTATION" ? file.type || "PDF" : undefined,
+          instructions: isSimcePdfMaterial ? "PDF SIMCE subido por profesor para práctica, impresión o revisión del curso." : undefined,
+          isPrintable: isSimcePdfMaterial || backendResourceType === "PRINTABLE_TEST" ? true : undefined,
+        }) as { id: string };
 
-      await api.uploadFile("resource", resource.id, materialFile);
-      await api.publishLearningResource(resource.id).catch(() => null);
-      return resource;
+        await api.uploadFile("resource", resource.id, file);
+        await api.publishLearningResource(resource.id).catch(() => null);
+        created.push(resource);
+      }
+      return created;
     },
-    onSuccess: () => {
-      toast("Material subido correctamente.", "success");
+    onSuccess: (created) => {
+      toast(created.length > 1 ? `${created.length} materiales subidos correctamente.` : "Material subido correctamente.", "success");
       setMaterialTitle("");
       setMaterialDescription("");
-      setMaterialFile(null);
+      setMaterialFiles([]);
       resourcesQuery.refetch();
     },
     onError: (error) => {
@@ -458,6 +484,48 @@ export function ProfesorDashboard({ user, onLogout }: Props) {
       toast(error instanceof Error ? error.message : "No se pudo eliminar el archivo.", "error");
     },
   });
+
+  const markMaterialUsed = useMutation({
+    mutationFn: ({ resourceId, action, notes }: { resourceId: string; action: string; notes?: string }) =>
+      api.markLearningResourceUsed(resourceId, { courseId, subjectId, action, notes }),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["teacher-resource-usage"] });
+      resourcesQuery.refetch();
+    },
+  });
+
+  function registrarUsoMaterial(action: "VIEW" | "DOWNLOAD" | "PRINT", notes?: string) {
+    if (!selectedMaterial?.id || !courseId) return;
+    markMaterialUsed.mutate({
+      resourceId: selectedMaterial.id,
+      action,
+      notes: notes || `${getTeacherMaterialLabel(selectedMaterial)} usado en ${selectedAssignment?.course_name || "curso activo"}.`,
+    });
+  }
+
+  function abrirMaterial(url: string) {
+    registrarUsoMaterial("VIEW", "Visualización del ensayo o material.");
+    window.open(url, "_blank", "noopener,noreferrer");
+  }
+
+  function descargarMaterial(url: string) {
+    registrarUsoMaterial("DOWNLOAD", "Descarga del ensayo o material.");
+    window.location.href = url;
+  }
+
+  function imprimirMaterial(url: string) {
+    registrarUsoMaterial("PRINT", "Impresión del ensayo o material.");
+    const printWindow = window.open(url, "_blank", "noopener,noreferrer");
+    if (printWindow) {
+      printWindow.addEventListener("load", () => {
+        try {
+          printWindow.print();
+        } catch {
+          // Algunos navegadores bloquean print() hasta que el PDF termina de cargar.
+        }
+      });
+    }
+  }
 
   const students = studentsQuery.data || [];
 
@@ -1139,12 +1207,14 @@ export function ProfesorDashboard({ user, onLogout }: Props) {
                 <label>Archivo</label>
                 <input
                   type="file"
+                  multiple
                   accept={isSimcePdfMaterial ? ".pdf,application/pdf" : MATERIAL_ACCEPT_ALL}
-                  onChange={(e) => setMaterialFile(e.target.files?.[0] ?? null)}
+                  onChange={(e) => setMaterialFiles(Array.from(e.target.files || []))}
                 />
+                {materialFiles.length ? <small>{materialFiles.length} archivo(s) seleccionado(s)</small> : null}
               </div>
-              <button onClick={() => uploadMaterial.mutate()} disabled={uploadMaterial.isPending || !materialFile || !courseId || !subjectId}>
-                {uploadMaterial.isPending ? "Subiendo..." : "Subir material"}
+              <button onClick={() => uploadMaterial.mutate()} disabled={uploadMaterial.isPending || !materialFiles.length || !courseId || !subjectId}>
+                {uploadMaterial.isPending ? "Subiendo..." : materialFiles.length > 1 ? "Subir masivamente" : "Subir material"}
               </button>
               <div className="form-field teacher-material-upload__description">
                 <label>Descripción breve</label>
@@ -1166,6 +1236,14 @@ export function ProfesorDashboard({ user, onLogout }: Props) {
                   <strong>{resource.title || "Material sin título"}</strong>
                   <p>{resource.description || "Disponible para este curso."}</p>
                   <small>{resource.status || "DRAFT"}</small>
+                  <div className="teacher-material-card__usage">
+                    <span>Usado {resource._count?.usageLogs ?? 0} vez/veces</span>
+                    {resource.usageLogs?.[0]?.usedAt || resource.usedAt ? (
+                      <time>Último uso: {new Date(resource.usageLogs?.[0]?.usedAt || resource.usedAt || "").toLocaleString("es-CL")}</time>
+                    ) : (
+                      <time>Sin uso registrado</time>
+                    )}
+                  </div>
                   <div className="teacher-material-card__actions">
                     <button type="button" className="btn-small" onClick={() => setSelectedMaterial(resource)}>Ver</button>
                     <button
@@ -1185,8 +1263,8 @@ export function ProfesorDashboard({ user, onLogout }: Props) {
               ))}
               {!resourcesQuery.isLoading && !resourcesQuery.data?.length ? (
                 <div className="empty-inline">
-                  <strong>Biblioteca vacia.</strong>
-                  <span>Sube el primer PDF, presentacion o guia para compartirlo con el curso.</span>
+                  <strong>Biblioteca vacía.</strong>
+                  <span>Sube uno o varios PDF SIMCE, presentaciones o guías para compartirlos con el curso.</span>
                 </div>
               ) : null}
             </div>
@@ -1223,6 +1301,7 @@ export function ProfesorDashboard({ user, onLogout }: Props) {
           {(materialFilesQuery.data || []).map((file) => {
             const viewUrl = `/api/v1/files/view/${file.fileName}`;
             const downloadUrl = `/api/v1/files/download/${file.fileName}`;
+            const canPrint = file.mimeType.includes("pdf") || file.mimeType.startsWith("image/") || file.mimeType.startsWith("text/");
             const canEmbed = file.mimeType.includes("pdf") || file.mimeType.startsWith("image/") || file.mimeType.startsWith("text/");
             return (
               <article key={file.id} className="teacher-material-file">
@@ -1231,8 +1310,9 @@ export function ProfesorDashboard({ user, onLogout }: Props) {
                   <span>{file.mimeType} · {(file.size / 1024).toFixed(1)} KB</span>
                 </div>
                 <div className="teacher-material-file__actions">
-                  <a className="btn-small" href={viewUrl} target="_blank" rel="noreferrer">Abrir</a>
-                  <a className="btn-small" href={downloadUrl}>Descargar</a>
+                  <button type="button" className="btn-small" onClick={() => abrirMaterial(viewUrl)}>Abrir</button>
+                  <button type="button" className="btn-small" onClick={() => descargarMaterial(downloadUrl)}>Descargar</button>
+                  <button type="button" className="btn-small" disabled={!canPrint} onClick={() => imprimirMaterial(viewUrl)}>Imprimir</button>
                   <button
                     type="button"
                     className="btn-small btn-danger"
@@ -1266,6 +1346,28 @@ export function ProfesorDashboard({ user, onLogout }: Props) {
               <span>Sube un archivo nuevo para visualizarlo aquí.</span>
             </div>
           ) : null}
+          <div className="teacher-material-usage">
+            <div className="teacher-material-usage__heading">
+              <strong>Historial de uso</strong>
+              <span>{materialUsageQuery.data?.length ?? 0} registro(s)</span>
+            </div>
+            {materialUsageQuery.isLoading ? <LoadingSpinner size="sm" /> : null}
+            {(materialUsageQuery.data || []).slice(0, 8).map((usage) => (
+              <article key={usage.id} className="teacher-material-usage__item">
+                <div>
+                  <strong>{usage.course?.name || selectedAssignment?.course_name || "Curso"}</strong>
+                  <span>{usage.subject?.name || selectedAssignment?.subject_name || "Asignatura"} · {usage.action}</span>
+                </div>
+                <time>{new Date(usage.usedAt).toLocaleString("es-CL")}</time>
+              </article>
+            ))}
+            {!materialUsageQuery.isLoading && !materialUsageQuery.data?.length ? (
+              <div className="empty-inline">
+                <strong>Este ensayo aún no registra uso.</strong>
+                <span>Al abrir, descargar o imprimir se guardará fecha, hora y curso sin bloquear su reutilización.</span>
+              </div>
+            ) : null}
+          </div>
         </div>
       </Modal>
     </ShellLayout>
