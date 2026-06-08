@@ -56,7 +56,7 @@ export function AcademicYearsView() {
   const createYear = useMutation({
     mutationFn: api.createAcademicYear,
     onSuccess: () => {
-      toast("Ano academico creado.", "success");
+      toast("Año académico creado.", "success");
       setYearForm({ year: new Date().getFullYear(), startDate: "", endDate: "" });
       setEditingYearId(null);
       queryClient.invalidateQueries({ queryKey: ["academic-years"] });
@@ -68,7 +68,7 @@ export function AcademicYearsView() {
     mutationFn: ({ id, data }: { id: string; data: Record<string, unknown> }) =>
       api.updateAcademicYear(id, data),
     onSuccess: () => {
-      toast("Ano academico actualizado.", "success");
+      toast("Año académico actualizado.", "success");
       setEditingYearId(null);
       queryClient.invalidateQueries({ queryKey: ["academic-years"] });
     },
@@ -78,7 +78,7 @@ export function AcademicYearsView() {
   const closeYear = useMutation({
     mutationFn: api.closeAcademicYear,
     onSuccess: () => {
-      toast("Ano academico cerrado.", "success");
+      toast("Año académico cerrado.", "success");
       queryClient.invalidateQueries({ queryKey: ["academic-years"] });
     },
     onError: (e) => toast(e instanceof Error ? e.message : "Error al cerrar", "error"),
@@ -87,7 +87,7 @@ export function AcademicYearsView() {
   const reopenYear = useMutation({
     mutationFn: api.reopenAcademicYear,
     onSuccess: () => {
-      toast("Ano academico reabierto.", "success");
+      toast("Año académico reabierto.", "success");
       queryClient.invalidateQueries({ queryKey: ["academic-years"] });
     },
     onError: (e) => toast(e instanceof Error ? e.message : "Error al reabrir", "error"),

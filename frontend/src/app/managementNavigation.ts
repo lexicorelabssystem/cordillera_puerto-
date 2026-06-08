@@ -32,7 +32,7 @@ export function buildManagementCategories(basePath: string, mode: ManagementMode
     defaultOpen: true,
     items: [
       { id: "instituciones", label: "Instituciones", description: "Establecimientos y configuracion", path: `${basePath}/instituciones` },
-      { id: "academico", label: "Anos y Periodos", description: "Calendario academico", path: `${basePath}/academico` },
+      { id: "academico", label: "Años y Periodos", description: "Calendario académico", path: `${basePath}/academico` },
       { id: "cursos", label: "Cursos y Asignaturas", description: "Niveles, cursos y materias", path: `${basePath}/cursos` },
       { id: "profesores", label: "Profesores", description: "Docentes, asignaciones y evaluaciones", path: `${basePath}/profesores` },
     ],

@@ -32,7 +32,7 @@ export class GenerateReportDto {
   @IsUUID()
   institutionId?: string;
 
-  @ApiPropertyOptional({ description: "ID del ano academico" })
+  @ApiPropertyOptional({ description: "ID del año académico" })
   @IsOptional()
   @IsUUID()
   academicYearId?: string;

@@ -89,7 +89,7 @@ export function StudentFullProfilePage() {
   if (avgGeneral !== null && avgGeneral < 4.0) riskAlerts.push("Promedio bajo 4.0 - Riesgo de repitencia");
   else if (avgGeneral !== null && avgGeneral < 4.5) riskAlerts.push("Promedio basico - Necesita refuerzo");
   if (stats?.atRisk) riskAlerts.push(`Asistencia critica: ${stats.attendanceRate}% (bajo 85%)`);
-  if (totalGrades < 3) riskAlerts.push("Pocas evaluaciones registradas este ano");
+  if (totalGrades < 3) riskAlerts.push("Pocas evaluaciones registradas este año");
 
   const attendanceStatusColors: Record<string, string> = {
     PRESENT: "var(--success)", ABSENT: "var(--danger)", LATE: "var(--warning)",
@@ -184,10 +184,10 @@ export function StudentFullProfilePage() {
           {tab === "resumen" && (
             <div style={{ padding: 24 }}>
               <div style={{ display: "flex", gap: 12, alignItems: "center", marginBottom: 16, flexWrap: "wrap" }}>
-                <h4 style={{ margin: 0 }}>Ano Academico:</h4>
+                <h4 style={{ margin: 0 }}>Año Académico:</h4>
                 <select value={academicYearId} onChange={(e) => setAcademicYearId(e.target.value)}
                   style={{ width: "auto", minWidth: 160 }}>
-                  <option value="">Seleccionar ano...</option>
+                  <option value="">Seleccionar año...</option>
                   {years.map((y) => <option key={y.id} value={y.id}>{y.year}</option>)}
                 </select>
               </div>
@@ -208,9 +208,9 @@ export function StudentFullProfilePage() {
                   </div>
                 </>
               ) : academicYearId ? (
-                <p style={{ color: "var(--muted)" }}>Sin datos para el ano seleccionado.</p>
+                <p style={{ color: "var(--muted)" }}>Sin datos para el año seleccionado.</p>
               ) : (
-                <p style={{ color: "var(--muted)" }}>Selecciona un ano academico para ver el resumen.</p>
+                <p style={{ color: "var(--muted)" }}>Selecciona un año académico para ver el resumen.</p>
               )}
 
               <div className="student-file">
@@ -266,10 +266,10 @@ export function StudentFullProfilePage() {
           {tab === "notas" && (
             <div style={{ padding: 24 }}>
               <div style={{ display: "flex", gap: 12, alignItems: "center", marginBottom: 16, flexWrap: "wrap" }}>
-                <h4 style={{ margin: 0 }}>Ano Academico:</h4>
+                <h4 style={{ margin: 0 }}>Año Académico:</h4>
                 <select value={academicYearId} onChange={(e) => setAcademicYearId(e.target.value)}
                   style={{ width: "auto", minWidth: 160 }}>
-                  <option value="">Seleccionar ano...</option>
+                  <option value="">Seleccionar año...</option>
                   {years.map((y) => <option key={y.id} value={y.id}>{y.year}</option>)}
                 </select>
               </div>
@@ -284,7 +284,7 @@ export function StudentFullProfilePage() {
                       </div>
                     ))}
                 </div>
-              ) : academicYearId ? <p style={{ color: "var(--muted)" }}>Sin notas para este ano.</p> : <p style={{ color: "var(--muted)" }}>Selecciona un ano academico para ver las notas.</p>}
+              ) : academicYearId ? <p style={{ color: "var(--muted)" }}>Sin notas para este año.</p> : <p style={{ color: "var(--muted)" }}>Selecciona un año académico para ver las notas.</p>}
 
               {activeCourse && (
                 <NotasDelCurso studentId={id!} courseId={activeCourse.id} />

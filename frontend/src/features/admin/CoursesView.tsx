@@ -138,7 +138,7 @@ export function CoursesView() {
   });
 
   function handleCreateCourse() {
-    if (!selectedInstitution?.id || !academicYearId) { toast("Se requiere institucion y ano academico activo.", "warning"); return; }
+    if (!selectedInstitution?.id || !academicYearId) { toast("Se requiere institución y año académico activo.", "warning"); return; }
     if (!courseForm.name) { toast("El nombre del curso es obligatorio.", "warning"); return; }
     createCourse.mutate({ institutionId: selectedInstitution.id, academicYearId, name: courseForm.name, gradeLevel: Number(courseForm.gradeLevel), section: courseForm.section || undefined, maxStudents: Number(courseForm.maxStudents) });
   }
