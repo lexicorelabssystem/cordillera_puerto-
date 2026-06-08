@@ -577,10 +577,9 @@ export function ReportsPage() {
   const coursesQuery = useQuery({
     queryKey: ["reports-courses", selectedInstitution?.id, academicYearId],
     queryFn: () => api.listCourses({
-      institutionId: selectedInstitution?.id,
+      institutionId: selectedInstitution?.id || undefined,
       academicYearId: academicYearId || undefined,
     }) as Promise<AdminCourseRow[]>,
-    enabled: Boolean(selectedInstitution?.id),
   });
 
   const subjectsQuery = useQuery({
@@ -626,7 +625,7 @@ export function ReportsPage() {
   const canUseThreshold = type === "RISK";
 
   const validationMessage = useMemo(() => {
-    if (!selectedInstitution?.id && (type === "INSTITUTIONAL" || !courseId)) return "Selecciona una institucion.";
+    if (type === "INSTITUTIONAL" && !selectedInstitution?.id) return "Selecciona una institucion.";
     if (requiresCourse && !courseId) return "Selecciona un curso.";
     if (requiresStudent && !studentId) return "Selecciona un alumno.";
     return "";
