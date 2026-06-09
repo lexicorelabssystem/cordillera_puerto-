@@ -84,7 +84,7 @@ export function ProfesoresPage() {
   const assignTeacher = useMutation({
     mutationFn: (payload: { userId: string; courseId: string; subjectId: string }) => api.assignTeacher(payload),
     onSuccess: (assignment, payload) => {
-      const created = assignment as { id: string; course?: { name?: string; gradeLevel?: number }; subject?: { name?: string } };
+      const created = assignment as { assignmentId: string; course?: { name?: string; gradeLevel?: number }; subject?: { name?: string } };
       toast("Asignacion creada.", "success");
       setNuevaAsignacion({ courseId: payload.courseId, subjectId: "" });
       setProfesorSeleccionado((current) => current?.userId === payload.userId
@@ -93,7 +93,7 @@ export function ProfesoresPage() {
             courseAssignments: [
               ...current.courseAssignments,
               {
-                id: created.id,
+                id: created.assignmentId,
                 course: {
                   id: payload.courseId,
                   name: created.course?.name || selectedCourse?.course_name || "Curso",
