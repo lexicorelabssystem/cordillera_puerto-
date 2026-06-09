@@ -639,8 +639,8 @@ export const api = {
     request<{
       course: { id: string; name: string; gradeLevel: number };
       subjectId: string | null;
-      assessments: { id: string; title: string; type: string; status: string; weight: number; maxScore: number; semester: number; subjectName: string; oaCode: string | null; oaDescription: string | null }[];
-      students: { studentId: string; firstName: string; lastName: string; rut: string; grades: { gradeId: string; assessmentId: string; assessmentTitle: string; assessmentType: string; semester: number; subjectName: string; weight: number; maxScore: number; score: number | null; percentage: number | null; grade: number | null; status: string; oaCode: string | null; oaDescription: string | null }[]; average: number; atRisk: boolean; hasPending: boolean }[];
+      assessments: { id: string; title: string; type: string; status: string; weight: number; maxScore: number; semester: number; subjectName: string; subjectId?: string; oaCode: string | null; oaDescription: string | null }[];
+      students: { studentId: string; firstName: string; lastName: string; rut: string; grades: { gradeId: string; assessmentId: string; assessmentTitle: string; assessmentType: string; semester: number; subjectName: string; subjectId?: string; weight: number; maxScore: number; score: number | null; percentage: number | null; grade: number | null; status: string; oaCode: string | null; oaDescription: string | null }[]; average: number; atRisk: boolean; hasPending: boolean }[];
       stats: { courseAvg: number; approvalRate: number; approvedCount: number; atRiskCount: number; pendingsCount: number; totalNotes: number; totalStudents: number; totalAssessments: number; simceCount: number; appliedCount: number };
       oaDescendidos: { code: string; description: string; average: number; count: number }[];
     }>(`/grading/course-book/${courseId}${buildQuery(params ?? {})}`),

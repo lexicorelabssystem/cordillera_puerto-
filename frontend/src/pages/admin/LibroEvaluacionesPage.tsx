@@ -38,6 +38,8 @@ function getNivelLogro(promedio: number | null): string {
 
 interface CourseRow { course_id: string; course_name: string; grade_level?: number; }
 interface SubjectRow { id: string; name: string; }
+interface GradeBookAssessment { subjectId?: string; subjectName?: string; }
+interface GradeBookStudent { grades?: GradeBookAssessment[]; }
 
 type CeldaEditando = { estudianteId: string; evaluacionId: string } | null;
 
@@ -81,8 +83,7 @@ export function LibroEvaluacionesPage() {
 
   const coursesQuery = useQuery<CourseRow[]>({
     queryKey: ["courses-libro", selectedInstitution?.id],
-    queryFn: () => api.listCourses({ institutionId: selectedInstitution?.id }) as unknown as Promise<CourseRow[]>,
-    enabled: Boolean(selectedInstitution?.id),
+    queryFn: () => api.listCourses(selectedInstitution?.id ? { institutionId: selectedInstitution.id } : undefined) as unknown as Promise<CourseRow[]>,
   });
 
   const subjectsQuery = useQuery<SubjectRow[]>({
@@ -138,6 +139,21 @@ export function LibroEvaluacionesPage() {
   const allStudents = book?.students || [];
   const allAssessments = book?.assessments || [];
   const stats = book?.stats;
+  const subjectOptions = useMemo(() => {
+    const map = new Map<string, string>();
+    (allAssessments as GradeBookAssessment[]).forEach((assessment) => {
+      if (assessment.subjectId && assessment.subjectName?.trim()) map.set(assessment.subjectId, assessment.subjectName);
+    });
+    (allStudents as GradeBookStudent[]).forEach((student) => {
+      student.grades?.forEach((grade) => {
+        if (grade.subjectId && grade.subjectName?.trim()) map.set(grade.subjectId, grade.subjectName);
+      });
+    });
+    if (map.size > 0) {
+      return Array.from(map.entries()).map(([id, name]) => ({ id, name })).sort((a, b) => a.name.localeCompare(b.name));
+    }
+    return subjects;
+  }, [allAssessments, allStudents, subjects]);
 
   const searchLower = search.toLowerCase();
   const filteredStudents = useMemo(() => {
@@ -163,10 +179,10 @@ export function LibroEvaluacionesPage() {
   }, [courses, courseId]);
 
   useEffect(() => {
-    if (subjectId && !subjects.some((subject) => subject.id === subjectId)) {
+    if (subjectId && subjectOptions.length > 0 && !subjectOptions.some((subject) => subject.id === subjectId)) {
       setSubjectId("");
     }
-  }, [subjectId, subjects]);
+  }, [subjectId, subjectOptions]);
 
   const handleCeldaClick = useCallback((estudianteId: string, evaluacionId: string, notaActual: number | null) => {
     setCeldaEditando({ estudianteId, evaluacionId });
@@ -415,7 +431,7 @@ export function LibroEvaluacionesPage() {
             <label>Asignatura</label>
             <select value={subjectId} onChange={(e) => setSubjectId(e.target.value)}>
               <option value="">Todas</option>
-              {subjects.map((s) => <option key={s.id} value={s.id}>{s.name}</option>)}
+              {subjectOptions.map((s) => <option key={s.id} value={s.id}>{s.name}</option>)}
             </select>
           </div>
           <div className="form-field" style={{ flex: 2 }}>

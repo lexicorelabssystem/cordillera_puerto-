@@ -252,7 +252,7 @@ export function ProfesorDashboard({ user, onLogout }: Props) {
   const [guardandoCeldas, setGuardandoCeldas] = useState<Set<string>>(new Set());
   const [finalizandoEvaluaciones, setFinalizandoEvaluaciones] = useState<Set<string>>(new Set());
   const [materialTitle, setMaterialTitle] = useState("");
-  const [materialType, setMaterialType] = useState("CLASS_MATERIAL");
+  const [materialType, setMaterialType] = useState("SIMCE_PDF");
   const [materialDescription, setMaterialDescription] = useState("");
   const [materialFiles, setMaterialFiles] = useState<File[]>([]);
   const [materialUploadProgress, setMaterialUploadProgress] = useState<MaterialUploadProgress | null>(null);

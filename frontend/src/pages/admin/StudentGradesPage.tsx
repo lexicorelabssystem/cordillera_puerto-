@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react";
 import { useMutation, useQuery } from "@tanstack/react-query";
-import type { AdminOverview, GradeRecordRow } from "../../types/api";
+import type { AdminOverview } from "../../types/api";
 import { api } from "../../lib/api";
 import { KpiCard } from "../../components/common/KpiCard";
 import { VoiceTextarea } from "../../components/voice/VoiceTextarea";
@@ -12,6 +12,31 @@ interface Props {
 }
 
 type OverviewStudentRow = AdminOverview["students"][number];
+type StudentGradeRow = {
+  grade_id?: string;
+  assessment_id: string;
+  title: string;
+  subject: string;
+  course?: string;
+  teacher?: string;
+  assessment_type: string;
+  status?: string;
+  semester?: number;
+  applied_at: string;
+  grade: number | null;
+  comments: string | null;
+  period?: string | null;
+};
+
+function getStringField(row: unknown, snake: string, camel: string): string {
+  const value = (row as Record<string, unknown> | undefined)?.[snake] ?? (row as Record<string, unknown> | undefined)?.[camel];
+  return typeof value === "string" ? value : "";
+}
+
+function formatGrade(value: number | null): string {
+  if (value === null || value === undefined) return "Pendiente";
+  return value.toFixed(1).replace(".", ",");
+}
 
 export function StudentGradesPage({ overview }: Props) {
   const students = overview.students?.length ? overview.students : [];
@@ -20,29 +45,31 @@ export function StudentGradesPage({ overview }: Props) {
   const [drafts, setDrafts] = useState<Record<string, { grade: number; comments: string }>>({});
   const { toast } = useToast();
   const { selectedInstitution } = useInstitution();
+  const selectedStudent = students.find((student: OverviewStudentRow) => student.student_id === studentId);
+  const selectedCourseId = getStringField(selectedStudent, "course_id", "courseId");
 
-  const gradesQuery = useQuery<GradeRecordRow[]>({
-    queryKey: ["admin-student-grades", studentId, selectedInstitution?.id],
-    queryFn: async (): Promise<GradeRecordRow[]> => {
-      if (!studentId) return [];
-      const data = await api.listAssessments({}) as { assessment_id: string; title: string; assessment_type: string; subject_name: string; semester: number; status: string; course_id: string }[];
-      if (!data?.length) return [];
-      return data.map((a) => ({
-        grade_id: a.assessment_id,
-        assessment_id: a.assessment_id,
-        student_id: studentId,
-        grade: 4.0,
-        score: 60,
-        percentage: 60,
+  const gradesQuery = useQuery<StudentGradeRow[]>({
+    queryKey: ["admin-student-grades", studentId, selectedCourseId, selectedInstitution?.id],
+    queryFn: async (): Promise<StudentGradeRow[]> => {
+      if (!studentId || !selectedCourseId) return [];
+      const book = await api.getCourseGradeBook(selectedCourseId);
+      const student = book.students.find((row) => row.studentId === studentId);
+      if (!student) return [];
+      return student.grades.map((grade) => ({
+        grade_id: grade.gradeId || undefined,
+        assessment_id: grade.assessmentId,
+        title: grade.assessmentTitle,
+        subject: grade.subjectName || "Sin asignatura",
+        course: book.course.name,
+        assessment_type: grade.assessmentType,
+        status: grade.status,
+        semester: grade.semester,
+        applied_at: "",
+        grade: grade.grade,
         comments: "",
-        semester: a.semester,
-        subject: a.subject_name || "Sin asignatura",
-        title: a.title,
-        assessment_type: a.assessment_type,
-        applied_at: "2026-05-15",
-      })) as GradeRecordRow[];
+      }));
     },
-    enabled: Boolean(studentId),
+    enabled: Boolean(studentId) && Boolean(selectedCourseId),
   });
 
   const updateGrade = useMutation({
@@ -59,7 +86,7 @@ export function StudentGradesPage({ overview }: Props) {
     if (!gradesQuery.data) return;
     const next: Record<string, { grade: number; comments: string }> = {};
     gradesQuery.data.forEach((row) => {
-      if (row.grade_id) next[row.grade_id] = { grade: row.grade, comments: row.comments || "" };
+      if (row.grade_id && row.grade !== null) next[row.grade_id] = { grade: row.grade, comments: row.comments || "" };
     });
     setDrafts(next);
   }, [gradesQuery.data]);
@@ -75,14 +102,14 @@ export function StudentGradesPage({ overview }: Props) {
     return { semester: item, total: rows.length, avg: Number(avg.toFixed(2)) };
   });
 
-  function saveGrade(row: GradeRecordRow) {
+  function saveGrade(row: StudentGradeRow) {
     if (!row.grade_id) {
       toast("Esta nota no tiene identificador editable.", "warning");
       return;
     }
     const draft = drafts[row.grade_id];
-    if (!draft || Number.isNaN(Number(draft.grade)) || draft.grade < 0 || draft.grade > 7) {
-      toast("La nota debe estar entre 0.0 y 7.0.", "warning");
+    if (!draft || Number.isNaN(Number(draft.grade)) || draft.grade < 1 || draft.grade > 7) {
+      toast("La nota debe estar entre 1.0 y 7.0.", "warning");
       return;
     }
     updateGrade.mutate({
@@ -127,6 +154,7 @@ export function StudentGradesPage({ overview }: Props) {
           <table className="table">
             <thead>
               <tr>
+                <th>N&deg;</th>
                 <th>Fecha</th>
                 <th>Semestre</th>
                 <th>Asignatura</th>
@@ -138,9 +166,10 @@ export function StudentGradesPage({ overview }: Props) {
               </tr>
             </thead>
             <tbody>
-              {filteredGrades.map((row) => (
+              {filteredGrades.map((row, index) => (
                 <tr key={row.grade_id || row.assessment_id}>
-                  <td>{row.applied_at}</td>
+                  <td>{index + 1}</td>
+                  <td>{row.applied_at || "—"}</td>
                   <td>{row.semester ?? "-"}</td>
                   <td>{row.subject}</td>
                   <td>{row.title}</td>
@@ -148,10 +177,11 @@ export function StudentGradesPage({ overview }: Props) {
                   <td>
                     <input
                       type="number"
-                      min="0"
+                      min="1"
                       max="7"
                       step="0.1"
-                      value={row.grade_id ? drafts[row.grade_id]?.grade ?? row.grade : row.grade}
+                      value={row.grade_id ? drafts[row.grade_id]?.grade ?? row.grade ?? "" : ""}
+                      placeholder={formatGrade(row.grade)}
                       onChange={(e) => {
                         if (!row.grade_id) return;
                         setDrafts((prev) => ({
@@ -162,6 +192,7 @@ export function StudentGradesPage({ overview }: Props) {
                           }
                         }));
                       }}
+                      disabled={!row.grade_id}
                     />
                   </td>
                   <td style={{ minWidth: 200 }}>
