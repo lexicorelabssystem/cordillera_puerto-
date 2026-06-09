@@ -92,7 +92,7 @@ export class SimceService {
     if (!course) throw new NotFoundException("Curso no encontrado");
 
     const scope = await resolveUserScope(this.prisma, userId);
-    assertScopeForCourse(scope, course.institutionId, dto.courseId, dto.subjectId);
+    assertScopeForCourse(scope, course.institutionId, dto.courseId, scope.role === "TEACHER" ? null : dto.subjectId);
 
     let teacherId: string;
     if (scope.teacherId) {
@@ -103,8 +103,13 @@ export class SimceService {
           courseAssignments: { some: { courseId: dto.courseId, subjectId: dto.subjectId } },
         },
         select: { id: true },
+      }) ?? await this.prisma.teacher.findFirst({
+        where: {
+          courseAssignments: { some: { courseId: dto.courseId } },
+        },
+        select: { id: true },
       });
-      if (!teacher) throw new BadRequestException("No hay profesor asignado a este curso/asignatura");
+      if (!teacher) throw new BadRequestException("No hay profesor asignado a este curso");
       teacherId = teacher.id;
     }
 

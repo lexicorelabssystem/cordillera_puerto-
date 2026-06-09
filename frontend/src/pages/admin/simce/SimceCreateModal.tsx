@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useMemo, useState } from "react";
 import { useMutation, useQuery } from "@tanstack/react-query";
 import { api } from "../../../lib/api";
 import { LoadingSpinner } from "../../../components/common/LoadingSpinner";
@@ -28,13 +28,13 @@ export function SimceCreateModal({ onCreated, onCancel }: Props) {
   const [description, setDescription] = useState("");
 
   const coursesQuery = useQuery({
-    queryKey: ["simce-courses"],
-    queryFn: () => api.listCourses() as Promise<CourseOption[]>,
+    queryKey: ["simce-courses", selectedInstitution?.id],
+    queryFn: () => api.listCourses(selectedInstitution?.id ? { institutionId: selectedInstitution.id } : undefined) as Promise<CourseOption[]>,
   });
 
   const subjectsQuery = useQuery({
     queryKey: ["simce-subjects"],
-    queryFn: () => api.listSubjects() as Promise<SubjectOption[]>,
+    queryFn: () => api.listSubjects(true) as Promise<SubjectOption[]>,
   });
 
   const academicYearsQuery = useQuery({
@@ -43,8 +43,16 @@ export function SimceCreateModal({ onCreated, onCancel }: Props) {
     enabled: Boolean(selectedInstitution?.id),
   });
 
+  const resolvedSubjectId = useMemo(() => {
+    if (subjectId) return subjectId;
+    const subjects = subjectsQuery.data || [];
+    return subjects.find((subject: SubjectOption) => /lenguaje|matem/i.test(subject.name))?.id || subjects[0]?.id || "";
+  }, [subjectId, subjectsQuery.data]);
+
+  const resolvedSubjectName = (subjectsQuery.data || []).find((subject: SubjectOption) => subject.id === resolvedSubjectId)?.name || "Automatica";
+
   const createMutation = useMutation({
-    mutationFn: () => api.createSimceAssessment({ title, courseId, subjectId, gradeLevel, academicYearId: academicYearId || undefined, date, description }),
+    mutationFn: () => api.createSimceAssessment({ title, courseId, subjectId: resolvedSubjectId, gradeLevel, academicYearId: academicYearId || undefined, date, description }),
     onSuccess: (data: unknown) => {
       const id = (data as { id: string }).id;
       toast("Prueba SIMCE creada correctamente.", "success");
@@ -68,7 +76,7 @@ export function SimceCreateModal({ onCreated, onCancel }: Props) {
         <div className="form-field" style={{ flex: 1 }}>
           <label>Curso *</label>
           {coursesQuery.isLoading ? <LoadingSpinner size="sm" /> : (
-            <select value={courseId} onChange={(e) => { setCourseId(e.target.value); const c = coursesQuery.data?.find((c: CourseOption) => c.course_id === e.target.value); if (c?.grade_level) setGradeLevel(c.grade_level); }}>
+            <select value={courseId} onChange={(e) => { setCourseId(e.target.value); setSubjectId(""); const c = coursesQuery.data?.find((c: CourseOption) => c.course_id === e.target.value); if (c?.grade_level) setGradeLevel(c.grade_level); }}>
               <option value="">Seleccionar curso</option>
               {(coursesQuery.data || []).map((c: CourseOption) => (
                 <option key={c.course_id} value={c.course_id}>{c.course_name} {c.grade_level ? `(${c.grade_level}°)` : ""}</option>
@@ -77,14 +85,9 @@ export function SimceCreateModal({ onCreated, onCancel }: Props) {
           )}
         </div>
         <div className="form-field" style={{ flex: 1 }}>
-          <label>Asignatura *</label>
+          <label>Asignatura</label>
           {subjectsQuery.isLoading ? <LoadingSpinner size="sm" /> : (
-            <select value={subjectId} onChange={(e) => setSubjectId(e.target.value)}>
-              <option value="">Seleccionar asignatura</option>
-              {(subjectsQuery.data || []).map((s: SubjectOption) => (
-                <option key={s.id} value={s.id}>{s.name}</option>
-              ))}
-            </select>
+            <input value={resolvedSubjectName} disabled />
           )}
         </div>
       </div>
@@ -128,7 +131,7 @@ export function SimceCreateModal({ onCreated, onCancel }: Props) {
         <button
           className="btn-primary"
           onClick={() => createMutation.mutate()}
-          disabled={!title.trim() || !courseId || !subjectId || createMutation.isPending}
+          disabled={!title.trim() || !courseId || !resolvedSubjectId || createMutation.isPending}
         >
           {createMutation.isPending ? "Creando..." : "Crear prueba"}
         </button>

@@ -83,9 +83,31 @@ export function ProfesoresPage() {
 
   const assignTeacher = useMutation({
     mutationFn: (payload: { userId: string; courseId: string; subjectId: string }) => api.assignTeacher(payload),
-    onSuccess: () => {
+    onSuccess: (assignment, payload) => {
+      const created = assignment as { id: string; course?: { name?: string; gradeLevel?: number }; subject?: { name?: string } };
       toast("Asignacion creada.", "success");
-      setNuevaAsignacion({ courseId: "", subjectId: "" });
+      setNuevaAsignacion({ courseId: payload.courseId, subjectId: "" });
+      setProfesorSeleccionado((current) => current?.userId === payload.userId
+        ? {
+            ...current,
+            courseAssignments: [
+              ...current.courseAssignments,
+              {
+                id: created.id,
+                course: {
+                  id: payload.courseId,
+                  name: created.course?.name || selectedCourse?.course_name || "Curso",
+                  gradeLevel: created.course?.gradeLevel || selectedCourse?.grade_level || 0,
+                },
+                subject: {
+                  id: payload.subjectId,
+                  name: created.subject?.name || subjects.find((subject) => subject.subject_id === payload.subjectId)?.subject_name || "Asignatura",
+                },
+              },
+            ],
+            _count: { ...current._count, courseAssignments: current._count.courseAssignments + 1 },
+          }
+        : current);
       queryClient.invalidateQueries({ queryKey: ["teachers"] });
     },
     onError: (err) => toast(err instanceof Error ? err.message : "Error al asignar.", "error"),
@@ -152,6 +174,12 @@ export function ProfesoresPage() {
 
   const totalAsignaciones = teachers.reduce((s, t) => s + t.courseAssignments.length, 0);
   const totalEvaluaciones = teachers.reduce((s, t) => s + (t._count?.assessments || 0), 0);
+  const selectedCourse = courses.find((course) => course.course_id === nuevaAsignacion.courseId);
+  const assignedSubjectsForCourse = profesorSeleccionado?.courseAssignments
+    .filter((assignment) => assignment.course.id === nuevaAsignacion.courseId) || [];
+  const subjectsAvailableForCourse = subjects.filter((subject) =>
+    !assignedSubjectsForCourse.some((assignment) => assignment.subject.id === subject.subject_id)
+  );
 
   function handleAsignar() {
     if (!profesorSeleccionado || !nuevaAsignacion.courseId || !nuevaAsignacion.subjectId) {
@@ -343,11 +371,21 @@ export function ProfesoresPage() {
               </div>
             )}
 
-            <h4 style={{ marginTop: 8 }}>Nueva asignacion</h4>
+            <h4 style={{ marginTop: 8 }}>Agregar otra asignatura</h4>
+            {nuevaAsignacion.courseId ? (
+              <div style={{ display: "grid", gap: 8, padding: 12, border: "1px solid var(--line-light)", borderRadius: 12, background: "var(--bg)" }}>
+                <strong>{selectedCourse?.course_name || "Curso seleccionado"}</strong>
+                <div style={{ display: "flex", flexWrap: "wrap", gap: 6 }}>
+                  {assignedSubjectsForCourse.length > 0 ? assignedSubjectsForCourse.map((assignment) => (
+                    <span key={assignment.id} className="badge badge--role">{assignment.subject.name}</span>
+                  )) : <span style={{ color: "var(--muted)", fontSize: ".86rem" }}>Este curso aun no tiene asignaturas para este profesor.</span>}
+                </div>
+              </div>
+            ) : null}
             <div className="form-row">
               <div className="form-field">
                 <label>Curso</label>
-                <select value={nuevaAsignacion.courseId} onChange={(e) => setNuevaAsignacion((s) => ({ ...s, courseId: e.target.value }))}>
+                <select value={nuevaAsignacion.courseId} onChange={(e) => setNuevaAsignacion((s) => ({ ...s, courseId: e.target.value, subjectId: "" }))}>
                   <option value="">Seleccionar curso...</option>
                   {courses.map((c) => (
                     <option key={c.course_id} value={c.course_id}>{c.course_name}</option>
@@ -358,13 +396,18 @@ export function ProfesoresPage() {
                 <label>Asignatura</label>
                 <select value={nuevaAsignacion.subjectId} onChange={(e) => setNuevaAsignacion((s) => ({ ...s, subjectId: e.target.value }))}>
                   <option value="">Seleccionar asignatura...</option>
-                  {subjects.map((s) => (
+                  {subjectsAvailableForCourse.map((s) => (
                     <option key={s.subject_id} value={s.subject_id}>{s.subject_name}</option>
                   ))}
                 </select>
+                {nuevaAsignacion.courseId && subjectsAvailableForCourse.length === 0 ? (
+                  <small style={{ color: "var(--muted)" }}>Todas las asignaturas disponibles ya estan asignadas a este curso.</small>
+                ) : null}
               </div>
               <div style={{ display: "flex", alignItems: "end" }}>
-                <button onClick={handleAsignar} disabled={assignTeacher.isPending || !profesorSeleccionado.user.isActive}>Asignar profesor</button>
+                <button onClick={handleAsignar} disabled={assignTeacher.isPending || !profesorSeleccionado.user.isActive || !nuevaAsignacion.courseId || !nuevaAsignacion.subjectId}>
+                  {assignTeacher.isPending ? "Asignando..." : "Agregar asignatura"}
+                </button>
               </div>
             </div>
             {!profesorSeleccionado.user.isActive ? (

@@ -437,6 +437,7 @@ export class GradingService {
         assessmentType: string;
         semester: number;
         subjectName: string;
+        subjectId: string;
         weight: number;
         maxScore: number;
         score: number | null;
@@ -471,6 +472,7 @@ export class GradingService {
           assessmentType: a.assessmentType,
           semester: a.semester,
           subjectName: a.subject?.name || "",
+          subjectId: a.subject?.id || "",
           weight: a.weight || 0,
           maxScore: a.maxScore,
           score,
@@ -543,6 +545,7 @@ export class GradingService {
         maxScore: a.maxScore,
         semester: a.semester,
         subjectName: a.subject?.name || "",
+        subjectId: a.subject?.id || "",
         oaCode: a.questions[0]?.question?.learningObjective?.code || null,
         oaDescription: a.questions[0]?.question?.learningObjective?.description || null,
       })),

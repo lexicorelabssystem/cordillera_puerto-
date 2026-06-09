@@ -62,12 +62,13 @@ export function AdminLayout({ user, onLogout, mode }: Props) {
       .map((cat) => ({
         ...cat,
         items: cat.items.filter((item) => {
+          if (item.id === "instituciones" && user.role !== "SUPER_ADMIN") return false;
           const flag = MANAGEMENT_ITEM_FEATURE_FLAGS[item.id];
           return flag ? isEnabled(flag) : true;
         }),
       }))
       .filter((cat) => cat.items.length > 0);
-  }, [basePath, mode, isEnabled]);
+  }, [basePath, mode, isEnabled, user.role]);
 
   const overview = useQuery<AdminOverview>({
     queryKey: ["admin-overview", selectedInstitution?.id],
