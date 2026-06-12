@@ -49,6 +49,44 @@
   --font-mono:    "Cascadia Code", "Fira Code", monospace;
 }
 
+.imported-test-list {
+  display: grid;
+  gap: 14px;
+}
+
+.imported-test-question {
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  padding: 14px;
+  background: var(--card);
+}
+
+.imported-test-question__head {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 12px;
+  margin-bottom: 12px;
+}
+
+.imported-test-options {
+  display: grid;
+  gap: 8px;
+  margin-top: 10px;
+}
+
+.imported-test-option {
+  display: grid;
+  grid-template-columns: 22px minmax(0, 1fr);
+  align-items: center;
+  gap: 8px;
+}
+
+.imported-test-option input[type="text"],
+.imported-test-option input:not([type]) {
+  width: 100%;
+}
+
 /* ═══════════════════════════════════════════════════════
    RESET & BASE
    ═══════════════════════════════════════════════════════ */

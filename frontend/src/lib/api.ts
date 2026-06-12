@@ -623,6 +623,58 @@ export const api = {
   getOaCoverage: (subjectId: string, gradeLevel: number) =>
     request<{ learningObjectiveId: string; code: string; description: string; questionCount: number }[]>(`/questions/oa-coverage?subjectId=${subjectId}&gradeLevel=${gradeLevel}`),
 
+  importEvaluationPdf: (payload: { file: File; subjectId: string; courseId?: string }) => {
+    const formData = new FormData();
+    formData.append("file", payload.file);
+    const headers = new Headers();
+    if (_accessToken) headers.set("Authorization", `Bearer ${_accessToken}`);
+    return fetch(`${API_BASE}/evaluations/import${buildQuery({ subjectId: payload.subjectId, courseId: payload.courseId })}`, {
+      method: "POST",
+      credentials: "include",
+      headers,
+      body: formData,
+    }).then(async (r) => {
+      if (!r.ok) {
+        const err = await r.json().catch(() => null);
+        throw new Error(typeof err?.message === "string" ? err.message : `No se pudo importar el PDF (${r.status})`);
+      }
+      return r.json() as Promise<{
+        draftId: string;
+        status: string;
+        fileName: string;
+        subjectId: string;
+        courseId: string | null;
+        questions: {
+          draftQuestionId: string;
+          numero: number;
+          enunciado: string;
+          tipo: string;
+          alternativas: string[];
+          respuestaCorrecta: string | null;
+          puntaje: number;
+          confianza: number;
+        }[];
+      }>;
+    });
+  },
+  commitImportedEvaluation: (draftId: string, payload: {
+    subjectId: string;
+    courseId?: string;
+    questions: {
+      draftQuestionId?: string;
+      number: number;
+      statement: string;
+      type: string;
+      alternatives: string[];
+      correctAnswer?: string | null;
+      points: number;
+    }[];
+  }) =>
+    request<{ draftId: string; createdCount: number; questions: unknown[] }>(`/evaluations/import/${draftId}/commit`, {
+      method: "POST",
+      body: JSON.stringify(payload),
+    }),
+
   // ─── Grade Change Requests ──────────────────────
   listGradeChangeRequests: (params?: { status?: string; studentId?: string; courseId?: string }) =>
     request<unknown[]>(`/grade-change-requests${buildQuery(params ?? {})}`),

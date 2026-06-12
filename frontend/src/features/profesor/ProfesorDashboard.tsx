@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from "react";
+import { Link } from "react-router-dom";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { ShellLayout } from "../../components/common/ShellLayout";
 import { KpiCard } from "../../components/common/KpiCard";
@@ -964,6 +965,7 @@ export function ProfesorDashboard({ user, onLogout }: Props) {
           <p>Libro de notas, evaluaciones, recursos, reportes y registro de clase del curso activo en una vista preparada para trabajo diario.</p>
           <div className="teacher-hero-actions">
             <a href="#teacher-grades">Notas</a>
+            <Link to="/teacher/importar-prueba">Importar prueba</Link>
             <a href="#teacher-classbook">Clase</a>
             <a href="#teacher-material">Materiales</a>
             <a href="#teacher-analysis">Reportes</a>
@@ -996,6 +998,7 @@ export function ProfesorDashboard({ user, onLogout }: Props) {
       <div className="teacher-complete-grid">
         <aside className="teacher-module-rail" aria-label="Módulos del profesor">
           <a href="#teacher-grades">Notas</a>
+          <Link to="/teacher/importar-prueba">Importar prueba</Link>
           <a href="#teacher-classbook">Clase diaria</a>
           <a href="#teacher-material">Materiales</a>
           <a href="#teacher-curricular">Curriculum</a>

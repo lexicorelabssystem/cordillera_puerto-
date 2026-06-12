@@ -18,6 +18,9 @@ import type { AuthUser } from "./types/api";
 const AdminLayout = lazy(() =>
   import("./pages/admin/AdminLayout").then((m) => ({ default: m.AdminLayout }))
 );
+const ImportarPruebaPage = lazy(() =>
+  import("./pages/profesor/ImportarPruebaPage").then((m) => ({ default: m.ImportarPruebaPage }))
+);
 
 function SuspenseWrapper({ children, label }: { children: React.ReactNode; label?: string }) {
   return (
@@ -89,6 +92,20 @@ function AuthenticatedApp({ user, logout }: { user: AuthUser; logout: () => Prom
 
           <Route path="/" element={<Navigate to={redirectPath} replace />} />
           <Route path="/sin-acceso" element={<NoAccess user={user} logout={logout} />} />
+          <Route path="/dashboard/profesor/importar-prueba" element={
+            <RequireRole user={user} allowed={["TEACHER"]}>
+              <SuspenseWrapper label="Cargando importador...">
+                <ImportarPruebaPage user={user} onLogout={logout} />
+              </SuspenseWrapper>
+            </RequireRole>
+          } />
+          <Route path="/teacher/importar-prueba" element={
+            <RequireRole user={user} allowed={["TEACHER"]}>
+              <SuspenseWrapper label="Cargando importador...">
+                <ImportarPruebaPage user={user} onLogout={logout} />
+              </SuspenseWrapper>
+            </RequireRole>
+          } />
           <Route path="/teacher/*" element={
             <RequireRole user={user} allowed={["TEACHER"]}>
               <ProfesorDashboard user={user} onLogout={logout} />
