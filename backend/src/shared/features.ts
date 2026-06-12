@@ -1,5 +1,7 @@
-export const DEFAULT_FEATURES = {
-  parent_portal: false,
-} as const;
+export const FEATURE_FLAGS = ["parent_portal"] as const;
 
-export type FeatureFlag = keyof typeof DEFAULT_FEATURES;
+export type FeatureFlag = (typeof FEATURE_FLAGS)[number];
+
+export const DEFAULT_FEATURES: Record<FeatureFlag, boolean> = {
+  parent_portal: false,
+};
