@@ -4,7 +4,7 @@ import { LoadingSpinner } from "../../components/common/LoadingSpinner";
 import { useToast } from "../../components/common/Toast";
 import { useInstitution } from "../../app/InstitutionContext";
 import { api } from "../../lib/api";
-import type { AdminSubject } from "../../types/api";
+import type { AdminCourseRow, AdminSubject } from "../../types/api";
 
 type TemplateOption = {
   id?: string;
@@ -57,7 +57,7 @@ export function AssessmentTemplatesPage() {
   const [title, setTitle] = useState("");
   const [description, setDescription] = useState("");
   const [subjectId, setSubjectId] = useState("");
-  const [gradeLevel, setGradeLevel] = useState("");
+  const [courseId, setCourseId] = useState("");
   const [search, setSearch] = useState("");
   const [status, setStatus] = useState("DRAFT");
   const [file, setFile] = useState<File | null>(null);
@@ -69,13 +69,26 @@ export function AssessmentTemplatesPage() {
     queryFn: () => api.listSubjects(true) as Promise<AdminSubject[]>,
   });
 
+  const coursesQuery = useQuery({
+    queryKey: ["all-courses", selectedInstitution?.id],
+    queryFn: () => api.listCourses({ institutionId: selectedInstitution?.id, includeInactive: false }) as Promise<AdminCourseRow[]>,
+    enabled: Boolean(selectedInstitution?.id),
+  });
+
+  const selectedCourse = useMemo(
+    () => (coursesQuery.data || []).find((c) => c.course_id === courseId),
+    [coursesQuery.data, courseId],
+  );
+
+  const gradeLevel = selectedCourse?.grade_level;
+
   const templatesQuery = useQuery({
     queryKey: ["assessment-templates", selectedInstitution?.id, subjectId, gradeLevel, status, search],
     queryFn: () =>
       api.listAssessmentTemplates({
         institutionId: selectedInstitution?.id,
         subjectId: subjectId || undefined,
-        gradeLevel: gradeLevel ? Number(gradeLevel) : undefined,
+        gradeLevel: gradeLevel ?? undefined,
         status: status || undefined,
         search: search || undefined,
       }) as Promise<AssessmentTemplate[]>,
@@ -113,7 +126,7 @@ export function AssessmentTemplatesPage() {
         description: description.trim() || undefined,
         institutionId: selectedInstitution?.id,
         subjectId: subjectId || undefined,
-        gradeLevel: gradeLevel ? Number(gradeLevel) : undefined,
+        gradeLevel: gradeLevel ?? undefined,
       }) as Promise<AssessmentTemplate>;
     },
     onSuccess: (template) => {
@@ -247,8 +260,16 @@ export function AssessmentTemplatesPage() {
             </select>
           </div>
           <div className="form-field">
-            <label>Nivel</label>
-            <input type="number" min={1} max={12} value={gradeLevel} onChange={(event) => setGradeLevel(event.target.value)} placeholder="Ej: 3" />
+            <label>Curso</label>
+            <select value={courseId} onChange={(event) => setCourseId(event.target.value)}>
+              <option value="">Sin curso fijo (flexible)</option>
+              {(coursesQuery.data || []).map((course) => (
+                <option key={course.course_id} value={course.course_id}>
+                  {course.course_name} ({course.grade_level} basico{course.section ? ` · ${course.section}` : ""})
+                </option>
+              ))}
+            </select>
+            {coursesQuery.isLoading ? <LoadingSpinner size="sm" /> : null}
           </div>
           <div className="form-field">
             <label>Archivo PDF/DOCX</label>
@@ -292,7 +313,7 @@ export function AssessmentTemplatesPage() {
               <tr>
                 <th>Prueba</th>
                 <th>Asignatura</th>
-                <th>Nivel</th>
+                <th>Curso/Nivel</th>
                 <th>Estado</th>
                 <th>Preguntas</th>
                 <th>Puntaje</th>
@@ -304,7 +325,7 @@ export function AssessmentTemplatesPage() {
                 <tr key={template.id}>
                   <td><strong>{template.title}</strong><br /><small>{template.fileName || "Sin archivo"}</small></td>
                   <td>{template.subjectId ? subjectNameById.get(template.subjectId) || "Asignatura" : "Flexible"}</td>
-                  <td>{template.gradeLevel ? `${template.gradeLevel} basico/medio` : "Flexible"}</td>
+                  <td>{template.gradeLevel ? `${template.gradeLevel}° basico/medio` : "Flexible"}</td>
                   <td><span className={`badge ${template.status === "PUBLISHED" ? "badge--active" : template.status === "DRAFT" ? "badge--warning" : "badge--inactive"}`}>{template.status}</span></td>
                   <td>{template.questionsCount ?? 0}</td>
                   <td>{template.totalPoints}</td>
