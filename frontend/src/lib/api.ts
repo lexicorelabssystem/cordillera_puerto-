@@ -722,7 +722,7 @@ export const api = {
       method: "POST",
       body: JSON.stringify(payload),
     }),
-  uploadAssessmentTemplate: (payload: {
+  uploadAssessmentTemplate: async (payload: {
     file: File;
     title: string;
     description?: string;
@@ -732,26 +732,34 @@ export const api = {
   }) => {
     const formData = new FormData();
     formData.append("file", payload.file);
-    const headers = new Headers();
-    if (_accessToken) headers.set("Authorization", `Bearer ${_accessToken}`);
-    return fetch(`${API_BASE}/assessment-templates/upload${buildQuery({
+    const headers: Record<string, string> = {};
+    if (_accessToken) headers["Authorization"] = `Bearer ${_accessToken}`;
+    const url = `${API_BASE}/assessment-templates/upload${buildQuery({
       title: payload.title,
       description: payload.description,
       institutionId: payload.institutionId,
       subjectId: payload.subjectId,
       gradeLevel: payload.gradeLevel,
-    })}`, {
-      method: "POST",
-      credentials: "include",
-      headers,
-      body: formData,
-    }).then(async (r) => {
-      if (!r.ok) {
-        const err = await r.json().catch(() => null);
-        throw new Error(typeof err?.message === "string" ? err.message : `No se pudo subir la prueba (${r.status})`);
+    })}`;
+
+    let r = await fetch(url, { method: "POST", credentials: "include", headers, body: formData });
+
+    if (r.status === 401) {
+      const refreshed = await refreshSession();
+      if (refreshed) {
+        if (_accessToken) headers["Authorization"] = `Bearer ${_accessToken}`;
+        r = await fetch(url, { method: "POST", credentials: "include", headers, body: formData });
+      } else {
+        if (_onSessionExpired) _onSessionExpired();
+        throw new Error("Sesion expirada. Por favor inicia sesion nuevamente.");
       }
-      return r.json();
-    });
+    }
+
+    if (!r.ok) {
+      const err = await r.json().catch(() => null);
+      throw new Error(typeof err?.message === "string" ? err.message : `No se pudo subir la prueba (${r.status})`);
+    }
+    return r.json();
   },
   listAssessmentTemplates: (params?: {
     institutionId?: string;
@@ -888,20 +896,31 @@ export const api = {
     request<unknown[]>(`/resources/${id}/usage`),
   archiveLearningResource: (id: string) =>
     request<unknown>(`/resources/${id}/archive`, { method: "POST" }),
-  uploadFile: (entityType: string, entityId: string, file: File) => {
+  uploadFile: async (entityType: string, entityId: string, file: File) => {
     const formData = new FormData();
     formData.append("file", file);
-    return fetch(`${API_BASE}/files/upload${buildQuery({ entityType, entityId })}`, {
-      method: "POST",
-      credentials: "include",
-      body: formData,
-    }).then(async (r) => {
-      if (!r.ok) {
-        const err = await r.json().catch(() => null);
-        throw new Error(typeof err?.message === "string" ? err.message : `Fallo al subir archivo (${r.status})`);
+    const headers: Record<string, string> = {};
+    if (_accessToken) headers["Authorization"] = `Bearer ${_accessToken}`;
+    const url = `${API_BASE}/files/upload${buildQuery({ entityType, entityId })}`;
+
+    let r = await fetch(url, { method: "POST", credentials: "include", headers, body: formData });
+
+    if (r.status === 401) {
+      const refreshed = await refreshSession();
+      if (refreshed) {
+        if (_accessToken) headers["Authorization"] = `Bearer ${_accessToken}`;
+        r = await fetch(url, { method: "POST", credentials: "include", headers, body: formData });
+      } else {
+        if (_onSessionExpired) _onSessionExpired();
+        throw new Error("Sesion expirada. Por favor inicia sesion nuevamente.");
       }
-      return r.json() as Promise<{ fileId: string; fileName: string; url: string; size: number }>;
-    });
+    }
+
+    if (!r.ok) {
+      const err = await r.json().catch(() => null);
+      throw new Error(typeof err?.message === "string" ? err.message : `Fallo al subir archivo (${r.status})`);
+    }
+    return r.json() as Promise<{ fileId: string; fileName: string; url: string; size: number }>;
   },
   listEntityFiles: (entityType: string, entityId: string) =>
     request<{ id: string; fileName: string; originalName: string; mimeType: string; size: number; url: string | null; createdAt: string }[]>(

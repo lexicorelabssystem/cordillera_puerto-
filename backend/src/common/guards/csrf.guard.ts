@@ -15,6 +15,7 @@ export class CsrfGuard implements CanActivate {
       "https://cordillera-puerto-frontend.vercel.app",
       "https://cordillera-puerto-frontend-lexicorelabssystemgmailcoms-projects.vercel.app",
       "*.vercel.app",
+      "*.sslip.io",
     ]
       .map((o) => o?.trim())
       .filter((o): o is string => Boolean(o));

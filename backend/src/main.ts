@@ -65,6 +65,7 @@ async function bootstrap() {
     "https://cordillera-puerto-frontend.vercel.app",
     "https://cordillera-puerto-frontend-lexicorelabssystemgmailcoms-projects.vercel.app",
     "*.vercel.app",
+    "*.sslip.io",
   ].map((o) => o?.trim()).filter((o): o is string => Boolean(o));
   const isProd = process.env.NODE_ENV === "production";
 
