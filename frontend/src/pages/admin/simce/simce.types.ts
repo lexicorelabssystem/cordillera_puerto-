@@ -79,12 +79,15 @@ export interface SimceResultsSummary {
   results: {
     student: { id: string; firstName: string; lastName: string; rut?: string | null };
     answered: boolean;
+    completed?: boolean;
+    responseCount?: number;
     totalCorrect: number;
     totalIncorrect: number;
     totalOmitted: number;
     totalQuestions: number;
     totalScore: number;
     percentage: number;
+    performanceLevel?: string;
   }[];
   weakestQuestions?: SimceWeakestQuestion[];
   skillsPerformance?: SimceSkillPerformance[];

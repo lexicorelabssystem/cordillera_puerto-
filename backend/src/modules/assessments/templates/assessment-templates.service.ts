@@ -87,7 +87,7 @@ export class AssessmentTemplatesService {
                     label: String.fromCharCode(65 + optionIndex),
                     text,
                     sortOrder: optionIndex,
-                    isCorrect: false,
+                    isCorrect: question.correctAnswer === String.fromCharCode(65 + optionIndex),
                   })),
                 }
               : undefined,

@@ -63,6 +63,27 @@ export class SimceController {
     return this.service.getStudentSimceEssays(user);
   }
 
+  @Get("student/essays/:assessmentId")
+  @Roles("STUDENT")
+  @ApiOperation({ summary: "Abrir ensayo SIMCE interactivo para responder" })
+  getStudentEssay(
+    @Param("assessmentId", ParseUUIDPipe) assessmentId: string,
+    @CurrentUser() user: JwtPayload,
+  ) {
+    return this.service.getStudentSimceEssay(assessmentId, user);
+  }
+
+  @Post("student/essays/:assessmentId/submit")
+  @Roles("STUDENT")
+  @ApiOperation({ summary: "Enviar respuestas del ensayo SIMCE y obtener resultado automatico" })
+  submitStudentEssay(
+    @Param("assessmentId", ParseUUIDPipe) assessmentId: string,
+    @Body() dto: SaveStudentResponsesDto,
+    @CurrentUser() user: JwtPayload,
+  ) {
+    return this.service.submitStudentSimceEssay(assessmentId, dto, user);
+  }
+
   @Get("student/results")
   @Roles("STUDENT")
   @ApiOperation({ summary: "Obtener resultados SIMCE del estudiante autenticado" })

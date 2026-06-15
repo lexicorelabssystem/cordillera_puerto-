@@ -1053,4 +1053,7 @@ export const api = {
   getStudentSimceResults: () => request<unknown[]>("/simce/student/results"),
   getStudentSimceDetail: (assessmentId: string) => request<unknown>(`/simce/student/results/${assessmentId}`),
   getStudentSimceEssays: () => request<unknown[]>("/simce/student/essays"),
+  getStudentSimceEssay: (assessmentId: string) => request<unknown>(`/simce/student/essays/${assessmentId}`),
+  submitStudentSimceEssay: (assessmentId: string, payload: { responses: { questionNumber: number; selectedOption?: string }[] }) =>
+    request<unknown>(`/simce/student/essays/${assessmentId}/submit`, { method: "POST", body: JSON.stringify(payload) }),
 };

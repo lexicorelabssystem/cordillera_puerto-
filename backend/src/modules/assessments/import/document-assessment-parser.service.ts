@@ -10,7 +10,7 @@ export type ParsedAssessmentQuestion = {
   statement: string;
   type: QuestionType;
   alternatives: string[];
-  correctAnswer: null;
+  correctAnswer: string | null;
   points: number;
   confidence: number;
 };
@@ -31,7 +31,11 @@ export class DocumentAssessmentParserService {
         ? await this.extractDocxText(params.buffer)
         : this.unsupportedWordMessage(extension);
 
-    const questions = this.detectQuestions(rawText);
+    const answerKey = this.detectAnswerKey(rawText);
+    const questions = this.detectQuestions(rawText).map((question) => ({
+      ...question,
+      correctAnswer: answerKey.get(question.number) ?? null,
+    }));
     if (!questions.length) {
       throw new BadRequestException(
         "No se detectaron preguntas. Revisa que el archivo tenga texto seleccionable o crea la evaluacion manualmente.",
@@ -125,31 +129,49 @@ export class DocumentAssessmentParserService {
   }
 
   private detectQuestions(rawText: string): ParsedAssessmentQuestion[] {
-    const normalized = rawText
+    const studentText = rawText.split(/(?:📝\s*)?HOJA DE RESPUESTAS\s*[—-]\s*RELLENA|(?:🔒\s*)?PAUTA DE RESPUESTAS|NIVELES DE LOGRO SIMCE|REGISTRO DE RESULTADOS DEL CURSO/i)[0] ?? rawText;
+    const normalized = studentText
       .replace(/\r/g, "\n")
-      .replace(/(\d{1,3})[\).\s-]+/g, "\n$1. ")
-      .replace(/\s+([A-Ea-e])[\)\.\-:]\s+/g, "\n$1) ")
+      .replace(/\bPregunta\s+(\d{1,3})\b/gi, "\n$1. ")
+      .replace(/(^|\n|\s)([A-Ea-e])[\)\.\-:]\s+/g, "$1\n$2) ")
       .replace(/\n{2,}/g, "\n")
       .trim();
 
-    const matches = [...normalized.matchAll(/(?:^|\n)(\d{1,3})[\).]\s+([\s\S]*?)(?=\n\d{1,3}[\).]\s+|$)/g)];
+    const markerPattern = rawText.match(/\bPregunta\s+\d{1,3}\b/i)
+      ? /(?:^|\n)(\d{1,3})[\).]\s+([\s\S]*?)(?=\n\d{1,3}[\).]\s+|$)/g
+      : /(?:^|\n)(\d{1,3})[\).]\s+([\s\S]*?)(?=\n\d{1,3}[\).]\s+|$)/g;
+    const matches = [...normalized.matchAll(markerPattern)];
     return matches
       .map((match, index) => this.parseQuestionBlock(Number(match[1] ?? index + 1), match[2] ?? ""))
       .filter((question): question is ParsedAssessmentQuestion => Boolean(question))
       .slice(0, 100);
   }
 
-  private parseQuestionBlock(number: number, block: string): ParsedAssessmentQuestion | null {
-    const optionPattern = /(?:^|\n)\s*([A-Ea-e])[\)\.\-:]\s+([\s\S]*?)(?=\n\s*[A-Ea-e][\)\.\-:]\s+|$)/g;
-    const optionMatches = [...block.matchAll(optionPattern)];
-    let alternatives = optionMatches
-      .map((match) => (match[2] ?? "").replace(/\s+/g, " ").trim())
-      .filter(Boolean);
+  private detectAnswerKey(rawText: string) {
+    const keyText = rawText.split(/(?:🔒\s*)?PAUTA DE RESPUESTAS/i)[1] ?? "";
+    const rowsText = keyText.split(/\b(?:TOTAL PREGUNTAS|NIVELES DE LOGRO SIMCE|REGISTRO DE RESULTADOS DEL CURSO)\b/i)[0] ?? keyText;
+    const answerKey = new Map<number, string>();
+    const rowPattern = /(?:^|\s)(\d{1,3})\s+OA\d+\s+[\s\S]*?\s([A-D])(?=\s+\d{1,3}\s+OA\d+\s+|\s+TOTAL PREGUNTAS|\s*$)/g;
 
-    const firstOptionIndex = block.search(/(?:^|\n)\s*[A-Ea-e][\)\.\-:]\s+/);
-    const statement = (firstOptionIndex >= 0 ? block.slice(0, firstOptionIndex) : block)
-      .replace(/\s+/g, " ")
-      .trim();
+    for (const match of rowsText.matchAll(rowPattern)) {
+      const questionNumber = Number(match[1]);
+      const correctOption = match[2]?.toUpperCase();
+      if (questionNumber > 0 && correctOption) answerKey.set(questionNumber, correctOption);
+    }
+
+    return answerKey;
+  }
+
+  private parseQuestionBlock(number: number, block: string): ParsedAssessmentQuestion | null {
+    const optionMatches = this.findOptionMarkers(block);
+    let alternatives = optionMatches
+      .map((match, index) => block.slice(match.contentStart, optionMatches[index + 1]?.markerStart ?? block.length))
+      .map((text) => this.cleanOptionText(text))
+      .filter(Boolean)
+      .slice(0, 4);
+
+    const firstOptionIndex = optionMatches[0]?.markerStart ?? -1;
+    const statement = this.cleanStatement(firstOptionIndex >= 0 ? block.slice(0, firstOptionIndex) : block);
 
     if (statement.length < 8) return null;
 
@@ -182,7 +204,7 @@ export class DocumentAssessmentParserService {
   }
 
   private detectInstructions(rawText: string, firstQuestionNumber: number) {
-    const marker = new RegExp(`(?:^|\\n)${firstQuestionNumber}[\\).]\\s+`);
+    const marker = new RegExp(`(?:^|\\n|\\s)(?:Pregunta\\s+)?${firstQuestionNumber}[\\).]?\\s+`, "i");
     const match = rawText.match(marker);
     const instructions = (match?.index ? rawText.slice(0, match.index) : "")
       .replace(/\s+/g, " ")
@@ -206,5 +228,38 @@ export class DocumentAssessmentParserService {
       .replace(/&amp;/g, "&")
       .replace(/&quot;/g, "\"")
       .replace(/&apos;/g, "'");
+  }
+
+  private findOptionMarkers(block: string) {
+    const markerPattern = /(^|\n|\s)([A-E])(?:[\)\.\-:]|\s+)(?=\S)|(^|\n|\s)([a-e])[\)\.\-:]\s+(?=\S)/g;
+    return [...block.matchAll(markerPattern)].map((match) => {
+      const leading = match[1] ?? match[3] ?? "";
+      return {
+        markerStart: match.index + leading.length,
+        contentStart: match.index + match[0].length,
+      };
+    });
+  }
+
+  private cleanStatement(value: string) {
+    let text = value.trim();
+    const questionStart = text.indexOf("¿");
+    if (questionStart > 0 && /^(?:O[A-Z]?\d+|[A-Z]{1,4}\d+)/i.test(text.slice(0, questionStart).trim())) {
+      text = text.slice(questionStart);
+    }
+
+    return text
+      .replace(/^\s*O[A-Z]?\d+\s*[^\w¿?\n]*\s*[^¿?\n]*?(?=¿)/i, "")
+      .replace(/^\s*(?:eje|habilidad|contenido|indicador)\s*[:.\-]\s*[^¿?\n]*?(?=¿)/i, "")
+      .replace(/\s+/g, " ")
+      .trim();
+  }
+
+  private cleanOptionText(value: string) {
+    return value
+      .split(/\b(?:Sistema de Medici[oó]n|Agencia de Calidad|ASIGNATURA|Este ensayo contiene|Lee con calma|Marca tu respuesta|Usa l[aá]piz|No se permite|Dispones de|No est[aá] permitido|Al finalizar|OA\d+|SIMCE 2026|Documento oficial|Pagina|Página)\b/i)[0]
+      .replace(/\s+/g, " ")
+      .trim()
+      .replace(/^[\)\.\-:]\s*/, "");
   }
 }

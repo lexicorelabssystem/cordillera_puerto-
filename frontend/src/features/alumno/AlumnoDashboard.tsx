@@ -1,5 +1,5 @@
-import { useQuery } from "@tanstack/react-query";
-import { useState } from "react";
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { useEffect, useState } from "react";
 import type { CSSProperties } from "react";
 import { Link } from "react-router-dom";
 import { ShellLayout } from "../../components/common/ShellLayout";
@@ -434,6 +434,42 @@ interface SimceEssayRow {
   pdfFile: { id: string; originalName: string; fileName: string } | null;
 }
 
+interface StudentSimceEssayDetail {
+  assessment: {
+    id: string;
+    title: string;
+    date: string;
+    description: string | null;
+    status: string;
+    course: { id: string; name: string; gradeLevel: number };
+    subject: { id: string; name: string };
+    teacher: string;
+    pdfFile: { id: string; originalName: string; fileName: string } | null;
+  };
+  instructions: string | null;
+  totalQuestions: number;
+  questions: {
+    number: number;
+    statement: string;
+    alternatives: { label: string; text: string }[];
+    selectedOption: string | null;
+  }[];
+}
+
+interface StudentSimceSubmitResult {
+  summary: {
+    totalCorrect: number;
+    totalIncorrect: number;
+    totalOmitted: number;
+    totalQuestions: number;
+    totalScore: number;
+    maxScore: number;
+    percentage: number;
+    performanceLevel: string;
+    grade: number;
+  };
+}
+
 const essayStatusLabels: Record<string, string> = {
   DRAFT: "Borrador",
   KEY_PENDING: "En preparación",
@@ -442,8 +478,12 @@ const essayStatusLabels: Record<string, string> = {
 };
 
 function SimceEssaysSection() {
+  const queryClient = useQueryClient();
   const [selectedPdfUrl, setSelectedPdfUrl] = useState<string | null>(null);
   const [selectedPdfTitle, setSelectedPdfTitle] = useState("");
+  const [selectedEssayId, setSelectedEssayId] = useState<string | null>(null);
+  const [answers, setAnswers] = useState<Record<number, string>>({});
+  const [submitResult, setSubmitResult] = useState<StudentSimceSubmitResult | null>(null);
 
   const essaysQuery = useQuery({
     queryKey: ["student-simce-essays"],
@@ -454,6 +494,39 @@ function SimceEssaysSection() {
   });
 
   const essays = essaysQuery.data || [];
+
+  const essayDetailQuery = useQuery({
+    queryKey: ["student-simce-essay", selectedEssayId],
+    queryFn: () => api.getStudentSimceEssay(selectedEssayId!) as Promise<StudentSimceEssayDetail>,
+    enabled: Boolean(selectedEssayId),
+  });
+
+  useEffect(() => {
+    if (!essayDetailQuery.data) return;
+    const initial: Record<number, string> = {};
+    essayDetailQuery.data.questions.forEach((question) => {
+      if (question.selectedOption) initial[question.number] = question.selectedOption;
+    });
+    setAnswers(initial);
+    setSubmitResult(null);
+  }, [essayDetailQuery.data]);
+
+  const submitMutation = useMutation({
+    mutationFn: async () => {
+      const detail = essayDetailQuery.data;
+      if (!selectedEssayId || !detail) throw new Error("No se pudo cargar la prueba.");
+      const responses = detail.questions.map((question) => ({
+        questionNumber: question.number,
+        selectedOption: answers[question.number] || undefined,
+      }));
+      return api.submitStudentSimceEssay(selectedEssayId, { responses }) as Promise<StudentSimceSubmitResult>;
+    },
+    onSuccess: (result) => {
+      setSubmitResult(result);
+      queryClient.invalidateQueries({ queryKey: ["student-simce-results"] });
+      queryClient.invalidateQueries({ queryKey: ["student-simce-essays"] });
+    },
+  });
 
   if (essaysQuery.isLoading) {
     return (
@@ -475,6 +548,21 @@ function SimceEssaysSection() {
     if (!essay.pdfFile) return null;
     return `/api/v1/files/download/${essay.pdfFile.fileName}`;
   };
+
+  const handleOpenEssay = (essay: SimceEssayRow) => {
+    setSelectedEssayId(essay.id);
+    setAnswers({});
+    setSubmitResult(null);
+  };
+
+  const handleCloseEssay = () => {
+    setSelectedEssayId(null);
+    setAnswers({});
+    setSubmitResult(null);
+  };
+
+  const essayDetail = essayDetailQuery.data;
+  const answeredCount = essayDetail ? Object.keys(answers).length : 0;
 
   return (
     <>
@@ -523,8 +611,11 @@ function SimceEssaysSection() {
                       <td style={{ fontSize: ".84rem" }}>{essay.teacher}</td>
                       <td>
                         <div style={{ display: "flex", gap: 4 }}>
+                          <button className="btn-small btn-primary" onClick={() => handleOpenEssay(essay)}>
+                            Responder
+                          </button>
                           {essay.pdfFile && (
-                            <button className="btn-small" onClick={() => handleViewPdf(essay)}>
+                            <button className="btn-small btn-secondary" onClick={() => handleViewPdf(essay)}>
                               Ver PDF
                             </button>
                           )}
@@ -550,6 +641,107 @@ function SimceEssaysSection() {
       <Modal isOpen={Boolean(selectedPdfUrl)} onClose={() => { setSelectedPdfUrl(null); setSelectedPdfTitle(""); }} title={selectedPdfTitle} size="lg">
         {selectedPdfUrl && (
           <SimcePdfViewer url={selectedPdfUrl} fileName={selectedPdfTitle} />
+        )}
+      </Modal>
+
+      <Modal isOpen={Boolean(selectedEssayId)} onClose={handleCloseEssay} title={essayDetail?.assessment.title || "Ensayo SIMCE"} size="lg">
+        {essayDetailQuery.isLoading ? (
+          <LoadingSpinner label="Preparando prueba..." />
+        ) : !essayDetail ? (
+          <p style={{ color: "var(--muted)" }}>No se pudo cargar la prueba.</p>
+        ) : (
+          <div className="page-stack">
+            <div className="panel-heading" style={{ padding: 0 }}>
+              <div>
+                <h3 style={{ margin: 0 }}>{essayDetail.assessment.title}</h3>
+                <p style={{ color: "var(--muted)", fontSize: ".84rem", margin: "4px 0 0" }}>
+                  {essayDetail.assessment.subject.name} · {essayDetail.assessment.course.name} ({essayDetail.assessment.course.gradeLevel}°) · {essayDetail.totalQuestions} preguntas
+                </p>
+              </div>
+              <span className="badge badge--info">{answeredCount}/{essayDetail.totalQuestions}</span>
+            </div>
+
+            {essayDetail.assessment.description && (
+              <div className="empty-inline">
+                <strong>Descripcion</strong>
+                <span>{essayDetail.assessment.description}</span>
+              </div>
+            )}
+
+            <div style={{ display: "grid", gap: 12 }}>
+              {essayDetail.questions.map((question) => (
+                <article key={question.number} className="imported-test-question">
+                  <div className="imported-test-question__head">
+                    <strong>Pregunta {question.number}</strong>
+                  </div>
+                  <p style={{ fontWeight: 700, margin: "0 0 10px" }}>{question.statement}</p>
+                  <div style={{ display: "grid", gap: 8 }}>
+                    {question.alternatives.map((alternative) => {
+                      const selected = answers[question.number] === alternative.label;
+                      return (
+                        <button
+                          key={alternative.label}
+                          type="button"
+                          className={`simce-option-btn ${selected ? "simce-option-btn--selected" : ""}`}
+                          onClick={() => setAnswers((current) => ({ ...current, [question.number]: alternative.label }))}
+                          style={{
+                            width: "100%",
+                            minHeight: 44,
+                            display: "flex",
+                            alignItems: "center",
+                            gap: 10,
+                            justifyContent: "flex-start",
+                            padding: "8px 12px",
+                            background: selected ? "var(--primary)" : undefined,
+                            color: selected ? "white" : undefined,
+                          }}
+                        >
+                          <span style={{
+                            width: 28,
+                            height: 28,
+                            borderRadius: "50%",
+                            display: "inline-grid",
+                            placeItems: "center",
+                            border: selected ? "1px solid white" : "1px solid var(--border)",
+                            fontWeight: 800,
+                          }}>
+                            {alternative.label}
+                          </span>
+                          <span>{alternative.text}</span>
+                        </button>
+                      );
+                    })}
+                  </div>
+                </article>
+              ))}
+            </div>
+
+            <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 12, flexWrap: "wrap" }}>
+              <span style={{ color: "var(--muted)", fontSize: ".84rem" }}>
+                Puedes enviar aunque existan omitidas. Las no marcadas cuentan como omitidas.
+              </span>
+              <button className="btn-primary" disabled={submitMutation.isPending} onClick={() => submitMutation.mutate()}>
+                {submitMutation.isPending ? "Enviando..." : "Finalizar y ver nota"}
+              </button>
+            </div>
+
+            {submitMutation.isError && (
+              <div className="empty-inline" style={{ borderColor: "var(--danger)" }}>
+                <strong>No se pudo enviar</strong>
+                <span>{submitMutation.error instanceof Error ? submitMutation.error.message : "Intenta nuevamente."}</span>
+              </div>
+            )}
+
+            {submitResult && (
+              <div className="kpi-grid simce-kpi-row">
+                <div className="kpi-card"><span>Nota</span><strong>{submitResult.summary.grade.toFixed(1).replace(".", ",")}</strong></div>
+                <div className="kpi-card"><span>Correctas</span><strong>{submitResult.summary.totalCorrect}/{submitResult.summary.totalQuestions}</strong></div>
+                <div className="kpi-card"><span>Puntaje</span><strong>{submitResult.summary.totalScore}/{submitResult.summary.maxScore}</strong></div>
+                <div className="kpi-card"><span>% Logro</span><strong>{submitResult.summary.percentage}%</strong></div>
+                <div className="kpi-card"><span>Nivel SIMCE</span><strong>{submitResult.summary.performanceLevel}</strong></div>
+              </div>
+            )}
+          </div>
         )}
       </Modal>
     </>
