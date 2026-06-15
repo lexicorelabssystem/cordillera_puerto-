@@ -1562,8 +1562,8 @@ function SharedAssessmentTemplatesPanel({ courseId, subjectId, gradeLevel }: { c
   const { toast } = useToast();
   const [publishingId, setPublishingId] = useState("");
   const templatesQuery = useQuery({
-    queryKey: ["teacher-assessment-templates", courseId, subjectId, gradeLevel],
-    queryFn: () => api.listAssessmentTemplates({ subjectId, gradeLevel, status: "PUBLISHED" }) as Promise<{
+    queryKey: ["teacher-assessment-templates", courseId, subjectId],
+    queryFn: () => api.listAssessmentTemplates({ status: "PUBLISHED" }) as Promise<{
       id: string;
       title: string;
       description: string | null;
@@ -1618,8 +1618,8 @@ function SharedAssessmentTemplatesPanel({ courseId, subjectId, gradeLevel }: { c
       {templatesQuery.isLoading ? <LoadingSpinner size="sm" /> : null}
       {!templatesQuery.isLoading && templates.length === 0 ? (
         <div className="empty-inline">
-          <strong>No hay pruebas publicadas para esta asignatura/nivel.</strong>
-          <span>Cuando UTP publique una plantilla, aparecera aqui para este curso.</span>
+          <strong>No hay pruebas publicadas en el banco institucional.</strong>
+          <span>Un administrador o UTP debe subir y publicar plantillas desde el panel Admin &gt; Banco de Pruebas.</span>
         </div>
       ) : null}
 
@@ -1636,14 +1636,23 @@ function SharedAssessmentTemplatesPanel({ courseId, subjectId, gradeLevel }: { c
               </tr>
             </thead>
             <tbody>
-              {templates.map((template) => (
+              {templates.map((template) => {
+                const gradeMismatch = gradeLevel && template.gradeLevel && template.gradeLevel !== gradeLevel;
+                return (
                 <tr key={template.id}>
                   <td>
                     <strong>{template.title}</strong>
                     <br />
                     <small>{template.description || template.fileName || "Plantilla publicada"}</small>
                   </td>
-                  <td>{template.gradeLevel ? `${template.gradeLevel} basico/medio` : "Flexible"}</td>
+                  <td>
+                    {template.gradeLevel ? `${template.gradeLevel} basico/medio` : "Flexible"}
+                    {gradeMismatch ? (
+                      <span className="badge badge--role" style={{ display: "inline-block", marginLeft: 6, fontSize: 10, background: "var(--warning-bg)", color: "var(--warning)" }}>
+                        no coincide
+                      </span>
+                    ) : null}
+                  </td>
                   <td>{template.questionsCount}</td>
                   <td>{template.totalPoints}</td>
                   <td>
@@ -1651,12 +1660,14 @@ function SharedAssessmentTemplatesPanel({ courseId, subjectId, gradeLevel }: { c
                       className="btn-small"
                       disabled={createFromTemplate.isPending}
                       onClick={() => createFromTemplate.mutate(template)}
+                      title={gradeMismatch ? "El nivel no coincide con el curso, pero puedes usarlo igual" : "Crear evaluacion desde esta plantilla"}
                     >
                       {publishingId === template.id ? "Creando..." : "Crear borrador"}
                     </button>
                   </td>
                 </tr>
-              ))}
+                );
+              })}
             </tbody>
           </table>
         </div>
