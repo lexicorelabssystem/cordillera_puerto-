@@ -79,6 +79,7 @@ export function buildManagementCategories(basePath: string, mode: ManagementMode
     defaultOpen: true,
     items: [
       { id: "evaluaciones", label: "Evaluaciones", description: "Crear, publicar y monitorear", path: `${basePath}/evaluaciones` },
+      { id: "banco-pruebas", label: "Banco de Pruebas", description: "PDF y Word reutilizables", path: `${basePath}/banco-pruebas` },
       { id: "libro-evaluaciones", label: "Libro de Evaluaciones", description: "Vista tipo libro de clases digital", path: `${basePath}/libro-evaluaciones` },
       { id: "gradebook", label: "Libro de Calificaciones", description: "Vista moderna de notas y perfil alumno", path: `${basePath}/gradebook` },
       { id: "monitoreo", label: "Monitoreo por Estado", description: "Resumen por tipo", path: `${basePath}/monitoreo` },

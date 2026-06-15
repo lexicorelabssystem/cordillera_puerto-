@@ -270,6 +270,24 @@ export class AttemptsService {
       });
     }
 
+    const savedAnswerIds = new Set(attempt.answers.map((answer) => answer.questionId));
+    const omittedQuestions = attempt.assessment.questions.filter((question) => !savedAnswerIds.has(question.questionId));
+    for (const question of omittedQuestions) {
+      await this.prisma.studentAnswer.create({
+        data: {
+          attemptId,
+          questionId: question.questionId,
+          selectedOptionId: null,
+          textAnswer: null,
+          isCorrect: false,
+          score: 0,
+          status: "OMITTED",
+          isGraded: true,
+          answeredAt: new Date(),
+        },
+      });
+    }
+
     // Calculate total score
     const allAnswers = await this.prisma.studentAnswer.findMany({
       where: { attemptId },
@@ -278,6 +296,8 @@ export class AttemptsService {
     const totalScore = allAnswers.reduce((sum, a) => sum + (a.score ?? 0), 0);
     const maxScore = attempt.assessment.questions.reduce((sum, q) => sum + q.points, 0);
     const percentage = maxScore > 0 ? Number(((totalScore / maxScore) * 100).toFixed(1)) : 0;
+    const pendingManualCount = allAnswers.filter((a) => !a.isGraded).length;
+    const finalGrade = this.percentageToGrade(percentage);
 
     const elapsed = timeSpentSec ?? Math.floor(
       (Date.now() - attempt.startedAt.getTime()) / 1000,
@@ -294,23 +314,24 @@ export class AttemptsService {
       },
     });
 
-    // Create/update Grade record
-    await this.prisma.grade.upsert({
-      where: { assessmentId_studentId: { assessmentId: attempt.assessmentId, studentId: attempt.studentId } },
-      create: {
-        assessmentId: attempt.assessmentId,
-        studentId: attempt.studentId,
-        grade: this.percentageToGrade(percentage),
-        score: totalScore,
-        percentage,
-        recordedBy: userId,
-      },
-      update: {
-        grade: this.percentageToGrade(percentage),
-        score: totalScore,
-        percentage,
-      },
-    });
+    if (pendingManualCount === 0) {
+      await this.prisma.grade.upsert({
+        where: { assessmentId_studentId: { assessmentId: attempt.assessmentId, studentId: attempt.studentId } },
+        create: {
+          assessmentId: attempt.assessmentId,
+          studentId: attempt.studentId,
+          grade: finalGrade,
+          score: totalScore,
+          percentage,
+          recordedBy: userId,
+        },
+        update: {
+          grade: finalGrade,
+          score: totalScore,
+          percentage,
+        },
+      });
+    }
 
     return {
       attemptId,
@@ -318,9 +339,9 @@ export class AttemptsService {
       totalScore,
       maxScore,
       percentage,
-      grade: this.percentageToGrade(percentage),
+      grade: pendingManualCount === 0 ? finalGrade : null,
       gradedCount: allAnswers.filter((a) => a.isGraded).length,
-      pendingManualCount: allAnswers.filter((a) => !a.isGraded).length,
+      pendingManualCount,
     };
   }
 

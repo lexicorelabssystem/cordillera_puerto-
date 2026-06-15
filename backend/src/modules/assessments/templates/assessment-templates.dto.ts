@@ -16,68 +16,108 @@ import {
 } from "class-validator";
 import { AssessmentDeliveryMode, AssessmentType } from "@prisma/client";
 
-export class CommitImportedQuestionDto {
+export class AssessmentTemplateOptionDto {
   @IsOptional()
   @IsUUID()
-  draftQuestionId?: string;
+  id?: string;
 
-  @IsInt()
-  @Min(1)
-  number!: number;
+  @IsOptional()
+  @IsString()
+  label?: string | null;
 
   @IsString()
-  statement!: string;
+  text!: string;
 
+  @IsBoolean()
+  isCorrect!: boolean;
+
+  @IsOptional()
+  @IsInt()
+  @Min(0)
+  sortOrder?: number;
+}
+
+export class UpsertAssessmentTemplateQuestionDto {
   @IsIn(["MULTIPLE_CHOICE", "TRUE_FALSE", "SHORT_ANSWER", "ESSAY"])
   type!: "MULTIPLE_CHOICE" | "TRUE_FALSE" | "SHORT_ANSWER" | "ESSAY";
 
-  @IsArray()
-  @IsString({ each: true })
-  alternatives!: string[];
-
-  @IsOptional()
   @IsString()
-  correctAnswer?: string | null;
+  statement!: string;
 
   @IsNumber()
   @Min(0.1)
   @Max(100)
   points!: number;
+
+  @IsOptional()
+  @IsString()
+  explanation?: string | null;
+
+  @IsOptional()
+  @IsInt()
+  @Min(0)
+  sortOrder?: number;
+
+  @IsOptional()
+  @IsArray()
+  @ValidateNested({ each: true })
+  @Type(() => AssessmentTemplateOptionDto)
+  options?: AssessmentTemplateOptionDto[];
 }
 
-export class CommitImportedTestDto {
-  @IsUUID()
-  subjectId!: string;
+export class UpdateAssessmentTemplateDto {
+  @IsOptional()
+  @IsString()
+  title?: string;
+
+  @IsOptional()
+  @IsString()
+  description?: string | null;
 
   @IsOptional()
   @IsUUID()
-  courseId?: string;
+  subjectId?: string | null;
 
-  @IsArray()
-  @ValidateNested({ each: true })
-  @Type(() => CommitImportedQuestionDto)
-  questions!: CommitImportedQuestionDto[];
+  @IsOptional()
+  @IsInt()
+  @Min(1)
+  @Max(12)
+  gradeLevel?: number | null;
+
+  @IsOptional()
+  @IsString()
+  instructions?: string | null;
 }
 
-export class CreateAssessmentFromImportedTestDto extends CommitImportedTestDto {
+export class CreateAssessmentFromTemplateDto {
+  @IsUUID()
+  courseId!: string;
+
+  @IsOptional()
+  @IsUUID()
+  subjectId?: string;
+
+  @IsOptional()
   @IsString()
-  title!: string;
+  title?: string;
 
   @IsOptional()
   @IsString()
   description?: string;
 
+  @IsOptional()
   @IsEnum(AssessmentType)
-  assessmentType!: AssessmentType;
+  assessmentType?: AssessmentType;
 
   @IsOptional()
   @IsEnum(AssessmentDeliveryMode)
   deliveryMode?: AssessmentDeliveryMode;
 
+  @IsOptional()
   @IsInt()
   @Min(1)
   @Max(2)
-  semester!: number;
+  semester?: number;
 
   @IsOptional()
   @IsDateString()
@@ -109,4 +149,8 @@ export class CreateAssessmentFromImportedTestDto extends CommitImportedTestDto {
   @IsOptional()
   @IsBoolean()
   shuffleQuestions?: boolean;
+
+  @IsOptional()
+  @IsBoolean()
+  publishNow?: boolean;
 }

@@ -1,6 +1,7 @@
 import { useQuery } from "@tanstack/react-query";
 import { useState } from "react";
 import type { CSSProperties } from "react";
+import { Link } from "react-router-dom";
 import { ShellLayout } from "../../components/common/ShellLayout";
 import { KpiCard } from "../../components/common/KpiCard";
 import { LoadingSpinner } from "../../components/common/LoadingSpinner";
@@ -131,6 +132,7 @@ export function AlumnoDashboard({ user, onLogout }: Props) {
                   <th>Profesor</th>
                   <th>Estado</th>
                   <th>Nota</th>
+                  <th>Accion</th>
                 </tr>
               </thead>
               <tbody>
@@ -142,6 +144,15 @@ export function AlumnoDashboard({ user, onLogout }: Props) {
                     <td>{row.teacher}</td>
                     <td><span className="badge badge--role">{row.status}</span></td>
                     <td>{row.grade ?? "Pendiente"}</td>
+                    <td>
+                      {row.raw_status === "ACTIVE" && !row.grade ? (
+                        <Link className="btn-small" to={`/student/evaluaciones/${row.assessment_id}`}>
+                          Responder
+                        </Link>
+                      ) : (
+                        <span style={{ color: "var(--muted)", fontSize: ".82rem" }}>-</span>
+                      )}
+                    </td>
                   </tr>
                 ))}
               </tbody>

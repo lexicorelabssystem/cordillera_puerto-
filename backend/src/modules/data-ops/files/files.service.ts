@@ -103,6 +103,21 @@ export class FilesService {
       await assertAssessmentScope(this.prisma, user, asset.entityId);
       return;
     }
+    if (["assessment-template", "assessment_template", "assessmenttemplate"].includes(entityType)) {
+      const template = await this.prisma.assessmentTemplate.findUnique({
+        where: { id: asset.entityId },
+        select: { institutionId: true, status: true },
+      });
+      if (!template) throw new NotFoundException("Plantilla de evaluacion no encontrada");
+      if (template.status === "PUBLISHED" && (scope.isGlobalAdmin || !template.institutionId || template.institutionId === scope.institutionId)) {
+        return;
+      }
+      await assertInstitutionScope(this.prisma, user, template.institutionId);
+      if (!["SUPER_ADMIN", "ADMIN", "UTP"].includes(scope.role)) {
+        throw new ForbiddenException("No tienes acceso a este archivo");
+      }
+      return;
+    }
     if (["simce", "simce-assessment", "simce_assessment", "simceassessment"].includes(entityType)) {
       const assessment = await this.prisma.simceAssessment.findUnique({
         where: { id: asset.entityId },

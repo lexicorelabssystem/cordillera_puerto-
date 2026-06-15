@@ -5,7 +5,13 @@ import {
 import { ApiTags, ApiOperation, ApiBearerAuth, ApiQuery } from "@nestjs/swagger";
 import { AssessmentType } from "@prisma/client";
 import { AssessmentsService } from "./assessments.service.js";
-import { CreateAssessmentDto, UpdateAssessmentDto, AssessmentItemDto, ReorderItemsDto } from "./dto/create-assessment.dto.js";
+import {
+  AssessmentItemDto,
+  CreateAssessmentDto,
+  ReorderItemsDto,
+  UpdateAssessmentDto,
+  UpdateAssessmentQuestionDto,
+} from "./dto/create-assessment.dto.js";
 import { JwtAuthGuard } from "../../auth/jwt-auth.guard.js";
 import { RolesGuard } from "../../../common/guards/roles.guard.js";
 import { Roles } from "../../../common/decorators/roles.decorator.js";
@@ -174,5 +180,17 @@ export class AssessmentsController {
   @ApiOperation({ summary: "Reordenar preguntas de evaluación" })
   reorderItems(@Param("id", ParseUUIDPipe) id: string, @Body() dto: ReorderItemsDto, @CurrentUser() user: JwtPayload) {
     return this.service.reorderItems(id, dto, user);
+  }
+
+  @Patch(":id/questions/:questionId")
+  @Roles("ADMIN", "SUPER_ADMIN", "UTP", "TEACHER")
+  @ApiOperation({ summary: "Editar enunciado, puntaje, alternativas y pauta antes de publicar" })
+  updateQuestion(
+    @Param("id", ParseUUIDPipe) id: string,
+    @Param("questionId", ParseUUIDPipe) questionId: string,
+    @Body() dto: UpdateAssessmentQuestionDto,
+    @CurrentUser() user: JwtPayload,
+  ) {
+    return this.service.updateQuestion(id, questionId, dto, user);
   }
 }

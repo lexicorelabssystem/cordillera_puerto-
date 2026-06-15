@@ -1,8 +1,9 @@
 import { useState } from "react";
 import { useParams, useNavigate } from "react-router-dom";
-import { useQuery } from "@tanstack/react-query";
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { api } from "../../lib/api";
 import { LoadingSpinner } from "../../components/common/LoadingSpinner";
+import { useToast } from "../../components/common/Toast";
 import {
   BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip,
   ResponsiveContainer, PieChart, Pie, Cell,
@@ -47,6 +48,19 @@ type AttemptRow = {
   _count?: { answers?: number };
 };
 
+type AssessmentQuestionRow = {
+  questionId: string;
+  points: number;
+  sortOrder?: number;
+  question?: {
+    id: string;
+    statement: string;
+    type: string;
+    explanation?: string | null;
+    options?: { id: string; text: string; sortOrder: number; isCorrect?: boolean }[];
+  };
+};
+
 function asRecord(value: unknown): Record<string, unknown> {
   return value && typeof value === "object" && !Array.isArray(value) ? value as Record<string, unknown> : {};
 }
@@ -72,6 +86,8 @@ function normalizeAttempts(value: unknown): AttemptRow[] {
 export function AssessmentDetailPage() {
   const { id } = useParams<{ id: string }>();
   const navigate = useNavigate();
+  const queryClient = useQueryClient();
+  const { toast } = useToast();
   const [tab, setTab] = useState<"overview" | "students" | "questions" | "attempts">("overview");
 
   const assessmentQuery = useQuery({
@@ -125,7 +141,20 @@ export function AssessmentDetailPage() {
     { name: "<4.0", value: below4 },
   ].filter((d) => d.value > 0);
 
-  const questions = arrayFrom(a.questions).map((question) => question as { questionId: string; points: number; question?: { id: string; statement: string; type: string } });
+  const questions = arrayFrom(a.questions).map((question) => question as AssessmentQuestionRow);
+  const canEditDraft = a.status === "DRAFT";
+
+  const publishMutation = useMutation({
+    mutationFn: async () => {
+      await api.publishAssessment(id!);
+      await api.activateAssessment(id!);
+    },
+    onSuccess: () => {
+      toast("Evaluacion publicada y activa para alumnos.", "success");
+      queryClient.invalidateQueries({ queryKey: ["assessment-detail", id] });
+    },
+    onError: (error) => toast(error instanceof Error ? error.message : "No se pudo publicar la evaluacion.", "error"),
+  });
 
   return (
     <div className="assessment-detail">
@@ -153,6 +182,11 @@ export function AssessmentDetailPage() {
           <span className={`badge ${a.status === "GRADED" ? "badge--active" : a.status === "ACTIVE" ? "badge--warning" : "badge--inactive"}`} style={{ fontSize: ".9rem", padding: "8px 18px" }}>
             {STATUS_LABELS[a.status as string] || (a.status as string)}
           </span>
+          {canEditDraft ? (
+            <button disabled={publishMutation.isPending} onClick={() => publishMutation.mutate()}>
+              {publishMutation.isPending ? "Publicando..." : "Publicar y activar"}
+            </button>
+          ) : null}
         </div>
       </header>
 
@@ -278,8 +312,14 @@ export function AssessmentDetailPage() {
           {/* ═══ TAB: QUESTIONS ═══ */}
           {tab === "questions" && (
             <div style={{ padding: 24 }}>
-              <h4>Preguntas de la Evaluacion ({questions.length})</h4>
-              {questions.length > 0 ? (
+              <h4>{canEditDraft ? "Revision docente del formulario" : `Preguntas de la Evaluacion (${questions.length})`}</h4>
+              {canEditDraft ? (
+                <div className="imported-test-list" style={{ marginTop: 12 }}>
+                  {questions.map((question, index) => (
+                    <EditableAssessmentQuestion key={question.questionId} assessmentId={id!} row={question} index={index} />
+                  ))}
+                </div>
+              ) : questions.length > 0 ? (
                 <div className="table-wrap" style={{ marginTop: 12 }}>
                   <table className="table">
                     <thead><tr><th>#</th><th>Enunciado</th><th>Tipo</th><th>Puntos</th></tr></thead>
@@ -337,4 +377,125 @@ export function AssessmentDetailPage() {
       </section>
     </div>
   );
+}
+
+function EditableAssessmentQuestion({ assessmentId, row, index }: { assessmentId: string; row: AssessmentQuestionRow; index: number }) {
+  const queryClient = useQueryClient();
+  const { toast } = useToast();
+  const question = row.question;
+  const [statement, setStatement] = useState(question?.statement || "");
+  const [type, setType] = useState(question?.type || "MULTIPLE_CHOICE");
+  const [points, setPoints] = useState(row.points || 1);
+  const [options, setOptions] = useState(() => {
+    const existing = question?.options || [];
+    if (existing.length) return existing.map((option, optionIndex) => ({
+      text: option.text,
+      isCorrect: Boolean(option.isCorrect),
+      sortOrder: option.sortOrder ?? optionIndex,
+    }));
+    return type === "TRUE_FALSE"
+      ? [
+          { text: "Verdadero", isCorrect: false, sortOrder: 0 },
+          { text: "Falso", isCorrect: false, sortOrder: 1 },
+        ]
+      : [
+          { text: "", isCorrect: false, sortOrder: 0 },
+          { text: "", isCorrect: false, sortOrder: 1 },
+        ];
+  });
+
+  const saveMutation = useMutation({
+    mutationFn: () => api.updateAssessmentQuestion(assessmentId, row.questionId, {
+      type,
+      statement,
+      points: Number(points) || 1,
+      sortOrder: row.sortOrder ?? index,
+      options: needsOptions(type) ? options : [],
+    }),
+    onSuccess: () => {
+      toast("Pregunta guardada.", "success");
+      queryClient.invalidateQueries({ queryKey: ["assessment-detail", assessmentId] });
+    },
+    onError: (error) => toast(error instanceof Error ? error.message : "No se pudo guardar la pregunta.", "error"),
+  });
+
+  function setOption(optionIndex: number, patch: Partial<{ text: string; isCorrect: boolean }>) {
+    setOptions((current) =>
+      current.map((option, i) => {
+        if (i !== optionIndex) return patch.isCorrect ? { ...option, isCorrect: false } : option;
+        return { ...option, ...patch };
+      }),
+    );
+  }
+
+  return (
+    <article className="imported-test-question">
+      <div className="imported-test-question__head">
+        <strong>Pregunta {index + 1}</strong>
+        <span className="badge badge--warning">Borrador docente</span>
+      </div>
+      <div className="form-field">
+        <label>Enunciado</label>
+        <textarea value={statement} rows={3} onChange={(event) => setStatement(event.target.value)} />
+      </div>
+      <div className="form-row">
+        <div className="form-field">
+          <label>Tipo</label>
+          <select
+            value={type}
+            onChange={(event) => {
+              const nextType = event.target.value;
+              setType(nextType);
+              if (nextType === "TRUE_FALSE") {
+                setOptions([
+                  { text: "Verdadero", isCorrect: false, sortOrder: 0 },
+                  { text: "Falso", isCorrect: false, sortOrder: 1 },
+                ]);
+              }
+            }}
+          >
+            <option value="MULTIPLE_CHOICE">Seleccion multiple</option>
+            <option value="TRUE_FALSE">Verdadero/Falso</option>
+            <option value="SHORT_ANSWER">Respuesta corta</option>
+            <option value="ESSAY">Desarrollo</option>
+          </select>
+        </div>
+        <div className="form-field">
+          <label>Puntaje</label>
+          <input type="number" min={0.1} step={0.5} value={points} onChange={(event) => setPoints(Number(event.target.value))} />
+        </div>
+      </div>
+
+      {needsOptions(type) ? (
+        <div className="imported-test-options">
+          {options.map((option, optionIndex) => (
+            <label key={`${row.questionId}-${optionIndex}`} className="imported-test-option">
+              <input
+                type="radio"
+                name={`correct-${row.questionId}`}
+                checked={option.isCorrect}
+                onChange={() => setOption(optionIndex, { isCorrect: true })}
+              />
+              <input value={option.text} onChange={(event) => setOption(optionIndex, { text: event.target.value })} />
+            </label>
+          ))}
+          <button
+            type="button"
+            className="btn-secondary"
+            onClick={() => setOptions((current) => [...current, { text: "", isCorrect: false, sortOrder: current.length }])}
+          >
+            Agregar alternativa
+          </button>
+        </div>
+      ) : null}
+
+      <button disabled={saveMutation.isPending} onClick={() => saveMutation.mutate()}>
+        {saveMutation.isPending ? "Guardando..." : "Guardar pregunta"}
+      </button>
+    </article>
+  );
+}
+
+function needsOptions(type: string) {
+  return type === "MULTIPLE_CHOICE" || type === "TRUE_FALSE";
 }

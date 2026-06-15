@@ -663,9 +663,11 @@ model ImportedTestDraft {
   subjectId   String    @db.Uuid
   teacherId   String?   @db.Uuid
   createdBy   String    @db.Uuid
+  fileAssetId String?   @db.Uuid
   fileName    String
   fileSize    Int
   mimeType    String
+  instructions String?
   rawText     String?
   status      String    @default("DRAFT")
   createdAt   DateTime  @default(now()) @db.Timestamptz()
@@ -722,6 +724,10 @@ model Assessment {
   allowRetake      Boolean                @default(false)
   shuffleQuestions Boolean                @default(false)
   answerKeyFileId  String?                @db.Uuid
+  sourceFileId     String?                @db.Uuid
+  sourceTemplateId String?                @db.Uuid
+  teacherValidatedAt DateTime?            @db.Timestamptz()
+  teacherValidatedBy String?              @db.Uuid
   publishedAt      DateTime?              @db.Timestamptz()
   closedAt         DateTime?              @db.Timestamptz()
   gradingStartedAt DateTime?              @db.Timestamptz()
@@ -763,6 +769,64 @@ model AssessmentQuestion {
 }
 
 // ─── APLICACIÓN ONLINE ───────────────────────────────
+
+model AssessmentTemplate {
+  id            String    @id @default(uuid()) @db.Uuid
+  institutionId String?   @db.Uuid
+  subjectId     String?   @db.Uuid
+  gradeLevel    Int?
+  title         String
+  description   String?
+  status        String    @default("DRAFT")
+  sourceFileId  String?   @db.Uuid
+  fileName      String?
+  mimeType      String?
+  instructions  String?
+  totalPoints   Float     @default(0)
+  createdBy     String    @db.Uuid
+  createdAt     DateTime  @default(now()) @db.Timestamptz()
+  updatedAt     DateTime  @updatedAt @db.Timestamptz()
+  publishedAt   DateTime? @db.Timestamptz()
+
+  questions AssessmentTemplateQuestion[]
+
+  @@index([institutionId, status])
+  @@index([subjectId, gradeLevel])
+  @@map("assessment_templates")
+}
+
+model AssessmentTemplateQuestion {
+  id          String       @id @default(uuid()) @db.Uuid
+  templateId  String       @db.Uuid
+  type        QuestionType
+  sortOrder   Int          @default(0)
+  statement   String
+  points      Float        @default(1.0)
+  explanation String?
+  confidence  Float        @default(0.5)
+  createdAt   DateTime     @default(now()) @db.Timestamptz()
+  updatedAt   DateTime     @updatedAt @db.Timestamptz()
+
+  template AssessmentTemplate         @relation(fields: [templateId], references: [id], onDelete: Cascade)
+  options  AssessmentTemplateOption[]
+
+  @@index([templateId, sortOrder])
+  @@map("assessment_template_questions")
+}
+
+model AssessmentTemplateOption {
+  id         String  @id @default(uuid()) @db.Uuid
+  questionId String  @db.Uuid
+  label      String?
+  text       String
+  isCorrect  Boolean @default(false)
+  sortOrder  Int     @default(0)
+
+  question AssessmentTemplateQuestion @relation(fields: [questionId], references: [id], onDelete: Cascade)
+
+  @@index([questionId])
+  @@map("assessment_template_options")
+}
 
 model AssessmentAttempt {
   id           String        @id @default(uuid()) @db.Uuid

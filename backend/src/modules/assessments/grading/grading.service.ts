@@ -87,6 +87,8 @@ export class GradingService {
       },
     });
 
+    await this.recalculateAssessment(answer.attempt.assessmentId, teacherUserId);
+
     return {
       answerId: updated.id,
       score: updated.score,
@@ -214,15 +216,22 @@ export class GradingService {
 
     const maxScore = assessment.questions.reduce((sum, q) => sum + q.points, 0);
     let recalculatedGrades = 0;
+    let pendingAttempts = 0;
 
     for (const attempt of assessment.attempts) {
       const totalScore = attempt.answers.reduce((sum, a) => sum + (a.score ?? 0), 0);
       const percentage = maxScore > 0 ? Number(((totalScore / maxScore) * 100).toFixed(1)) : 0;
+      const hasPendingManual = attempt.answers.some((answer) => !answer.isGraded);
 
       await this.prisma.assessmentAttempt.update({
         where: { id: attempt.id },
         data: { totalScore, percentage },
       });
+
+      if (hasPendingManual) {
+        pendingAttempts++;
+        continue;
+      }
 
       const grade = this.percentageToGrade(percentage);
       await this.prisma.grade.upsert({
@@ -245,6 +254,7 @@ export class GradingService {
       assessmentId,
       attemptsProcessed: assessment.attempts.length,
       gradesRecalculated: recalculatedGrades,
+      pendingAttempts,
       maxScore,
     };
   }

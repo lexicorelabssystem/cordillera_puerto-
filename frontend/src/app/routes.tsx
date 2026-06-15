@@ -43,6 +43,9 @@ const CoursesView = lazy(() =>
 const AssessmentsPage = lazy(() =>
   import("../pages/admin/AssessmentsPage").then((m) => ({ default: m.AssessmentsPage }))
 );
+const AssessmentTemplatesPage = lazy(() =>
+  import("../pages/admin/AssessmentTemplatesPage").then((m) => ({ default: m.AssessmentTemplatesPage }))
+);
 const GradeChangeRequestsPage = lazy(() =>
   import("../pages/admin/GradeChangeRequestsPage").then((m) => ({ default: m.GradeChangeRequestsPage }))
 );
@@ -167,6 +170,7 @@ function adminRoutes(mode: "admin" | "direction" | "utp" = "admin") {
       <Route path="cobertura-curricular" element={<Lazy><CurriculumCoverageWrapper /></Lazy>} />
       <Route path="banco-preguntas" element={<Lazy><QuestionBankPage /></Lazy>} />
       <Route path="evaluaciones" element={<Lazy><AssessmentsPage /></Lazy>} />
+      <Route path="banco-pruebas" element={<Lazy><AssessmentTemplatesPage /></Lazy>} />
       <Route path="libro-evaluaciones" element={<Lazy><LibroEvaluacionesPage /></Lazy>} />
       <Route path="gradebook" element={<Lazy><GradebookPage /></Lazy>} />
       <Route path="evaluaciones/:id" element={<Lazy><AssessmentDetailPage /></Lazy>} />

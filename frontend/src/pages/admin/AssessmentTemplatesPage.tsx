@@ -1,0 +1,425 @@
+import { useEffect, useMemo, useState } from "react";
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { LoadingSpinner } from "../../components/common/LoadingSpinner";
+import { useToast } from "../../components/common/Toast";
+import { useInstitution } from "../../app/InstitutionContext";
+import { api } from "../../lib/api";
+import type { AdminSubject } from "../../types/api";
+
+type TemplateOption = {
+  id?: string;
+  label?: string | null;
+  text: string;
+  isCorrect: boolean;
+  sortOrder: number;
+};
+
+type TemplateQuestion = {
+  id: string;
+  type: string;
+  sortOrder: number;
+  statement: string;
+  points: number;
+  explanation?: string | null;
+  confidence?: number;
+  options: TemplateOption[];
+};
+
+type AssessmentTemplate = {
+  id: string;
+  institutionId?: string | null;
+  subjectId?: string | null;
+  gradeLevel?: number | null;
+  title: string;
+  description?: string | null;
+  status: string;
+  fileName?: string | null;
+  mimeType?: string | null;
+  instructions?: string | null;
+  totalPoints: number;
+  questionsCount?: number;
+  questions?: TemplateQuestion[];
+  updatedAt?: string;
+  publishedAt?: string | null;
+};
+
+const QUESTION_TYPES = [
+  { value: "MULTIPLE_CHOICE", label: "Seleccion multiple" },
+  { value: "TRUE_FALSE", label: "Verdadero/Falso" },
+  { value: "SHORT_ANSWER", label: "Respuesta corta" },
+  { value: "ESSAY", label: "Desarrollo" },
+];
+
+export function AssessmentTemplatesPage() {
+  const { toast } = useToast();
+  const queryClient = useQueryClient();
+  const { selectedInstitution } = useInstitution();
+  const [title, setTitle] = useState("");
+  const [description, setDescription] = useState("");
+  const [subjectId, setSubjectId] = useState("");
+  const [gradeLevel, setGradeLevel] = useState("");
+  const [search, setSearch] = useState("");
+  const [status, setStatus] = useState("DRAFT");
+  const [file, setFile] = useState<File | null>(null);
+  const [selectedId, setSelectedId] = useState("");
+  const [questions, setQuestions] = useState<TemplateQuestion[]>([]);
+
+  const subjectsQuery = useQuery({
+    queryKey: ["subjects"],
+    queryFn: () => api.listSubjects(true) as Promise<AdminSubject[]>,
+  });
+
+  const templatesQuery = useQuery({
+    queryKey: ["assessment-templates", selectedInstitution?.id, subjectId, gradeLevel, status, search],
+    queryFn: () =>
+      api.listAssessmentTemplates({
+        institutionId: selectedInstitution?.id,
+        subjectId: subjectId || undefined,
+        gradeLevel: gradeLevel ? Number(gradeLevel) : undefined,
+        status: status || undefined,
+        search: search || undefined,
+      }) as Promise<AssessmentTemplate[]>,
+  });
+
+  const detailQuery = useQuery({
+    queryKey: ["assessment-template", selectedId],
+    queryFn: () => api.getAssessmentTemplate(selectedId) as Promise<AssessmentTemplate>,
+    enabled: Boolean(selectedId),
+  });
+
+  useEffect(() => {
+    if (detailQuery.data?.questions) {
+      setQuestions(detailQuery.data.questions.map((question) => ({
+        ...question,
+        options: question.options?.length ? question.options : defaultOptionsForType(question.type),
+      })));
+    }
+  }, [detailQuery.data]);
+
+  const selectedTemplate = detailQuery.data;
+  const subjectNameById = useMemo(() => {
+    const map = new Map<string, string>();
+    (subjectsQuery.data || []).forEach((subject) => map.set(subject.id, subject.name));
+    return map;
+  }, [subjectsQuery.data]);
+
+  const uploadMutation = useMutation({
+    mutationFn: () => {
+      if (!file) throw new Error("Selecciona un PDF o Word .docx.");
+      if (!title.trim()) throw new Error("Ingresa un titulo para la prueba.");
+      return api.uploadAssessmentTemplate({
+        file,
+        title: title.trim(),
+        description: description.trim() || undefined,
+        institutionId: selectedInstitution?.id,
+        subjectId: subjectId || undefined,
+        gradeLevel: gradeLevel ? Number(gradeLevel) : undefined,
+      }) as Promise<AssessmentTemplate>;
+    },
+    onSuccess: (template) => {
+      toast("Prueba analizada y guardada como borrador.", "success");
+      setSelectedId(template.id);
+      setFile(null);
+      queryClient.invalidateQueries({ queryKey: ["assessment-templates"] });
+    },
+    onError: (error) => toast(error instanceof Error ? error.message : "No se pudo subir la prueba.", "error"),
+  });
+
+  const saveQuestionMutation = useMutation({
+    mutationFn: (question: TemplateQuestion) =>
+      api.updateAssessmentTemplateQuestion(selectedId, question.id, {
+        type: question.type,
+        statement: question.statement,
+        points: Number(question.points) || 1,
+        explanation: question.explanation || undefined,
+        sortOrder: question.sortOrder,
+        options: needsOptions(question.type) ? question.options : [],
+      }),
+    onSuccess: () => {
+      toast("Pregunta actualizada.", "success");
+      queryClient.invalidateQueries({ queryKey: ["assessment-template", selectedId] });
+      queryClient.invalidateQueries({ queryKey: ["assessment-templates"] });
+    },
+    onError: (error) => toast(error instanceof Error ? error.message : "No se pudo guardar la pregunta.", "error"),
+  });
+
+  const addQuestionMutation = useMutation({
+    mutationFn: () =>
+      api.addAssessmentTemplateQuestion(selectedId, {
+        type: "MULTIPLE_CHOICE",
+        statement: "Nueva pregunta",
+        points: 1,
+        sortOrder: questions.length,
+        options: [
+          { label: "A", text: "Alternativa A", isCorrect: true, sortOrder: 0 },
+          { label: "B", text: "Alternativa B", isCorrect: false, sortOrder: 1 },
+        ],
+      }),
+    onSuccess: () => {
+      toast("Pregunta agregada.", "success");
+      queryClient.invalidateQueries({ queryKey: ["assessment-template", selectedId] });
+    },
+    onError: (error) => toast(error instanceof Error ? error.message : "No se pudo agregar la pregunta.", "error"),
+  });
+
+  const deleteQuestionMutation = useMutation({
+    mutationFn: (questionId: string) => api.deleteAssessmentTemplateQuestion(selectedId, questionId),
+    onSuccess: () => {
+      toast("Pregunta eliminada.", "success");
+      queryClient.invalidateQueries({ queryKey: ["assessment-template", selectedId] });
+      queryClient.invalidateQueries({ queryKey: ["assessment-templates"] });
+    },
+    onError: (error) => toast(error instanceof Error ? error.message : "No se pudo eliminar la pregunta.", "error"),
+  });
+
+  const publishMutation = useMutation({
+    mutationFn: () => api.publishAssessmentTemplate(selectedId),
+    onSuccess: () => {
+      toast("Plantilla publicada para profesores.", "success");
+      queryClient.invalidateQueries({ queryKey: ["assessment-template", selectedId] });
+      queryClient.invalidateQueries({ queryKey: ["assessment-templates"] });
+    },
+    onError: (error) => toast(error instanceof Error ? error.message : "No se pudo publicar.", "error"),
+  });
+
+  const readyToPublish = questions.length > 0 && questions.every((question) => {
+    if (!question.statement.trim() || Number(question.points) <= 0) return false;
+    if (!needsOptions(question.type)) return true;
+    return question.options.filter((option) => option.text.trim()).length >= 2 && question.options.some((option) => option.isCorrect);
+  });
+
+  function updateQuestion(index: number, patch: Partial<TemplateQuestion>) {
+    setQuestions((current) => current.map((question, i) => (i === index ? { ...question, ...patch } : question)));
+  }
+
+  function updateOption(questionIndex: number, optionIndex: number, patch: Partial<TemplateOption>) {
+    setQuestions((current) =>
+      current.map((question, i) => {
+        if (i !== questionIndex) return question;
+        const options = question.options.map((option, j) => {
+          if (j !== optionIndex) return patch.isCorrect ? { ...option, isCorrect: false } : option;
+          return { ...option, ...patch };
+        });
+        return { ...question, options };
+      }),
+    );
+  }
+
+  function addOption(questionIndex: number) {
+    setQuestions((current) =>
+      current.map((question, i) => {
+        if (i !== questionIndex) return question;
+        const nextIndex = question.options.length;
+        return {
+          ...question,
+          options: [
+            ...question.options,
+            { label: String.fromCharCode(65 + nextIndex), text: "", isCorrect: false, sortOrder: nextIndex },
+          ],
+        };
+      }),
+    );
+  }
+
+  return (
+    <div className="page-stack">
+      <section className="panel">
+        <div className="panel-heading">
+          <div>
+            <h3>Banco de Pruebas</h3>
+            <p>Sube PDF o Word, revisa la deteccion y publica pruebas reutilizables para todos los profesores.</p>
+          </div>
+          <span className="badge badge--role">{selectedInstitution?.name || "Banco global"}</span>
+        </div>
+
+        <div className="teacher-material-upload">
+          <div className="form-field">
+            <label>Titulo</label>
+            <input value={title} onChange={(event) => setTitle(event.target.value)} placeholder="Prueba unidad 1" />
+          </div>
+          <div className="form-field">
+            <label>Asignatura</label>
+            <select value={subjectId} onChange={(event) => setSubjectId(event.target.value)}>
+              <option value="">Sin asignatura fija</option>
+              {(subjectsQuery.data || []).map((subject) => (
+                <option key={subject.id} value={subject.id}>{subject.name}</option>
+              ))}
+            </select>
+          </div>
+          <div className="form-field">
+            <label>Nivel</label>
+            <input type="number" min={1} max={12} value={gradeLevel} onChange={(event) => setGradeLevel(event.target.value)} placeholder="Ej: 3" />
+          </div>
+          <div className="form-field">
+            <label>Archivo PDF/DOCX</label>
+            <input
+              type="file"
+              accept="application/pdf,.pdf,application/vnd.openxmlformats-officedocument.wordprocessingml.document,.docx"
+              onChange={(event) => setFile(event.target.files?.[0] ?? null)}
+            />
+            {file ? <small>{file.name}</small> : null}
+          </div>
+          <div className="form-field" style={{ gridColumn: "1 / -1" }}>
+            <label>Descripcion</label>
+            <textarea value={description} onChange={(event) => setDescription(event.target.value)} rows={2} />
+          </div>
+          <button disabled={uploadMutation.isPending || !file} onClick={() => uploadMutation.mutate()}>
+            {uploadMutation.isPending ? "Analizando..." : "Subir y analizar"}
+          </button>
+        </div>
+      </section>
+
+      <section className="panel">
+        <div className="panel-heading">
+          <div>
+            <h3>Plantillas disponibles</h3>
+            <p>Los profesores solo ven las pruebas publicadas.</p>
+          </div>
+          <div className="form-row" style={{ margin: 0 }}>
+            <input value={search} onChange={(event) => setSearch(event.target.value)} placeholder="Buscar prueba" />
+            <select value={status} onChange={(event) => setStatus(event.target.value)}>
+              <option value="">Todos</option>
+              <option value="DRAFT">Borrador</option>
+              <option value="PUBLISHED">Publicadas</option>
+              <option value="ARCHIVED">Archivadas</option>
+            </select>
+          </div>
+        </div>
+        {templatesQuery.isLoading ? <LoadingSpinner size="sm" /> : null}
+        <div className="table-wrap">
+          <table className="table">
+            <thead>
+              <tr>
+                <th>Prueba</th>
+                <th>Asignatura</th>
+                <th>Nivel</th>
+                <th>Estado</th>
+                <th>Preguntas</th>
+                <th>Puntaje</th>
+                <th></th>
+              </tr>
+            </thead>
+            <tbody>
+              {(templatesQuery.data || []).map((template) => (
+                <tr key={template.id}>
+                  <td><strong>{template.title}</strong><br /><small>{template.fileName || "Sin archivo"}</small></td>
+                  <td>{template.subjectId ? subjectNameById.get(template.subjectId) || "Asignatura" : "Flexible"}</td>
+                  <td>{template.gradeLevel ? `${template.gradeLevel} basico/medio` : "Flexible"}</td>
+                  <td><span className={`badge ${template.status === "PUBLISHED" ? "badge--active" : template.status === "DRAFT" ? "badge--warning" : "badge--inactive"}`}>{template.status}</span></td>
+                  <td>{template.questionsCount ?? 0}</td>
+                  <td>{template.totalPoints}</td>
+                  <td><button className="btn-small" onClick={() => setSelectedId(template.id)}>Revisar</button></td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      </section>
+
+      {selectedId ? (
+        <section className="panel">
+          <div className="panel-heading">
+            <div>
+              <h3>{selectedTemplate?.title || "Revision de plantilla"}</h3>
+              <p>{questions.length} pregunta(s). Marca pauta y puntajes antes de publicar.</p>
+            </div>
+            <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
+              <button className="btn-secondary" disabled={addQuestionMutation.isPending || selectedTemplate?.status === "PUBLISHED"} onClick={() => addQuestionMutation.mutate()}>
+                Agregar pregunta
+              </button>
+              <button disabled={!readyToPublish || publishMutation.isPending || selectedTemplate?.status === "PUBLISHED"} onClick={() => publishMutation.mutate()}>
+                {selectedTemplate?.status === "PUBLISHED" ? "Publicada" : publishMutation.isPending ? "Publicando..." : "Publicar para profesores"}
+              </button>
+            </div>
+          </div>
+          {detailQuery.isLoading ? <LoadingSpinner size="sm" /> : null}
+          {selectedTemplate?.instructions ? (
+            <div className="empty-inline" style={{ marginBottom: 12 }}>
+              <strong>Instrucciones detectadas</strong>
+              <span>{selectedTemplate.instructions}</span>
+            </div>
+          ) : null}
+          <div className="imported-test-list">
+            {questions.map((question, questionIndex) => (
+              <article key={question.id} className="imported-test-question">
+                <div className="imported-test-question__head">
+                  <strong>Pregunta {questionIndex + 1}</strong>
+                  <span className="badge badge--info">{Math.round((question.confidence ?? 1) * 100)}% confianza</span>
+                </div>
+                <div className="form-field">
+                  <label>Enunciado</label>
+                  <textarea value={question.statement} rows={3} disabled={selectedTemplate?.status === "PUBLISHED"} onChange={(event) => updateQuestion(questionIndex, { statement: event.target.value })} />
+                </div>
+                <div className="form-row">
+                  <div className="form-field">
+                    <label>Tipo</label>
+                    <select value={question.type} disabled={selectedTemplate?.status === "PUBLISHED"} onChange={(event) => updateQuestion(questionIndex, { type: event.target.value, options: defaultOptionsForType(event.target.value) })}>
+                      {QUESTION_TYPES.map((type) => <option key={type.value} value={type.value}>{type.label}</option>)}
+                    </select>
+                  </div>
+                  <div className="form-field">
+                    <label>Puntaje</label>
+                    <input type="number" min={0.1} step={0.5} value={question.points} disabled={selectedTemplate?.status === "PUBLISHED"} onChange={(event) => updateQuestion(questionIndex, { points: Number(event.target.value) })} />
+                  </div>
+                </div>
+
+                {needsOptions(question.type) ? (
+                  <div className="imported-test-options">
+                    {question.options.map((option, optionIndex) => (
+                      <label key={`${question.id}-${optionIndex}`} className="imported-test-option">
+                        <input
+                          type="radio"
+                          name={`correct-template-${question.id}`}
+                          checked={option.isCorrect}
+                          disabled={selectedTemplate?.status === "PUBLISHED"}
+                          onChange={() => updateOption(questionIndex, optionIndex, { isCorrect: true })}
+                        />
+                        <input
+                          value={option.text}
+                          disabled={selectedTemplate?.status === "PUBLISHED"}
+                          onChange={(event) => updateOption(questionIndex, optionIndex, { text: event.target.value })}
+                        />
+                      </label>
+                    ))}
+                    <button type="button" className="btn-secondary" disabled={selectedTemplate?.status === "PUBLISHED"} onClick={() => addOption(questionIndex)}>
+                      Agregar alternativa
+                    </button>
+                  </div>
+                ) : null}
+
+                <div style={{ display: "flex", gap: 8, marginTop: 10 }}>
+                  <button disabled={selectedTemplate?.status === "PUBLISHED" || saveQuestionMutation.isPending} onClick={() => saveQuestionMutation.mutate(question)}>
+                    Guardar pregunta
+                  </button>
+                  <button className="btn-danger" disabled={selectedTemplate?.status === "PUBLISHED" || deleteQuestionMutation.isPending} onClick={() => deleteQuestionMutation.mutate(question.id)}>
+                    Eliminar
+                  </button>
+                </div>
+              </article>
+            ))}
+          </div>
+        </section>
+      ) : null}
+    </div>
+  );
+}
+
+function needsOptions(type: string) {
+  return type === "MULTIPLE_CHOICE" || type === "TRUE_FALSE";
+}
+
+function defaultOptionsForType(type: string): TemplateOption[] {
+  if (type === "TRUE_FALSE") {
+    return [
+      { label: "V", text: "Verdadero", isCorrect: false, sortOrder: 0 },
+      { label: "F", text: "Falso", isCorrect: false, sortOrder: 1 },
+    ];
+  }
+  if (type === "MULTIPLE_CHOICE") {
+    return [
+      { label: "A", text: "", isCorrect: false, sortOrder: 0 },
+      { label: "B", text: "", isCorrect: false, sortOrder: 1 },
+    ];
+  }
+  return [];
+}

@@ -472,13 +472,15 @@ export const api = {
   listAssessments: (params?: Record<string, string | number | boolean | undefined>) =>
     request<{ data: unknown[] }>(`/assessments${buildQuery(params ?? {})}`).then((r) => r.data),
   getAssessment: (id: string) =>
-    request<{ id: string; title: string; assessmentType: string; status: string; courseId: string; subjectId: string; semester: number; maxScore: number; questions: { questionId: string; points: number; question: { id: string; statement: string; type: string } }[] }>(`/assessments/${id}`),
+    request<{ id: string; title: string; description?: string | null; assessmentType: string; deliveryMode?: string; status: string; courseId: string; subjectId: string; semester: number; maxScore: number; timeLimitMin?: number | null; startDate?: string; endDate?: string | null; questions: { id: string; questionId: string; sortOrder: number; points: number; question: { id: string; statement: string; type: string; options?: { id: string; text: string; sortOrder: number }[] } }[] }>(`/assessments/${id}`),
   getAssessmentAttempts: (assessmentId: string) =>
     request<{ id: string; studentId: string; student: { firstName: string; lastName: string }; status: string; totalScore: number | null; percentage: number | null; answers: { questionId: string; question: { statement: string; type: string }; textAnswer: string | null; selectedOptionId: string | null; score: number | null; status: string; isCorrect: boolean | null }[] }[]>(`/attempts/assessment/${assessmentId}`),
 
   // ─── Enrollments ────────────────────────────────
   closeAssessment: (id: string) =>
     request<unknown>(`/assessments/${id}/close`, { method: "POST" }),
+  publishAssessment: (id: string) =>
+    request<unknown>(`/assessments/${id}/publish`, { method: "POST" }),
   activateAssessment: (id: string) =>
     request<unknown>(`/assessments/${id}/activate`, { method: "POST" }),
   startAssessmentGrading: (id: string) =>
@@ -487,6 +489,18 @@ export const api = {
     request<unknown>(`/assessments/${id}/mark-graded`, { method: "POST" }),
   markAssessmentReported: (id: string) =>
     request<unknown>(`/assessments/${id}/mark-reported`, { method: "POST" }),
+  updateAssessmentQuestion: (assessmentId: string, questionId: string, payload: {
+    type: string;
+    statement: string;
+    points: number;
+    explanation?: string | null;
+    sortOrder?: number;
+    options?: { text: string; isCorrect: boolean; sortOrder?: number }[];
+  }) =>
+    request<unknown>(`/assessments/${assessmentId}/questions/${questionId}`, {
+      method: "PATCH",
+      body: JSON.stringify(payload),
+    }),
 
   enrollStudent: (payload: { studentId: string; courseId: string }) =>
     request<{ enrollmentId: string }>("/enrollments", {
@@ -511,6 +525,11 @@ export const api = {
     request<{ assessmentId: string; title: string; totalQuestions: number; totalAttempts: number; answersByStatus: Record<string, number>; grades: { studentId: string; studentName: string; score: number | null; percentage: number | null; grade: number }[] }>(`/grading/summary/${assessmentId}`),
   getPendingGrading: (assessmentId: string) =>
     request<{ assessmentId: string; totalPending: number; byStudent: { studentName: string; pendingCount: number; answers: { id: string; question: { id: string; type: string; statement: string; points: number }; textAnswer: string | null; selectedOptionId: string | null; status: string }[] }[] }>(`/grading/pending/${assessmentId}`),
+  gradeAnswer: (answerId: string, payload: { score: number; feedback?: string; status?: string }) =>
+    request<{ answerId: string; score: number | null; status: string; isCorrect: boolean | null }>(`/grading/answer/${answerId}`, {
+      method: "POST",
+      body: JSON.stringify(payload),
+    }),
 
   // ─── Alerts ─────────────────────────────────────
   myAlerts: () => request<RoleAlerts>("/alerts/teacher"),
@@ -671,6 +690,134 @@ export const api = {
     }[];
   }) =>
     request<{ draftId: string; createdCount: number; questions: unknown[] }>(`/evaluations/import/${draftId}/commit`, {
+      method: "POST",
+      body: JSON.stringify(payload),
+    }),
+  createAssessmentFromImportedEvaluation: (draftId: string, payload: {
+    title: string;
+    description?: string;
+    courseId: string;
+    subjectId: string;
+    assessmentType: string;
+    deliveryMode?: string;
+    semester: number;
+    startDate?: string;
+    endDate?: string;
+    periodId?: string;
+    timeLimitMin?: number;
+    weight?: number;
+    allowRetake?: boolean;
+    shuffleQuestions?: boolean;
+    questions: {
+      draftQuestionId?: string;
+      number: number;
+      statement: string;
+      type: string;
+      alternatives: string[];
+      correctAnswer?: string | null;
+      points: number;
+    }[];
+  }) =>
+    request<{ draftId: string; assessmentId: string; createdCount: number; maxScore: number }>(`/evaluations/import/${draftId}/create-assessment`, {
+      method: "POST",
+      body: JSON.stringify(payload),
+    }),
+  uploadAssessmentTemplate: (payload: {
+    file: File;
+    title: string;
+    description?: string;
+    institutionId?: string;
+    subjectId?: string;
+    gradeLevel?: number;
+  }) => {
+    const formData = new FormData();
+    formData.append("file", payload.file);
+    const headers = new Headers();
+    if (_accessToken) headers.set("Authorization", `Bearer ${_accessToken}`);
+    return fetch(`${API_BASE}/assessment-templates/upload${buildQuery({
+      title: payload.title,
+      description: payload.description,
+      institutionId: payload.institutionId,
+      subjectId: payload.subjectId,
+      gradeLevel: payload.gradeLevel,
+    })}`, {
+      method: "POST",
+      credentials: "include",
+      headers,
+      body: formData,
+    }).then(async (r) => {
+      if (!r.ok) {
+        const err = await r.json().catch(() => null);
+        throw new Error(typeof err?.message === "string" ? err.message : `No se pudo subir la prueba (${r.status})`);
+      }
+      return r.json();
+    });
+  },
+  listAssessmentTemplates: (params?: {
+    institutionId?: string;
+    subjectId?: string;
+    gradeLevel?: number;
+    status?: string;
+    search?: string;
+  }) =>
+    request<unknown[]>(`/assessment-templates${buildQuery(params ?? {})}`),
+  getAssessmentTemplate: (id: string) =>
+    request<unknown>(`/assessment-templates/${id}`),
+  updateAssessmentTemplate: (id: string, payload: Record<string, unknown>) =>
+    request<unknown>(`/assessment-templates/${id}`, {
+      method: "PATCH",
+      body: JSON.stringify(payload),
+    }),
+  addAssessmentTemplateQuestion: (id: string, payload: Record<string, unknown>) =>
+    request<unknown>(`/assessment-templates/${id}/questions`, {
+      method: "POST",
+      body: JSON.stringify(payload),
+    }),
+  updateAssessmentTemplateQuestion: (id: string, questionId: string, payload: Record<string, unknown>) =>
+    request<unknown>(`/assessment-templates/${id}/questions/${questionId}`, {
+      method: "PUT",
+      body: JSON.stringify(payload),
+    }),
+  deleteAssessmentTemplateQuestion: (id: string, questionId: string) =>
+    request<void>(`/assessment-templates/${id}/questions/${questionId}`, { method: "DELETE" }),
+  publishAssessmentTemplate: (id: string) =>
+    request<unknown>(`/assessment-templates/${id}/publish`, { method: "POST" }),
+  archiveAssessmentTemplate: (id: string) =>
+    request<unknown>(`/assessment-templates/${id}/archive`, { method: "POST" }),
+  createAssessmentFromTemplate: (id: string, payload: {
+    courseId: string;
+    subjectId?: string;
+    title?: string;
+    description?: string;
+    assessmentType?: string;
+    deliveryMode?: string;
+    semester?: number;
+    startDate?: string;
+    endDate?: string;
+    periodId?: string;
+    timeLimitMin?: number;
+    weight?: number;
+    allowRetake?: boolean;
+    shuffleQuestions?: boolean;
+    publishNow?: boolean;
+  }) =>
+    request<{ templateId: string; assessmentId: string; createdCount: number; maxScore: number; status: string }>(`/assessment-templates/${id}/create-assessment`, {
+      method: "POST",
+      body: JSON.stringify(payload),
+    }),
+  startAssessmentAttempt: (assessmentId: string) =>
+    request<{ attemptId: string; assessmentId: string; startedAt: string; deadline: string | null; timeLimitMin: number | null; totalQuestions: number; remainingSec: number | null; status: string }>(`/attempts/start/${assessmentId}`, {
+      method: "POST",
+    }),
+  getAssessmentAttempt: (attemptId: string) =>
+    request<{ id: string; assessmentId: string; status: string; startedAt: string; submittedAt: string | null; timeRemainingSec?: number | null; totalScore: number | null; percentage: number | null; answers: { questionId: string; selectedOptionId: string | null; textAnswer: string | null; status: string; score: number | null; isCorrect: boolean | null }[] }>(`/attempts/${attemptId}`),
+  saveAssessmentAnswers: (attemptId: string, payload: { answers: { questionId: string; selectedOptionId?: string; textAnswer?: string }[]; timeSpentSec?: number }) =>
+    request<{ saved: number }>(`/attempts/${attemptId}/answers`, {
+      method: "POST",
+      body: JSON.stringify(payload),
+    }),
+  submitAssessmentAttempt: (attemptId: string, payload: { timeSpentSec?: number; confirmEmpty?: boolean }) =>
+    request<{ attemptId: string; status: string; totalScore: number; maxScore: number; percentage: number; grade: number | null; gradedCount: number; pendingManualCount: number }>(`/attempts/${attemptId}/submit`, {
       method: "POST",
       body: JSON.stringify(payload),
     }),

@@ -1301,6 +1301,7 @@ export function ProfesorDashboard({ user, onLogout }: Props) {
             ) : null}
           </section>
 
+          <SharedAssessmentTemplatesPanel courseId={courseId} subjectId={subjectId} gradeLevel={selectedCourse?.grade_level} />
           <EvaluacionesProfesorPanel courseId={courseId} subjectId={subjectId} />
           <AnswersInspectionPanel courseId={courseId} subjectId={subjectId} />
 
@@ -1556,6 +1557,114 @@ export function ProfesorDashboard({ user, onLogout }: Props) {
   );
 }
 
+function SharedAssessmentTemplatesPanel({ courseId, subjectId, gradeLevel }: { courseId: string; subjectId: string; gradeLevel?: number }) {
+  const queryClient = useQueryClient();
+  const { toast } = useToast();
+  const [publishingId, setPublishingId] = useState("");
+  const templatesQuery = useQuery({
+    queryKey: ["teacher-assessment-templates", courseId, subjectId, gradeLevel],
+    queryFn: () => api.listAssessmentTemplates({ subjectId, gradeLevel, status: "PUBLISHED" }) as Promise<{
+      id: string;
+      title: string;
+      description: string | null;
+      subjectId: string | null;
+      gradeLevel: number | null;
+      status: string;
+      fileName: string | null;
+      totalPoints: number;
+      questionsCount: number;
+    }[]>,
+    enabled: Boolean(courseId) && Boolean(subjectId),
+  });
+
+  const createFromTemplate = useMutation({
+    mutationFn: (template: { id: string; title: string }) =>
+      api.createAssessmentFromTemplate(template.id, {
+        courseId,
+        subjectId,
+        title: template.title,
+        assessmentType: "PROCESO",
+        deliveryMode: "ONLINE",
+        semester: 1,
+        startDate: new Date().toISOString(),
+        publishNow: false,
+      }),
+    onMutate: (template) => setPublishingId(template.id),
+    onSuccess: (result) => {
+      toast(`Borrador creado con ${result.createdCount} pregunta(s). Revisalo y publicalo cuando la pauta este lista.`, "success");
+      queryClient.invalidateQueries({ queryKey: ["teacher-course-assessments", courseId, subjectId] });
+      queryClient.invalidateQueries({ queryKey: ["teacher-profile-assessments", courseId, subjectId] });
+      queryClient.invalidateQueries({ queryKey: ["teacher-course-book", courseId, subjectId] });
+    },
+    onError: (error) => {
+      toast(error instanceof Error ? error.message : "No se pudo crear la evaluacion desde el banco.", "error");
+    },
+    onSettled: () => setPublishingId(""),
+  });
+
+  const templates = templatesQuery.data || [];
+  if (!courseId || !subjectId) return null;
+
+  return (
+    <section className="panel">
+      <div className="panel-heading">
+        <div>
+          <h3>Banco de Pruebas Compartido</h3>
+          <p>Pruebas validadas por UTP/Admin listas para convertir en evaluacion digital del curso.</p>
+        </div>
+        <Link className="btn-secondary" to="/teacher/importar-prueba">Subir prueba propia</Link>
+      </div>
+
+      {templatesQuery.isLoading ? <LoadingSpinner size="sm" /> : null}
+      {!templatesQuery.isLoading && templates.length === 0 ? (
+        <div className="empty-inline">
+          <strong>No hay pruebas publicadas para esta asignatura/nivel.</strong>
+          <span>Cuando UTP publique una plantilla, aparecera aqui para este curso.</span>
+        </div>
+      ) : null}
+
+      {templates.length > 0 ? (
+        <div className="table-wrap">
+          <table className="table">
+            <thead>
+              <tr>
+                <th>Prueba</th>
+                <th>Nivel</th>
+                <th>Preguntas</th>
+                <th>Puntaje</th>
+                <th></th>
+              </tr>
+            </thead>
+            <tbody>
+              {templates.map((template) => (
+                <tr key={template.id}>
+                  <td>
+                    <strong>{template.title}</strong>
+                    <br />
+                    <small>{template.description || template.fileName || "Plantilla publicada"}</small>
+                  </td>
+                  <td>{template.gradeLevel ? `${template.gradeLevel} basico/medio` : "Flexible"}</td>
+                  <td>{template.questionsCount}</td>
+                  <td>{template.totalPoints}</td>
+                  <td>
+                    <button
+                      className="btn-small"
+                      disabled={createFromTemplate.isPending}
+                      onClick={() => createFromTemplate.mutate(template)}
+                    >
+                      {publishingId === template.id ? "Creando..." : "Crear borrador"}
+                    </button>
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      ) : null}
+    </section>
+  );
+}
+
 function EvaluacionesProfesorPanel({ courseId, subjectId }: { courseId: string; subjectId: string }) {
   const assessmentsQuery = useQuery({
     queryKey: ["teacher-course-assessments", courseId, subjectId],
@@ -1604,6 +1713,7 @@ function EvaluacionesProfesorPanel({ courseId, subjectId }: { courseId: string; 
                 <th>Intentos</th>
                 <th>Notas</th>
                 <th>Fecha</th>
+                <th></th>
               </tr>
             </thead>
             <tbody>
@@ -1619,6 +1729,7 @@ function EvaluacionesProfesorPanel({ courseId, subjectId }: { courseId: string; 
                   <td style={{ textAlign: "center" }}>{a.attempts_count}</td>
                   <td style={{ textAlign: "center" }}>{a.grades_count}</td>
                   <td style={{ fontSize: ".78rem", whiteSpace: "nowrap" }}>{new Date(a.created_at).toLocaleDateString("es-CL")}</td>
+                  <td><Link className="btn-small" to={`/teacher/evaluaciones/${a.assessment_id}`}>{a.status === "DRAFT" ? "Revisar" : "Ver"}</Link></td>
                 </tr>
               ))}
             </tbody>
@@ -1630,12 +1741,18 @@ function EvaluacionesProfesorPanel({ courseId, subjectId }: { courseId: string; 
 }
 
 function AnswersInspectionPanel({ courseId, subjectId }: { courseId: string; subjectId: string }) {
+  const queryClient = useQueryClient();
+  const { toast } = useToast();
   const [selectedAssessmentId, setSelectedAssessmentId] = useState("");
   const [showModal, setShowModal] = useState(false);
+  const [manualScores, setManualScores] = useState<Record<string, string>>({});
 
   const assessmentsQuery = useQuery({
     queryKey: ["teacher-assessments", courseId, subjectId],
-    queryFn: () => api.listAssessments({ courseId, subjectId, status: "CLOSED" }) as Promise<{ assessment_id: string; title: string; assessment_type: string; status: string; attempts_count: number }[]>,
+    queryFn: async () => {
+      const data = await api.listAssessments({ courseId, subjectId }) as { assessment_id: string; title: string; assessment_type: string; status: string; attempts_count: number }[];
+      return data.filter((assessment) => ["CLOSED", "IN_GRADING", "GRADED"].includes(assessment.status));
+    },
     enabled: Boolean(courseId) && Boolean(subjectId),
   });
 
@@ -1654,6 +1771,34 @@ function AnswersInspectionPanel({ courseId, subjectId }: { courseId: string; sub
   const assessments = (assessmentsQuery.data || []) as { assessment_id: string; title: string; assessment_type: string; status: string; attempts_count: number }[];
   const summary = summaryQuery.data;
   const pending = pendingQuery.data;
+
+  const gradeAnswerMutation = useMutation({
+    mutationFn: ({ answerId, score, maxScore }: { answerId: string; score: number; maxScore: number }) =>
+      api.gradeAnswer(answerId, {
+        score,
+        status: score <= 0 ? "INCORRECT" : score >= maxScore ? "CORRECT" : "PARTIAL",
+      }),
+    onSuccess: () => {
+      toast("Respuesta corregida.", "success");
+      queryClient.invalidateQueries({ queryKey: ["pending-grading-teacher", selectedAssessmentId] });
+      queryClient.invalidateQueries({ queryKey: ["grading-summary", selectedAssessmentId] });
+      queryClient.invalidateQueries({ queryKey: ["teacher-course-assessments", courseId, subjectId] });
+      queryClient.invalidateQueries({ queryKey: ["teacher-course-book", courseId, subjectId] });
+    },
+    onError: (error) => {
+      toast(error instanceof Error ? error.message : "No se pudo guardar la correccion.", "error");
+    },
+  });
+
+  function submitManualScore(answerId: string, maxScore: number) {
+    const raw = manualScores[answerId];
+    const score = Number(raw);
+    if (raw === undefined || Number.isNaN(score) || score < 0 || score > maxScore) {
+      toast(`Ingresa un puntaje entre 0 y ${maxScore}.`, "error");
+      return;
+    }
+    gradeAnswerMutation.mutate({ answerId, score, maxScore });
+  }
 
   return (
     <section className="panel">
@@ -1726,6 +1871,43 @@ function AnswersInspectionPanel({ courseId, subjectId }: { courseId: string; sub
                 <div className="kpi-grid">
                   <div className="kpi-card"><span>Total pendientes</span><strong>{pending.totalPending}</strong></div>
                   <div className="kpi-card"><span>Alumnos</span><strong>{pending.byStudent.length}</strong></div>
+                </div>
+                <div className="student-timeline" style={{ marginTop: 12 }}>
+                  {pending.byStudent.map((student) => (
+                    <article key={student.studentName} className="student-timeline__item">
+                      <span>{student.pendingCount} pendiente(s)</span>
+                      <strong>{student.studentName}</strong>
+                      <div style={{ display: "grid", gap: 10, marginTop: 10 }}>
+                        {student.answers.map((answer) => (
+                          <div key={answer.id} className="imported-test-question" style={{ padding: 12 }}>
+                            <div className="imported-test-question__head">
+                              <span className="badge badge--warning">{answer.status}</span>
+                              <span>{answer.question.points} pts</span>
+                            </div>
+                            <p style={{ marginTop: 8 }}>{answer.question.statement}</p>
+                            <p style={{ color: "var(--muted)", marginTop: 6 }}>{answer.textAnswer || "Sin respuesta escrita."}</p>
+                            <div className="form-row" style={{ marginTop: 8 }}>
+                              <input
+                                type="number"
+                                min={0}
+                                max={answer.question.points}
+                                step={0.5}
+                                placeholder={`0 a ${answer.question.points}`}
+                                value={manualScores[answer.id] ?? ""}
+                                onChange={(event) => setManualScores((current) => ({ ...current, [answer.id]: event.target.value }))}
+                              />
+                              <button
+                                disabled={gradeAnswerMutation.isPending}
+                                onClick={() => submitManualScore(answer.id, answer.question.points)}
+                              >
+                                Guardar puntaje
+                              </button>
+                            </div>
+                          </div>
+                        ))}
+                      </div>
+                    </article>
+                  ))}
                 </div>
               </div>
             )}

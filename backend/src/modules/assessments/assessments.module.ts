@@ -4,9 +4,10 @@ import { AttemptsModule } from "./attempts/attempts.module.js";
 import { GradingModule } from "./grading/grading.module.js";
 import { GradeChangeRequestsModule } from "./grade-change-requests/grade-change-requests.module.js";
 import { ImportTestModule } from "./import/import-test.module.js";
+import { AssessmentTemplatesModule } from "./templates/assessment-templates.module.js";
 
 @Module({
-  imports: [AssessmentsModule, AttemptsModule, GradingModule, GradeChangeRequestsModule, ImportTestModule],
-  exports: [AssessmentsModule, AttemptsModule, GradingModule, GradeChangeRequestsModule, ImportTestModule],
+  imports: [AssessmentsModule, AttemptsModule, GradingModule, GradeChangeRequestsModule, ImportTestModule, AssessmentTemplatesModule],
+  exports: [AssessmentsModule, AttemptsModule, GradingModule, GradeChangeRequestsModule, ImportTestModule, AssessmentTemplatesModule],
 })
 export class AssessmentsDomainModule {}

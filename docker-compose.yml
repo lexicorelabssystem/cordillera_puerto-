@@ -46,6 +46,8 @@ services:
       FRONTEND_URL: ${FRONTEND_URL:-http://localhost}
     ports:
       - "4000:4000"
+    volumes:
+      - uploads:/app/uploads
     depends_on:
       postgres:
         condition: service_healthy
@@ -143,6 +145,8 @@ volumes:
   backups:
     driver: local
   redisdata:
+    driver: local
+  uploads:
     driver: local
 
 networks:

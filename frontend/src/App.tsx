@@ -21,6 +21,12 @@ const AdminLayout = lazy(() =>
 const ImportarPruebaPage = lazy(() =>
   import("./pages/profesor/ImportarPruebaPage").then((m) => ({ default: m.ImportarPruebaPage }))
 );
+const AssessmentDetailPage = lazy(() =>
+  import("./pages/admin/AssessmentDetailPage").then((m) => ({ default: m.AssessmentDetailPage }))
+);
+const StudentAssessmentAttemptPage = lazy(() =>
+  import("./pages/alumno/StudentAssessmentAttemptPage").then((m) => ({ default: m.StudentAssessmentAttemptPage }))
+);
 
 function SuspenseWrapper({ children, label }: { children: React.ReactNode; label?: string }) {
   return (
@@ -106,9 +112,23 @@ function AuthenticatedApp({ user, logout }: { user: AuthUser; logout: () => Prom
               </SuspenseWrapper>
             </RequireRole>
           } />
+          <Route path="/teacher/evaluaciones/:id" element={
+            <RequireRole user={user} allowed={["TEACHER"]}>
+              <SuspenseWrapper label="Cargando evaluacion...">
+                <AssessmentDetailPage />
+              </SuspenseWrapper>
+            </RequireRole>
+          } />
           <Route path="/teacher/*" element={
             <RequireRole user={user} allowed={["TEACHER"]}>
               <ProfesorDashboard user={user} onLogout={logout} />
+            </RequireRole>
+          } />
+          <Route path="/student/evaluaciones/:id" element={
+            <RequireRole user={user} allowed={["STUDENT"]}>
+              <SuspenseWrapper label="Cargando evaluacion...">
+                <StudentAssessmentAttemptPage user={user} onLogout={logout} />
+              </SuspenseWrapper>
             </RequireRole>
           } />
           <Route path="/student/*" element={

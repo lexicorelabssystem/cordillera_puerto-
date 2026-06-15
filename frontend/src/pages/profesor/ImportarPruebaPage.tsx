@@ -69,6 +69,14 @@ export function ImportarPruebaPage({ user, onLogout }: Props) {
   const [file, setFile] = useState<File | null>(null);
   const [draftId, setDraftId] = useState("");
   const [questions, setQuestions] = useState<ImportedQuestion[]>([]);
+  const [assessmentTitle, setAssessmentTitle] = useState("");
+  const [assessmentType, setAssessmentType] = useState("PROCESO");
+  const [semester, setSemester] = useState(1);
+  const [weight, setWeight] = useState(0);
+  const [startDate, setStartDate] = useState(new Date().toISOString().slice(0, 16));
+  const [endDate, setEndDate] = useState("");
+  const [durationMinutes, setDurationMinutes] = useState("");
+  const [publishNow, setPublishNow] = useState(true);
   const selectedAssignment = assignments.find((assignment) => assignment.assignment_id === assignmentId);
 
   useEffect(() => {
@@ -88,6 +96,7 @@ export function ImportarPruebaPage({ user, onLogout }: Props) {
     onSuccess: (result) => {
       setDraftId(result.draftId);
       setQuestions(result.questions);
+      setAssessmentTitle((current) => current || file?.name.replace(/\.[^.]+$/, "") || "Evaluacion digital");
       toast(`Se detectaron ${result.questions.length} pregunta(s).`, "success");
     },
     onError: (error) => {
@@ -126,6 +135,52 @@ export function ImportarPruebaPage({ user, onLogout }: Props) {
     },
   });
 
+  const createAssessmentMutation = useMutation({
+    mutationFn: async () => {
+      if (!draftId) throw new Error("Primero importa un PDF o Word.");
+      if (!selectedAssignment) throw new Error("Selecciona curso y asignatura.");
+      if (!assessmentTitle.trim()) throw new Error("Ingresa un titulo para la evaluacion.");
+      const approved = questions.filter((question) => question.enunciado.trim());
+      const created = await api.createAssessmentFromImportedEvaluation(draftId, {
+        title: assessmentTitle.trim(),
+        courseId: selectedAssignment.course_id,
+        subjectId: selectedAssignment.subject_id,
+        assessmentType,
+        deliveryMode: "ONLINE",
+        semester,
+        startDate: startDate ? new Date(startDate).toISOString() : undefined,
+        endDate: endDate ? new Date(endDate).toISOString() : undefined,
+        timeLimitMin: durationMinutes ? Number(durationMinutes) : undefined,
+        weight: Number(weight) || 0,
+        questions: approved.map((question) => ({
+          draftQuestionId: question.draftQuestionId,
+          number: question.numero,
+          statement: question.enunciado,
+          type: question.tipo,
+          alternatives: question.alternativas,
+          correctAnswer: question.respuestaCorrecta,
+          points: Number(question.puntaje) || 1,
+        })),
+      });
+      if (publishNow) {
+        await api.publishAssessment(created.assessmentId);
+        await api.activateAssessment(created.assessmentId);
+      }
+      return created;
+    },
+    onSuccess: (result) => {
+      toast(`Evaluacion creada con ${result.createdCount} pregunta(s).`, "success");
+      queryClient.invalidateQueries({ queryKey: ["teacher-profile-assessments"] });
+      queryClient.invalidateQueries({ queryKey: ["teacher-course-book"] });
+      setDraftId("");
+      setQuestions([]);
+      setFile(null);
+    },
+    onError: (error) => {
+      toast(error instanceof Error ? error.message : "No se pudo crear la evaluacion digital.", "error");
+    },
+  });
+
   function updateQuestion(index: number, patch: Partial<ImportedQuestion>) {
     setQuestions((current) => current.map((question, i) => (i === index ? { ...question, ...patch } : question)));
   }
@@ -156,7 +211,7 @@ export function ImportarPruebaPage({ user, onLogout }: Props) {
       <section className="panel">
         <div className="panel-heading">
           <div>
-            <h3>Importar PDF</h3>
+            <h3>Importar PDF o Word</h3>
             <p>Las respuestas correctas quedan vacias hasta que las marques manualmente.</p>
           </div>
           <Link className="btn-secondary" to="/teacher">Volver</Link>
@@ -175,10 +230,10 @@ export function ImportarPruebaPage({ user, onLogout }: Props) {
             </select>
           </div>
           <div className="form-field">
-            <label>PDF de la prueba</label>
+            <label>Archivo de la prueba</label>
             <input
               type="file"
-              accept="application/pdf,.pdf"
+              accept="application/pdf,.pdf,application/vnd.openxmlformats-officedocument.wordprocessingml.document,.docx"
               onChange={(event) => setFile(event.target.files?.[0] ?? null)}
             />
             {file ? <small>{file.name}</small> : null}
@@ -196,9 +251,59 @@ export function ImportarPruebaPage({ user, onLogout }: Props) {
               <h3>Revision docente</h3>
               <p>{questions.length} pregunta(s) en borrador. Edita, asigna puntaje y marca la respuesta correcta.</p>
             </div>
-            <button disabled={!readyToSave || commitMutation.isPending} onClick={() => commitMutation.mutate()}>
-              {commitMutation.isPending ? "Guardando..." : "Guardar en banco de preguntas"}
-            </button>
+            <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
+              <button className="btn-secondary" disabled={!readyToSave || commitMutation.isPending} onClick={() => commitMutation.mutate()}>
+                {commitMutation.isPending ? "Guardando..." : "Guardar en banco"}
+              </button>
+              <button disabled={!readyToSave || createAssessmentMutation.isPending} onClick={() => createAssessmentMutation.mutate()}>
+                {createAssessmentMutation.isPending ? "Creando..." : "Crear evaluacion digital"}
+              </button>
+            </div>
+          </div>
+
+          <div className="teacher-material-upload">
+            <div className="form-field">
+              <label>Titulo</label>
+              <input value={assessmentTitle} onChange={(event) => setAssessmentTitle(event.target.value)} />
+            </div>
+            <div className="form-field">
+              <label>Tipo</label>
+              <select value={assessmentType} onChange={(event) => setAssessmentType(event.target.value)}>
+                <option value="DIAGNOSTICA">Diagnostica</option>
+                <option value="PROCESO">Proceso</option>
+                <option value="CIERRE">Cierre</option>
+                <option value="PARCIAL">Parcial</option>
+                <option value="FINAL">Final</option>
+                <option value="SIMCE">SIMCE</option>
+              </select>
+            </div>
+            <div className="form-field">
+              <label>Semestre</label>
+              <select value={semester} onChange={(event) => setSemester(Number(event.target.value))}>
+                <option value={1}>1</option>
+                <option value={2}>2</option>
+              </select>
+            </div>
+            <div className="form-field">
+              <label>Ponderacion (%)</label>
+              <input type="number" min={0} max={100} value={weight} onChange={(event) => setWeight(Number(event.target.value))} />
+            </div>
+            <div className="form-field">
+              <label>Inicio</label>
+              <input type="datetime-local" value={startDate} onChange={(event) => setStartDate(event.target.value)} />
+            </div>
+            <div className="form-field">
+              <label>Cierre</label>
+              <input type="datetime-local" value={endDate} onChange={(event) => setEndDate(event.target.value)} />
+            </div>
+            <div className="form-field">
+              <label>Duracion opcional</label>
+              <input type="number" min={1} placeholder="Minutos" value={durationMinutes} onChange={(event) => setDurationMinutes(event.target.value)} />
+            </div>
+            <label className="imported-test-option" style={{ alignSelf: "end" }}>
+              <input type="checkbox" checked={publishNow} onChange={(event) => setPublishNow(event.target.checked)} />
+              Publicar al curso
+            </label>
           </div>
 
           <div className="imported-test-list">
