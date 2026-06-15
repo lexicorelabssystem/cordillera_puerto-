@@ -1,6 +1,9 @@
 import { BadRequestException, Injectable } from "@nestjs/common";
 import { QuestionType } from "@prisma/client";
-import * as zlib from "node:zlib";
+import { createRequire } from "node:module";
+
+const require = createRequire(import.meta.url);
+const JSZip: typeof import("jszip") = require("jszip");
 
 export type ParsedAssessmentQuestion = {
   number: number;
@@ -18,14 +21,6 @@ export type ParsedAssessmentDocument = {
   questions: ParsedAssessmentQuestion[];
 };
 
-type ZipEntry = {
-  name: string;
-  compressionMethod: number;
-  compressedSize: number;
-  uncompressedSize: number;
-  localHeaderOffset: number;
-};
-
 @Injectable()
 export class DocumentAssessmentParserService {
   async parse(params: { buffer: Buffer; fileName: string; mimeType: string }): Promise<ParsedAssessmentDocument> {
@@ -33,7 +28,7 @@ export class DocumentAssessmentParserService {
     const rawText = extension === "pdf" || params.mimeType.includes("pdf")
       ? await this.extractPdfText(params.buffer)
       : extension === "docx" || params.mimeType.includes("wordprocessingml")
-        ? this.extractDocxText(params.buffer)
+        ? await this.extractDocxText(params.buffer)
         : this.unsupportedWordMessage(extension);
 
     const questions = this.detectQuestions(rawText);
@@ -91,10 +86,26 @@ export class DocumentAssessmentParserService {
     return text;
   }
 
-  private extractDocxText(buffer: Buffer) {
-    const xml = this.readZipEntry(buffer, "word/document.xml");
+  private async extractDocxText(buffer: Buffer) {
+    let zip: InstanceType<typeof JSZip>;
+    try {
+      zip = await JSZip.loadAsync(buffer);
+    } catch {
+      throw new BadRequestException(
+        "No se pudo leer el contenido del archivo Word. Guarda el documento nuevamente como .docx.",
+      );
+    }
+
+    const documentXml = zip.file("word/document.xml") || zip.file("/word/document.xml");
+    if (!documentXml) {
+      throw new BadRequestException(
+        "No se encontro word/document.xml en el archivo Word. Guarda el documento nuevamente como .docx.",
+      );
+    }
+
+    const xml = await documentXml.async("string");
     if (!xml) {
-      throw new BadRequestException("No se pudo leer el contenido del archivo Word. Guarda el documento nuevamente como .docx.");
+      throw new BadRequestException("El archivo word/document.xml esta vacio.");
     }
 
     const paragraphs = [...xml.matchAll(/<w:p[\s\S]*?<\/w:p>/g)]
@@ -111,58 +122,6 @@ export class DocumentAssessmentParserService {
       throw new BadRequestException("El Word no contiene texto suficiente para detectar preguntas.");
     }
     return normalized;
-  }
-
-  private readZipEntry(buffer: Buffer, entryName: string) {
-    const eocdOffset = this.findEndOfCentralDirectory(buffer);
-    if (eocdOffset < 0) return null;
-
-    const centralDirectorySize = buffer.readUInt32LE(eocdOffset + 12);
-    const centralDirectoryOffset = buffer.readUInt32LE(eocdOffset + 16);
-    const end = centralDirectoryOffset + centralDirectorySize;
-    let offset = centralDirectoryOffset;
-
-    while (offset < end && buffer.readUInt32LE(offset) === 0x02014b50) {
-      const entry: ZipEntry = {
-        compressionMethod: buffer.readUInt16LE(offset + 10),
-        compressedSize: buffer.readUInt32LE(offset + 20),
-        uncompressedSize: buffer.readUInt32LE(offset + 24),
-        localHeaderOffset: buffer.readUInt32LE(offset + 42),
-        name: "",
-      };
-      const fileNameLength = buffer.readUInt16LE(offset + 28);
-      const extraLength = buffer.readUInt16LE(offset + 30);
-      const commentLength = buffer.readUInt16LE(offset + 32);
-      entry.name = buffer.subarray(offset + 46, offset + 46 + fileNameLength).toString("utf8");
-
-      if (entry.name === entryName) {
-        return this.readZipEntryData(buffer, entry);
-      }
-      offset += 46 + fileNameLength + extraLength + commentLength;
-    }
-    return null;
-  }
-
-  private readZipEntryData(buffer: Buffer, entry: ZipEntry) {
-    const localOffset = entry.localHeaderOffset;
-    if (buffer.readUInt32LE(localOffset) !== 0x04034b50) return null;
-
-    const fileNameLength = buffer.readUInt16LE(localOffset + 26);
-    const extraLength = buffer.readUInt16LE(localOffset + 28);
-    const dataStart = localOffset + 30 + fileNameLength + extraLength;
-    const compressed = buffer.subarray(dataStart, dataStart + entry.compressedSize);
-
-    if (entry.compressionMethod === 0) return compressed.toString("utf8");
-    if (entry.compressionMethod === 8) return zlib.inflateRawSync(compressed, { finishFlush: zlib.constants.Z_SYNC_FLUSH }).toString("utf8");
-    throw new BadRequestException(`El archivo Word usa compresion no soportada (${entry.compressionMethod}).`);
-  }
-
-  private findEndOfCentralDirectory(buffer: Buffer) {
-    const minOffset = Math.max(0, buffer.length - 0xffff - 22);
-    for (let offset = buffer.length - 22; offset >= minOffset; offset -= 1) {
-      if (buffer.readUInt32LE(offset) === 0x06054b50) return offset;
-    }
-    return -1;
   }
 
   private detectQuestions(rawText: string): ParsedAssessmentQuestion[] {
