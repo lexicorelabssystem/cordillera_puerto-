@@ -1578,8 +1578,8 @@ function SharedAssessmentTemplatesPanel({ courseId, subjectId, gradeLevel }: { c
   });
 
   const createFromTemplate = useMutation({
-    mutationFn: (template: { id: string; title: string }) =>
-      api.createAssessmentFromTemplate(template.id, {
+    mutationFn: async (template: { id: string; title: string }) => {
+      const result = await api.createAssessmentFromTemplate(template.id, {
         courseId,
         subjectId,
         title: template.title,
@@ -1587,17 +1587,20 @@ function SharedAssessmentTemplatesPanel({ courseId, subjectId, gradeLevel }: { c
         deliveryMode: "ONLINE",
         semester: 1,
         startDate: new Date().toISOString(),
-        publishNow: false,
-      }),
+        publishNow: true,
+      }) as { assessmentId: string; createdCount: number; maxScore: number; status: string };
+      await api.activateAssessment(result.assessmentId);
+      return result;
+    },
     onMutate: (template) => setPublishingId(template.id),
     onSuccess: (result) => {
-      toast(`Borrador creado con ${result.createdCount} pregunta(s). Revisalo y publicalo cuando la pauta este lista.`, "success");
+      toast(`Prueba asignada con ${result.createdCount} pregunta(s). Los alumnos ya pueden responder.`, "success");
       queryClient.invalidateQueries({ queryKey: ["teacher-course-assessments", courseId, subjectId] });
       queryClient.invalidateQueries({ queryKey: ["teacher-profile-assessments", courseId, subjectId] });
       queryClient.invalidateQueries({ queryKey: ["teacher-course-book", courseId, subjectId] });
     },
     onError: (error) => {
-      toast(error instanceof Error ? error.message : "No se pudo crear la evaluacion desde el banco.", "error");
+      toast(error instanceof Error ? error.message : "No se pudo asignar la prueba al curso.", "error");
     },
     onSettled: () => setPublishingId(""),
   });
@@ -1660,9 +1663,9 @@ function SharedAssessmentTemplatesPanel({ courseId, subjectId, gradeLevel }: { c
                       className="btn-small"
                       disabled={createFromTemplate.isPending}
                       onClick={() => createFromTemplate.mutate(template)}
-                      title={gradeMismatch ? "El nivel no coincide con el curso, pero puedes usarlo igual" : "Crear evaluacion desde esta plantilla"}
+                      title={gradeMismatch ? "El nivel no coincide con el curso, pero puedes usarlo igual" : "Asignar prueba al curso y activarla para los alumnos"}
                     >
-                      {publishingId === template.id ? "Creando..." : "Crear borrador"}
+                      {publishingId === template.id ? "Asignando..." : "Asignar al curso"}
                     </button>
                   </td>
                 </tr>
