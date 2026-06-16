@@ -126,7 +126,7 @@ export function AssessmentTemplatesPage() {
         const f = file[i];
         const result = await api.uploadAssessmentTemplate({
           file: f,
-          title: file.length > 1 ? f.name.replace(/\.[^.]+$/, "") : title.trim() || undefined,
+          title: file.length > 1 ? f.name.replace(/\.[^.]+$/, "") : title.trim(),
           description: description.trim() || undefined,
           institutionId: selectedInstitution?.id,
           subjectId: subjectId || undefined,
