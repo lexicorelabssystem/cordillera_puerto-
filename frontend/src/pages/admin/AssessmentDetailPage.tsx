@@ -123,6 +123,18 @@ export function AssessmentDetailPage() {
   const attempts = normalizeAttempts(attemptsQuery.data);
   const summary = gradingSummaryQuery.data;
 
+  const publishMutation = useMutation({
+    mutationFn: async () => {
+      await api.publishAssessment(id!);
+      await api.activateAssessment(id!);
+    },
+    onSuccess: () => {
+      toast("Evaluacion publicada y activa para alumnos.", "success");
+      queryClient.invalidateQueries({ queryKey: ["assessment-detail", id] });
+    },
+    onError: (error) => toast(error instanceof Error ? error.message : "No se pudo publicar la evaluacion.", "error"),
+  });
+
   if (assessmentQuery.isLoading) return <LoadingSpinner label="Cargando evaluacion..." />;
   if (!a) return <div className="panel"><p className="error">Evaluacion no encontrada.</p></div>;
 
@@ -143,18 +155,6 @@ export function AssessmentDetailPage() {
 
   const questions = arrayFrom(a.questions).map((question) => question as AssessmentQuestionRow);
   const canEditDraft = a.status === "DRAFT";
-
-  const publishMutation = useMutation({
-    mutationFn: async () => {
-      await api.publishAssessment(id!);
-      await api.activateAssessment(id!);
-    },
-    onSuccess: () => {
-      toast("Evaluacion publicada y activa para alumnos.", "success");
-      queryClient.invalidateQueries({ queryKey: ["assessment-detail", id] });
-    },
-    onError: (error) => toast(error instanceof Error ? error.message : "No se pudo publicar la evaluacion.", "error"),
-  });
 
   return (
     <div className="assessment-detail">

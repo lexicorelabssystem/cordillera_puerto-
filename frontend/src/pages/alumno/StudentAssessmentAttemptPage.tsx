@@ -1,4 +1,4 @@
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useParams } from "react-router-dom";
 import { ShellLayout } from "../../components/common/ShellLayout";
@@ -87,6 +87,19 @@ export function StudentAssessmentAttemptPage({ user, onLogout }: Props) {
       })),
     [answers],
   );
+
+  useEffect(() => {
+    if (!attemptId || locked || timerSeconds === null || timerSeconds <= 0) return;
+
+    const id = setInterval(() => {
+      setTimerSeconds((prev) => {
+        if (prev === null || prev <= 1) return 0;
+        return prev - 1;
+      });
+    }, 1000);
+
+    return () => clearInterval(id);
+  }, [attemptId, locked, timerSeconds]);
 
   const startMutation = useMutation({
     mutationFn: () => api.startAssessmentAttempt(id!),
