@@ -50,7 +50,7 @@ export function EvaluationsPage({ overview }: Props) {
             </thead>
             <tbody>
               {overview.recentAssessments.map((a) => (
-                <tr key={a.assessment_id} onClick={() => navigate(`/admin/evaluaciones/${a.assessment_id}`)} style={{ cursor: "pointer" }}>
+                  <tr key={a.assessment_id} onClick={() => navigate(`../evaluaciones/${a.assessment_id}`)} style={{ cursor: "pointer" }}>
                   <td><strong>{a.title}</strong></td>
                   <td>{a.course_name}</td>
                   <td>{a.subject_name}</td>

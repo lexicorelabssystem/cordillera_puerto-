@@ -160,7 +160,7 @@ export function AssessmentDetailPage() {
     <div className="assessment-detail">
       {/* Breadcrumb */}
       <div className="breadcrumbs">
-        <span className="breadcrumbs__item"><a href="#" onClick={(e) => { e.preventDefault(); navigate("/admin/evaluaciones"); }}>Evaluaciones</a></span>
+        <span className="breadcrumbs__item"><a href="#" onClick={(e) => { e.preventDefault(); navigate(".."); }}>Evaluaciones</a></span>
         <span className="breadcrumbs__sep">/</span>
         <span className="breadcrumbs__item">{a.title as string || "Detalle"}</span>
       </div>
