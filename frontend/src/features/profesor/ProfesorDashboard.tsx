@@ -1561,6 +1561,9 @@ function SharedAssessmentTemplatesPanel({ courseId, subjectId, gradeLevel }: { c
   const queryClient = useQueryClient();
   const { toast } = useToast();
   const [publishingId, setPublishingId] = useState("");
+  const [modalOpen, setModalOpen] = useState(false);
+  const [selectedTemplate, setSelectedTemplate] = useState<{ id: string; title: string; questionsCount: number; totalPoints: number } | null>(null);
+  const [timeLimit, setTimeLimit] = useState("");
   const templatesQuery = useQuery({
     queryKey: ["teacher-assessment-templates", courseId, subjectId],
     queryFn: () => api.listAssessmentTemplates({ status: "PUBLISHED" }) as Promise<{
@@ -1578,23 +1581,28 @@ function SharedAssessmentTemplatesPanel({ courseId, subjectId, gradeLevel }: { c
   });
 
   const createFromTemplate = useMutation({
-    mutationFn: async (template: { id: string; title: string }) => {
-      const result = await api.createAssessmentFromTemplate(template.id, {
+    mutationFn: async (params: { templateId: string; title: string; timeLimitMin?: number }) => {
+      const result = await api.createAssessmentFromTemplate(params.templateId, {
         courseId,
         subjectId,
-        title: template.title,
+        title: params.title,
         assessmentType: "PROCESO",
         deliveryMode: "ONLINE",
         semester: 1,
         startDate: new Date().toISOString(),
         publishNow: true,
+        timeLimitMin: params.timeLimitMin,
       }) as { assessmentId: string; createdCount: number; maxScore: number; status: string };
       await api.activateAssessment(result.assessmentId);
       return result;
     },
-    onMutate: (template) => setPublishingId(template.id),
-    onSuccess: (result) => {
-      toast(`Prueba asignada con ${result.createdCount} pregunta(s). Los alumnos ya pueden responder.`, "success");
+    onMutate: (params) => setPublishingId(params.templateId),
+    onSuccess: (result, params) => {
+      const timeMsg = params.timeLimitMin ? ` (${params.timeLimitMin} min)` : "";
+      toast(`Prueba asignada con ${result.createdCount} pregunta(s)${timeMsg}. Los alumnos ya pueden responder.`, "success");
+      setModalOpen(false);
+      setSelectedTemplate(null);
+      setTimeLimit("");
       queryClient.invalidateQueries({ queryKey: ["teacher-course-assessments", courseId, subjectId] });
       queryClient.invalidateQueries({ queryKey: ["teacher-profile-assessments", courseId, subjectId] });
       queryClient.invalidateQueries({ queryKey: ["teacher-course-book", courseId, subjectId] });
@@ -1662,10 +1670,14 @@ function SharedAssessmentTemplatesPanel({ courseId, subjectId, gradeLevel }: { c
                     <button
                       className="btn-small"
                       disabled={createFromTemplate.isPending}
-                      onClick={() => createFromTemplate.mutate(template)}
-                      title={gradeMismatch ? "El nivel no coincide con el curso, pero puedes usarlo igual" : "Asignar prueba al curso y activarla para los alumnos"}
+                      onClick={() => {
+                        setSelectedTemplate(template);
+                        setTimeLimit("");
+                        setModalOpen(true);
+                      }}
+                      title={gradeMismatch ? "El nivel no coincide con el curso, pero puedes usarlo igual" : "Configurar y asignar prueba al curso"}
                     >
-                      {publishingId === template.id ? "Asignando..." : "Asignar al curso"}
+                      Asignar al curso
                     </button>
                   </td>
                 </tr>
@@ -1675,6 +1687,64 @@ function SharedAssessmentTemplatesPanel({ courseId, subjectId, gradeLevel }: { c
           </table>
         </div>
       ) : null}
+
+      <Modal
+        isOpen={modalOpen}
+        onClose={() => { setModalOpen(false); setSelectedTemplate(null); setTimeLimit(""); }}
+        title="Configurar prueba"
+        size="sm"
+        footer={
+          <div style={{ display: "flex", gap: 8, justifyContent: "flex-end" }}>
+            <button
+              className="btn-secondary"
+              onClick={() => { setModalOpen(false); setSelectedTemplate(null); setTimeLimit(""); }}
+              disabled={createFromTemplate.isPending}
+            >
+              Cancelar
+            </button>
+            <button
+              disabled={createFromTemplate.isPending}
+              onClick={() => {
+                if (!selectedTemplate) return;
+                createFromTemplate.mutate({
+                  templateId: selectedTemplate.id,
+                  title: selectedTemplate.title,
+                  timeLimitMin: timeLimit ? Number(timeLimit) : undefined,
+                });
+              }}
+            >
+              {createFromTemplate.isPending ? "Asignando..." : "Asignar y activar"}
+            </button>
+          </div>
+        }
+      >
+        {selectedTemplate ? (
+          <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
+            <div>
+              <strong>{selectedTemplate.title}</strong>
+              <p style={{ color: "var(--text-secondary)", fontSize: 13, marginTop: 4 }}>
+                {selectedTemplate.questionsCount} pregunta(s) · {selectedTemplate.totalPoints} pts total
+              </p>
+            </div>
+            <div className="form-field">
+              <label>Tiempo limite (minutos)</label>
+              <input
+                type="number"
+                min={1}
+                max={240}
+                value={timeLimit}
+                onChange={(e) => setTimeLimit(e.target.value)}
+                placeholder="Sin limite (recomendado: 45-90 min)"
+              />
+              {timeLimit ? (
+                <small>{Number(timeLimit) >= 60 ? `${Math.floor(Number(timeLimit) / 60)}h ${Number(timeLimit) % 60 > 0 ? `${Number(timeLimit) % 60}m` : ""}` : `${timeLimit} min`}</small>
+              ) : (
+                <small>Dejar vacio para que los alumnos respondan sin presion de tiempo.</small>
+              )}
+            </div>
+          </div>
+        ) : null}
+      </Modal>
     </section>
   );
 }
