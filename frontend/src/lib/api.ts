@@ -792,6 +792,8 @@ export const api = {
     request<unknown>(`/assessment-templates/${id}/publish`, { method: "POST" }),
   archiveAssessmentTemplate: (id: string) =>
     request<unknown>(`/assessment-templates/${id}/archive`, { method: "POST" }),
+  deleteAssessmentTemplate: (id: string) =>
+    request<{ ok: boolean }>(`/assessment-templates/${id}`, { method: "DELETE" }),
   createAssessmentFromTemplate: (id: string, payload: {
     courseId: string;
     subjectId?: string;

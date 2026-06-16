@@ -158,6 +158,13 @@ export class AssessmentTemplatesController {
     return this.service.archive(id, user);
   }
 
+  @Delete(":id")
+  @Roles("ADMIN", "SUPER_ADMIN", "UTP")
+  @ApiOperation({ summary: "Eliminar plantilla definitivamente del banco" })
+  delete(@Param("id", ParseUUIDPipe) id: string, @CurrentUser() user: JwtPayload) {
+    return this.service.delete(id, user);
+  }
+
   @Post(":id/create-assessment")
   @Roles("ADMIN", "SUPER_ADMIN", "UTP", "TEACHER")
   @ApiOperation({ summary: "Crear evaluacion de curso desde una plantilla publicada" })

@@ -195,6 +195,19 @@ export function AssessmentTemplatesPage() {
     onError: (error) => toast(error instanceof Error ? error.message : "No se pudo publicar.", "error"),
   });
 
+  const deleteTemplateMutation = useMutation({
+    mutationFn: (id: string) => api.deleteAssessmentTemplate(id),
+    onSuccess: (_, id) => {
+      toast("Plantilla eliminada definitivamente.", "success");
+      if (selectedId === id) {
+        setSelectedId("");
+        setQuestions([]);
+      }
+      queryClient.invalidateQueries({ queryKey: ["assessment-templates"] });
+    },
+    onError: (error) => toast(error instanceof Error ? error.message : "No se pudo eliminar la plantilla.", "error"),
+  });
+
   const readyToPublish = questions.length > 0 && questions.every((question) => {
     if (!question.statement.trim() || Number(question.points) <= 0) return false;
     if (!needsOptions(question.type)) return true;
@@ -329,7 +342,7 @@ export function AssessmentTemplatesPage() {
                   <td><span className={`badge ${template.status === "PUBLISHED" ? "badge--active" : template.status === "DRAFT" ? "badge--warning" : "badge--inactive"}`}>{template.status}</span></td>
                   <td>{template.questionsCount ?? 0}</td>
                   <td>{template.totalPoints}</td>
-                  <td><button className="btn-small" onClick={() => setSelectedId(template.id)}>Revisar</button></td>
+                  <td style={{ display: "flex", gap: 6 }}><button className="btn-small" onClick={() => setSelectedId(template.id)}>Revisar</button><button className="btn-small btn-danger" disabled={deleteTemplateMutation.isPending} onClick={() => { if (window.confirm(`¿Eliminar plantilla "${template.title}" definitivamente?`)) deleteTemplateMutation.mutate(template.id); }}>Eliminar</button></td>
                 </tr>
               ))}
             </tbody>

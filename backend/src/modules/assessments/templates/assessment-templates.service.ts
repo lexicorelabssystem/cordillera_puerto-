@@ -289,6 +289,12 @@ export class AssessmentTemplatesService {
     });
   }
 
+  async delete(id: string, user: JwtPayload) {
+    await this.getTemplateForManage(id, user);
+    await this.prisma.assessmentTemplate.delete({ where: { id } });
+    return { ok: true };
+  }
+
   async createAssessment(id: string, dto: CreateAssessmentFromTemplateDto, user: JwtPayload) {
     const template = await this.getTemplateForRead(id, user);
     if (template.status !== "PUBLISHED") throw new BadRequestException("La plantilla debe estar publicada para asignarse a un curso.");
