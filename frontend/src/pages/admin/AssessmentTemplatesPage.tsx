@@ -60,7 +60,8 @@ export function AssessmentTemplatesPage() {
   const [courseId, setCourseId] = useState("");
   const [search, setSearch] = useState("");
   const [status, setStatus] = useState("DRAFT");
-  const [file, setFile] = useState<File | null>(null);
+  const [file, setFile] = useState<File[]>([]);
+  const [uploadProgress, setUploadProgress] = useState({ current: 0, total: 0 });
   const [selectedId, setSelectedId] = useState("");
   const [questions, setQuestions] = useState<TemplateQuestion[]>([]);
 
@@ -117,25 +118,37 @@ export function AssessmentTemplatesPage() {
   }, [subjectsQuery.data]);
 
   const uploadMutation = useMutation({
-    mutationFn: () => {
-      if (!file) throw new Error("Selecciona un PDF o Word .docx.");
+    mutationFn: async () => {
+      if (file.length === 0) throw new Error("Selecciona al menos un PDF o Word .docx.");
       if (!title.trim()) throw new Error("Ingresa un titulo para la prueba.");
-      return api.uploadAssessmentTemplate({
-        file,
-        title: title.trim(),
-        description: description.trim() || undefined,
-        institutionId: selectedInstitution?.id,
-        subjectId: subjectId || undefined,
-        gradeLevel: gradeLevel ?? undefined,
-      }) as Promise<AssessmentTemplate>;
+      setUploadProgress({ current: 0, total: file.length });
+      const results: AssessmentTemplate[] = [];
+      for (let i = 0; i < file.length; i++) {
+        const f = file[i];
+        const result = await api.uploadAssessmentTemplate({
+          file: f,
+          title: file.length > 1 ? `${title.trim()} (${i + 1}/${file.length})` : title.trim(),
+          description: description.trim() || undefined,
+          institutionId: selectedInstitution?.id,
+          subjectId: subjectId || undefined,
+          gradeLevel: gradeLevel ?? undefined,
+        }) as AssessmentTemplate;
+        results.push(result);
+        setUploadProgress({ current: i + 1, total: file.length });
+      }
+      return results;
     },
-    onSuccess: (template) => {
-      toast("Prueba analizada y guardada como borrador.", "success");
-      setSelectedId(template.id);
-      setFile(null);
+    onSuccess: (templates) => {
+      toast(`${templates.length} prueba(s) analizada(s) y guardada(s) como borrador.`, "success");
+      setSelectedId(templates[0]?.id ?? "");
+      setFile([]);
+      setUploadProgress({ current: 0, total: 0 });
       queryClient.invalidateQueries({ queryKey: ["assessment-templates"] });
     },
-    onError: (error) => toast(error instanceof Error ? error.message : "No se pudo subir la prueba.", "error"),
+    onError: (error) => {
+      toast(error instanceof Error ? error.message : "No se pudieron subir las pruebas.", "error");
+      setUploadProgress({ current: 0, total: 0 });
+    },
   });
 
   const saveQuestionMutation = useMutation({
@@ -288,17 +301,27 @@ export function AssessmentTemplatesPage() {
             <label>Archivo PDF/DOCX</label>
             <input
               type="file"
+              multiple
               accept="application/pdf,.pdf,application/vnd.openxmlformats-officedocument.wordprocessingml.document,.docx"
-              onChange={(event) => setFile(event.target.files?.[0] ?? null)}
+              onChange={(event) => {
+                const selected = event.target.files;
+                if (selected && selected.length > 0) setFile(Array.from(selected));
+              }}
             />
-            {file ? <small>{file.name}</small> : null}
+            {file.length > 0 ? <small>{file.length} archivo(s): {file.map(f => f.name).join(", ")}</small> : null}
           </div>
           <div className="form-field" style={{ gridColumn: "1 / -1" }}>
             <label>Descripcion</label>
             <textarea value={description} onChange={(event) => setDescription(event.target.value)} rows={2} />
           </div>
-          <button disabled={uploadMutation.isPending || !file} onClick={() => uploadMutation.mutate()}>
-            {uploadMutation.isPending ? "Analizando..." : "Subir y analizar"}
+          <button disabled={uploadMutation.isPending || file.length === 0} onClick={() => uploadMutation.mutate()}>
+            {uploadMutation.isPending
+              ? uploadProgress.total > 1
+                ? `Analizando ${uploadProgress.current}/${uploadProgress.total}...`
+                : "Analizando..."
+              : file.length > 1
+                ? `Subir y analizar (${file.length})`
+                : "Subir y analizar"}
           </button>
         </div>
       </section>
