@@ -120,14 +120,13 @@ export function AssessmentTemplatesPage() {
   const uploadMutation = useMutation({
     mutationFn: async () => {
       if (file.length === 0) throw new Error("Selecciona al menos un PDF o Word .docx.");
-      if (!title.trim()) throw new Error("Ingresa un titulo para la prueba.");
       setUploadProgress({ current: 0, total: file.length });
       const results: AssessmentTemplate[] = [];
       for (let i = 0; i < file.length; i++) {
         const f = file[i];
         const result = await api.uploadAssessmentTemplate({
           file: f,
-          title: file.length > 1 ? `${title.trim()} (${i + 1}/${file.length})` : title.trim(),
+          title: file.length > 1 ? f.name.replace(/\.[^.]+$/, "") : title.trim() || undefined,
           description: description.trim() || undefined,
           institutionId: selectedInstitution?.id,
           subjectId: subjectId || undefined,
@@ -274,7 +273,13 @@ export function AssessmentTemplatesPage() {
         <div className="teacher-material-upload">
           <div className="form-field">
             <label>Titulo</label>
-            <input value={title} onChange={(event) => setTitle(event.target.value)} placeholder="Prueba unidad 1" />
+            <input
+              value={file.length > 1 ? "" : title}
+              onChange={(event) => setTitle(event.target.value)}
+              placeholder={file.length > 1 ? "Se usa el nombre de cada archivo" : "Prueba unidad 1"}
+              disabled={file.length > 1}
+            />
+            {file.length > 1 ? <small>Con multiples archivos el titulo se toma del nombre de cada documento.</small> : null}
           </div>
           <div className="form-field">
             <label>Asignatura</label>
@@ -323,6 +328,16 @@ export function AssessmentTemplatesPage() {
                 ? `Subir y analizar (${file.length})`
                 : "Subir y analizar"}
           </button>
+          {uploadMutation.isPending && uploadProgress.total > 0 ? (
+            <div style={{ display: "flex", alignItems: "center", gap: 10, marginTop: 8 }}>
+              <progress
+                value={uploadProgress.current}
+                max={uploadProgress.total}
+                style={{ flex: 1, height: 8 }}
+              />
+              <small>{Math.round((uploadProgress.current / uploadProgress.total) * 100)}%</small>
+            </div>
+          ) : null}
         </div>
       </section>
 
