@@ -2,7 +2,7 @@ import {
   Injectable, NotFoundException, BadRequestException, Logger,
 } from "@nestjs/common";
 import { PrismaService } from "../../prisma/prisma.service.js";
-import * as ExcelJS from "exceljs";
+import ExcelJS from "exceljs";
 import * as fs from "node:fs";
 import * as path from "node:path";
 import * as crypto from "node:crypto";
@@ -296,8 +296,25 @@ export class ImportsService {
     for (let i = 0; i < rows.length; i++) {
       const data = rows[i];
       const errors: string[] = [];
+      const courseName = this.getStudentCourseName(data);
+      const rut = this.getStudentRut(data);
+      const email = this.getStudentEmail(data);
       if (!this.getStudentFullName(data) && !this.getStudentFirstName(data)) errors.push("Falta nombre del estudiante");
-      if (!this.getStudentCourseName(data)) errors.push("Falta curso");
+      if (!rut) errors.push("Falta RUT");
+      if (!courseName) {
+        errors.push("Falta curso");
+      } else {
+        const course = await this.findCourseByName(courseName);
+        if (!course) errors.push(`Curso no encontrado en la base de datos: ${courseName}`);
+      }
+      if (!email) {
+        errors.push("Falta correo electronico");
+      } else if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
+        errors.push(`Correo invalido: ${email}`);
+      } else {
+        const existingUser = await this.prisma.user.findUnique({ where: { email } });
+        if (existingUser) errors.push(`Ya existe un usuario con el correo: ${email}`);
+      }
       result.push({ rowNumber: i + 2, data, errors });
     }
 
@@ -336,6 +353,20 @@ export class ImportsService {
       firstName: parts.slice(0, 2).join(" "),
       lastName: parts.slice(2, 4).join(" "),
     };
+  }
+
+  private async findCourseByName(courseName: string) {
+    const normalized = courseName.trim();
+    return this.prisma.course.findFirst({
+      where: {
+        isActive: true,
+        OR: [
+          { name: { equals: normalized, mode: "insensitive" } },
+          { name: { contains: normalized, mode: "insensitive" } },
+        ],
+      },
+      orderBy: { name: "asc" },
+    });
   }
 
   private async validateQuestions(job: { fileName: string }): Promise<{ data: ImportRow[]; errors: string[] }> {
@@ -418,9 +449,7 @@ export class ImportsService {
           failed++; continue;
         }
 
-        const course = await this.prisma.course.findFirst({
-          where: { name: courseName },
-        });
+        const course = await this.findCourseByName(courseName);
 
         if (!course) {
           if (!skipErrors) throw new Error(`Curso no encontrado: ${courseName}`);
