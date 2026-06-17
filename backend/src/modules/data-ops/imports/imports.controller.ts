@@ -1,5 +1,5 @@
 import {
-  Controller, Get, Post, Param, Query, Body, Req, HttpCode, HttpStatus,
+  Controller, Delete, Get, Post, Param, Query, Body, Req, HttpCode, HttpStatus,
   UseGuards, ParseUUIDPipe, BadRequestException,
 } from "@nestjs/common";
 import { ApiTags, ApiOperation, ApiBearerAuth, ApiQuery, ApiConsumes } from "@nestjs/swagger";
@@ -55,6 +55,14 @@ export class ImportsController {
   @ApiOperation({ summary: "Revertir importación completada" })
   revert(@Body() dto: { importJobId: string }) {
     return this.service.revertImport(dto.importJobId);
+  }
+
+  @Delete(":importJobId/data")
+  @HttpCode(HttpStatus.OK)
+  @Roles("ADMIN", "SUPER_ADMIN", "DIRECTION", "UTP")
+  @ApiOperation({ summary: "Eliminar definitivamente los datos creados por una importacion" })
+  deleteImportData(@Param("importJobId", ParseUUIDPipe) importJobId: string) {
+    return this.service.deleteImportData(importJobId);
   }
 
   @Get()

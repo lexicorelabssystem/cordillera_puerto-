@@ -626,6 +626,26 @@ export const api = {
     }),
 
   // ─── Exports ────────────────────────────────────
+  listImportJobs: (entityType?: string) =>
+    request<{
+      id: string;
+      entityType: string;
+      fileName: string;
+      status: string;
+      totalRows: number;
+      successRows: number;
+      errorRows: number;
+      trackedRecords: number;
+      createdAt: string;
+      completedAt: string | null;
+      deletedAt: string | null;
+    }[]>(`/imports${buildQuery({ entityType })}`),
+
+  deleteImportData: (importJobId: string) =>
+    request<{ importJobId: string; deleted: boolean; studentsDeleted: number; usersDeleted: number; enrollmentsDeleted: number }>(`/imports/${importJobId}/data`, {
+      method: "DELETE",
+    }),
+
   requestExport: (payload: { entityType: string; format: string; courseId?: string; institutionId?: string; academicYearId?: string; subjectId?: string }) =>
     request<{ exportJobId: string }>("/exports", {
       method: "POST",

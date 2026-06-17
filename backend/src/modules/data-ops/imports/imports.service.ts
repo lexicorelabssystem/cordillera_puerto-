@@ -7,9 +7,12 @@ import * as fs from "node:fs";
 import * as path from "node:path";
 import * as crypto from "node:crypto";
 import bcrypt from "bcryptjs";
+import type { Prisma } from "@prisma/client";
 
 interface ImportRow { rowNumber: number; data: Record<string, string>; errors: string[] }
 interface ValidationResult { valid: boolean; rows: ImportRow[]; totalRows: number; validRows: number; errorRows: number }
+interface StudentImportRecord { studentId: string; enrollmentId: string; userId?: string }
+interface ImportMetadata { importedRecords?: StudentImportRecord[]; deletedAt?: string }
 
 @Injectable()
 export class ImportsService {
@@ -143,12 +146,13 @@ export class ImportsService {
 
     let success = 0;
     let failed = 0;
+    let importedRecords: StudentImportRecord[] = [];
 
     try {
       switch (job.entityType) {
         case "students":
           const studentResult = await this.executeStudentImport(job, skipErrors);
-          success = studentResult.success; failed = studentResult.failed;
+          success = studentResult.success; failed = studentResult.failed; importedRecords = studentResult.importedRecords;
           break;
         case "questions":
           const questionResult = await this.executeQuestionImport(job, skipErrors);
@@ -172,7 +176,13 @@ export class ImportsService {
 
     await this.prisma.importJob.update({
       where: { id: importJobId },
-      data: { status: "COMPLETED", successRows: success, errorRows: failed, completedAt: new Date() },
+      data: {
+        status: "COMPLETED",
+        successRows: success,
+        errorRows: failed,
+        completedAt: new Date(),
+        errorDetails: this.toImportMetadataJson({ importedRecords }),
+      },
     });
 
     return { importJobId, status: "COMPLETED", success, failed };
@@ -200,12 +210,99 @@ export class ImportsService {
   //  LIST JOBS
   // ══════════════════════════════════════════════════════
 
+  async deleteImportData(importJobId: string) {
+    const job = await this.prisma.importJob.findUnique({ where: { id: importJobId } });
+    if (!job) throw new NotFoundException("ImportJob no encontrado");
+    if (job.status !== "COMPLETED") {
+      throw new BadRequestException("Solo se pueden eliminar datos de importaciones completadas");
+    }
+
+    const metadata = this.readImportMetadata(job.errorDetails);
+    const records = metadata.importedRecords ?? [];
+    if (records.length === 0) {
+      throw new BadRequestException("Esta importacion no tiene trazabilidad de registros creados. Solo las importaciones nuevas pueden eliminarse automaticamente.");
+    }
+
+    const studentIds = records.map((record) => record.studentId).filter(Boolean);
+    const enrollmentIds = records.map((record) => record.enrollmentId).filter(Boolean);
+    const userIds = records.map((record) => record.userId).filter((id): id is string => Boolean(id));
+
+    await this.prisma.$transaction(async (tx) => {
+      await tx.enrollment.deleteMany({ where: { id: { in: enrollmentIds } } });
+      await tx.grade.deleteMany({ where: { studentId: { in: studentIds } } });
+      await tx.attendance.deleteMany({ where: { studentId: { in: studentIds } } });
+      await tx.assessmentAttempt.deleteMany({ where: { studentId: { in: studentIds } } });
+      await tx.remedialPlan.deleteMany({ where: { studentId: { in: studentIds } } });
+      await tx.observation.deleteMany({ where: { studentId: { in: studentIds } } });
+      await tx.simceStudentResponse.deleteMany({ where: { studentId: { in: studentIds } } });
+      await tx.student.deleteMany({ where: { id: { in: studentIds } } });
+
+      if (userIds.length > 0) {
+        await tx.assessmentAttempt.deleteMany({ where: { userId: { in: userIds } } });
+        await tx.resourceUsageLog.deleteMany({ where: { usedById: { in: userIds } } });
+        await tx.gradeChangeRequest.deleteMany({
+          where: { OR: [{ requestedBy: { in: userIds } }, { reviewedBy: { in: userIds } }] },
+        });
+        await tx.learningResource.deleteMany({ where: { createdBy: { in: userIds } } });
+        await tx.simceAssessment.deleteMany({ where: { creatorId: { in: userIds } } });
+        await tx.grade.deleteMany({ where: { recordedBy: { in: userIds } } });
+        await tx.auditLog.updateMany({ where: { actorId: { in: userIds } }, data: { actorId: null } });
+        await tx.importJob.updateMany({ where: { actorId: { in: userIds } }, data: { actorId: null } });
+        await tx.user.deleteMany({ where: { id: { in: userIds } } });
+      }
+
+      await tx.importJob.update({
+        where: { id: importJobId },
+        data: {
+          status: "FAILED",
+          successRows: 0,
+          errorRows: records.length,
+          errorDetails: this.toImportMetadataJson({ ...metadata, deletedAt: new Date().toISOString() }),
+        },
+      });
+    });
+
+    return {
+      importJobId,
+      deleted: true,
+      studentsDeleted: studentIds.length,
+      usersDeleted: userIds.length,
+      enrollmentsDeleted: enrollmentIds.length,
+    };
+  }
+
   async listJobs(entityType?: string) {
-    return this.prisma.importJob.findMany({
+    const jobs = await this.prisma.importJob.findMany({
       where: entityType ? { entityType } : {},
       orderBy: { createdAt: "desc" },
       take: 50,
     });
+    return jobs.map((job) => {
+      const metadata = this.readImportMetadata(job.errorDetails);
+      return {
+        ...job,
+        trackedRecords: metadata.importedRecords?.length ?? 0,
+        deletedAt: metadata.deletedAt ?? null,
+      };
+    });
+  }
+
+  private readImportMetadata(value: unknown): ImportMetadata {
+    if (!value || typeof value !== "object" || Array.isArray(value)) return {};
+    const metadata = value as ImportMetadata;
+    return {
+      importedRecords: Array.isArray(metadata.importedRecords) ? metadata.importedRecords : undefined,
+      deletedAt: typeof metadata.deletedAt === "string" ? metadata.deletedAt : undefined,
+    };
+  }
+
+  private toImportMetadataJson(metadata: ImportMetadata): Prisma.InputJsonValue {
+    return {
+      ...(metadata.importedRecords
+        ? { importedRecords: metadata.importedRecords.map((record) => ({ ...record })) }
+        : {}),
+      ...(metadata.deletedAt ? { deletedAt: metadata.deletedAt } : {}),
+    };
   }
 
   // ══════════════════════════════════════════════════════
@@ -474,10 +571,11 @@ export class ImportsService {
   //  EXECUTORS
   // ══════════════════════════════════════════════════════
 
-  private async executeStudentImport(job: { fileName: string; actorId: string | null }, skipErrors: boolean): Promise<{ success: number; failed: number }> {
+  private async executeStudentImport(job: { fileName: string; actorId: string | null }, skipErrors: boolean): Promise<{ success: number; failed: number; importedRecords: StudentImportRecord[] }> {
     const rows = await this.parseFile(job.fileName);
     let success = 0;
     let failed = 0;
+    const importedRecords: StudentImportRecord[] = [];
 
     for (let i = 0; i < rows.length; i++) {
       const data = rows[i];
@@ -509,28 +607,30 @@ export class ImportsService {
           failed++; continue;
         }
 
-        const student = await this.prisma.student.create({
-          data: { firstName, lastName, rut: rut || null },
-        });
-
-        await this.prisma.enrollment.create({
-          data: { studentId: student.id, courseId: course.id },
-        });
-
-        if (email) {
-          const existingUser = await this.prisma.user.findUnique({ where: { email } });
+        const record = await this.prisma.$transaction(async (tx) => {
+          const student = await tx.student.create({
+            data: { firstName, lastName, rut: rut || null },
+          });
+          const enrollment = await tx.enrollment.create({
+            data: { studentId: student.id, courseId: course.id },
+          });
+          let userId: string | undefined;
+          const existingUser = await tx.user.findUnique({ where: { email } });
           if (!existingUser) {
             const hash = await bcrypt.hash("Temp2026*", 10);
-            const user = await this.prisma.user.create({
+            const user = await tx.user.create({
               data: {
                 email, passwordHash: hash, firstName, lastName,
                 role: "STUDENT", institutionId: course.institutionId, mustChangePassword: true,
               },
             });
-            await this.prisma.student.update({ where: { id: student.id }, data: { userId: user.id } });
+            await tx.student.update({ where: { id: student.id }, data: { userId: user.id } });
+            userId = user.id;
           }
-        }
+          return { studentId: student.id, enrollmentId: enrollment.id, userId };
+        });
 
+        importedRecords.push(record);
         success++;
       } catch (err) {
         if (!skipErrors) throw err;
@@ -538,7 +638,7 @@ export class ImportsService {
       }
     }
 
-    return { success, failed };
+    return { success, failed, importedRecords };
   }
 
   private async executeQuestionImport(job: { fileName: string; actorId: string | null }, skipErrors: boolean): Promise<{ success: number; failed: number }> {

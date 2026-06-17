@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { useMutation, useQueryClient } from "@tanstack/react-query";
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { api } from "../../lib/api";
 import { useToast } from "../../components/common/Toast";
 
@@ -23,9 +23,15 @@ export function StudentBulkImportPanel() {
     summary: { totalRows: number; validRows: number; errorRows: number; errors: { row: number; errors: string[] }[] };
   } | null>(null);
   const [importResult, setImportResult] = useState<{
+    importJobId: string;
     success: number;
     failed: number;
   } | null>(null);
+
+  const importJobsQuery = useQuery({
+    queryKey: ["import-jobs", "students"],
+    queryFn: () => api.listImportJobs("students"),
+  });
 
   async function handleUpload() {
     if (!file) {
@@ -70,7 +76,7 @@ export function StudentBulkImportPanel() {
     },
     onSuccess: (data) => {
       setUploadPhase("done");
-      setImportResult({ success: data.success, failed: data.failed });
+      setImportResult({ importJobId: data.importJobId, success: data.success, failed: data.failed });
       toast(`${data.success} alumnos importados correctamente.${data.failed > 0 ? ` ${data.failed} omitidos.` : ""}`, "success");
       setValidationResult(null);
       queryClient.invalidateQueries({ queryKey: ["users"] });
@@ -82,6 +88,26 @@ export function StudentBulkImportPanel() {
       toast(e instanceof Error ? e.message : "Error al importar", "error");
     },
   });
+
+  const deleteImportMutation = useMutation({
+    mutationFn: api.deleteImportData,
+    onSuccess: (data) => {
+      toast(`${data.studentsDeleted} alumnos eliminados definitivamente de la importacion.`, "success");
+      queryClient.invalidateQueries({ queryKey: ["users"] });
+      queryClient.invalidateQueries({ queryKey: ["courses"] });
+      queryClient.invalidateQueries({ queryKey: ["import-jobs"] });
+      setImportResult(null);
+      handleReset();
+    },
+    onError: (e) => {
+      toast(e instanceof Error ? e.message : "Error al eliminar importacion.", "error");
+    },
+  });
+
+  function handleDeleteImport(importJobId: string, count: number) {
+    if (!window.confirm(`Eliminar definitivamente los ${count} registro(s) creados por esta importacion? Esta accion no se puede deshacer.`)) return;
+    deleteImportMutation.mutate(importJobId);
+  }
 
   function handleReset() {
     setUploadPhase(null);
@@ -183,12 +209,58 @@ export function StudentBulkImportPanel() {
       ) : null}
 
       {importResult ? (
-        <div className="form-actions" style={{ marginTop: 16 }}>
+        <div className="form-actions" style={{ marginTop: 16, display: "flex", gap: 8, flexWrap: "wrap" }}>
           <button onClick={handleReset}>
             Nueva importacion
           </button>
+          <button
+            className="btn-danger"
+            onClick={() => handleDeleteImport(importResult.importJobId, importResult.success)}
+            disabled={deleteImportMutation.isPending || importResult.success === 0}
+          >
+            {deleteImportMutation.isPending ? "Eliminando..." : "Eliminar definitivo esta importacion"}
+          </button>
         </div>
       ) : null}
+
+      <div style={{ marginTop: 16 }}>
+        <h4 style={{ margin: "0 0 10px" }}>Importaciones recientes de alumnos</h4>
+        {importJobsQuery.isLoading ? (
+          <p style={{ color: "var(--muted)", margin: 0 }}>Cargando historial...</p>
+        ) : null}
+        {importJobsQuery.data && importJobsQuery.data.length > 0 ? (
+          <div className="table-wrap">
+            <table className="table">
+              <thead>
+                <tr><th>Fecha</th><th>Estado</th><th>Registros</th><th>Eliminable</th><th>Acciones</th></tr>
+              </thead>
+              <tbody>
+                {importJobsQuery.data.slice(0, 8).map((job) => (
+                  <tr key={job.id}>
+                    <td>{new Date(job.createdAt).toLocaleString("es-CL")}</td>
+                    <td><span className={job.status === "COMPLETED" ? "badge badge--active" : "badge badge--inactive"}>{job.deletedAt ? "Eliminada" : job.status}</span></td>
+                    <td>{job.successRows}/{job.totalRows}</td>
+                    <td>{job.trackedRecords > 0 ? `${job.trackedRecords} registros` : "Sin trazabilidad"}</td>
+                    <td>
+                      {job.status === "COMPLETED" && job.trackedRecords > 0 ? (
+                        <button
+                          className="btn-small btn-danger"
+                          onClick={() => handleDeleteImport(job.id, job.trackedRecords)}
+                          disabled={deleteImportMutation.isPending}
+                        >
+                          Eliminar definitivo
+                        </button>
+                      ) : (
+                        <span style={{ color: "var(--muted)", fontSize: ".82rem" }}>No disponible</span>
+                      )}
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        ) : null}
+      </div>
     </section>
   );
 }
