@@ -60,21 +60,27 @@ export class ImportsService {
 
     const results: Record<string, { data: ImportRow[]; errors: string[] }> = {};
 
-    switch (job.entityType) {
-      case "students":
-        results.students = await this.validateStudents(job);
-        break;
-      case "questions":
-        results.questions = await this.validateQuestions(job);
-        break;
-      case "grades":
-        results.grades = await this.validateGrades(job);
-        break;
-      case "enrollments":
-        results.enrollments = await this.validateEnrollments(job);
-        break;
-      default:
-        throw new BadRequestException(`Tipo de entidad no soportado: ${job.entityType}`);
+    try {
+      switch (job.entityType) {
+        case "students":
+          results.students = await this.validateStudents(job);
+          break;
+        case "questions":
+          results.questions = await this.validateQuestions(job);
+          break;
+        case "grades":
+          results.grades = await this.validateGrades(job);
+          break;
+        case "enrollments":
+          results.enrollments = await this.validateEnrollments(job);
+          break;
+        default:
+          throw new BadRequestException(`Tipo de entidad no soportado: ${job.entityType}`);
+      }
+    } catch (error) {
+      if (error instanceof BadRequestException) throw error;
+      this.logger.error(`Error validando importacion ${importJobId}`, error instanceof Error ? error.stack : String(error));
+      throw new BadRequestException(error instanceof Error ? error.message : "No se pudo validar el archivo de importacion");
     }
 
     // Update job
@@ -208,6 +214,10 @@ export class ImportsService {
 
   private async parseFile(fileName: string): Promise<Record<string, string>[]> {
     const ext = path.extname(fileName).toLowerCase();
+    if (ext === ".xls") {
+      throw new BadRequestException("Los archivos .xls no son compatibles con este importador. Guarda la planilla como .xlsx o .csv.");
+    }
+
     const possibleFiles = fs.readdirSync(this.uploadDir);
     const actualFile = possibleFiles.includes(fileName)
       ? fileName
@@ -236,15 +246,16 @@ export class ImportsService {
       const workbook = new ExcelJS.Workbook();
       await workbook.xlsx.readFile(filePath);
       const sheet = workbook.worksheets[0];
+      if (!sheet) throw new BadRequestException("El archivo Excel no contiene hojas para importar.");
       const headers: string[] = [];
-      sheet.getRow(1).eachCell((cell, colNum) => { headers[colNum] = String(cell.value ?? "").trim().toLowerCase(); });
+      sheet.getRow(1).eachCell((cell, colNum) => { headers[colNum] = this.cellToString(cell.value).toLowerCase(); });
       const hasHeader = this.hasImportHeader(headers);
 
       sheet.eachRow((row, rowNum) => {
         if (rowNum === 1 && hasHeader) return;
         const data: Record<string, string> = {};
         row.eachCell((cell, colNum) => {
-          const value = String(cell.value ?? "").trim();
+          const value = this.cellToString(cell.value);
           if (hasHeader && headers[colNum]) data[headers[colNum]] = value;
           data[`__col${colNum}`] = value;
         });
@@ -253,6 +264,19 @@ export class ImportsService {
     }
 
     return rows;
+  }
+
+  private cellToString(value: ExcelJS.CellValue): string {
+    if (value === null || value === undefined) return "";
+    if (value instanceof Date) return value.toISOString().slice(0, 10);
+    if (typeof value !== "object") return String(value).trim();
+    if ("text" in value && typeof value.text === "string") return value.text.trim();
+    if ("result" in value) return this.cellToString(value.result as ExcelJS.CellValue);
+    if ("richText" in value && Array.isArray(value.richText)) {
+      return value.richText.map((part) => part.text).join("").trim();
+    }
+    if ("hyperlink" in value && "text" in value && typeof value.text === "string") return value.text.trim();
+    return String(value).trim();
   }
 
   private hasImportHeader(headers: string[]) {
