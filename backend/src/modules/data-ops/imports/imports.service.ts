@@ -304,8 +304,8 @@ export class ImportsService {
       if (!courseName) {
         errors.push("Falta curso");
       } else {
-        const course = await this.findCourseByName(courseName);
-        if (!course) errors.push(`Curso no encontrado en la base de datos: ${courseName}`);
+        const courseMatch = await this.findCourseByName(courseName);
+        if (!courseMatch.course) errors.push(courseMatch.error ?? `Curso no encontrado en la base de datos: ${courseName}`);
       }
       if (!email) {
         errors.push("Falta correo electronico");
@@ -355,18 +355,70 @@ export class ImportsService {
     };
   }
 
+  private normalizeCourseLabel(value: string) {
+    return value
+      .normalize("NFD")
+      .replace(/[\u0300-\u036f]/g, "")
+      .replace(/º/g, "°")
+      .toLowerCase()
+      .replace(/\bbasica\b/g, "basico")
+      .replace(/\bbasicos\b/g, "basico")
+      .replace(/\bbasicas\b/g, "basico")
+      .replace(/\bcurso\b/g, "")
+      .replace(/\s+/g, " ")
+      .trim();
+  }
+
+  private getCourseGradeLevel(courseName: string) {
+    const normalized = this.normalizeCourseLabel(courseName);
+    const direct = normalized.match(/^(\d{1,2})\s*°?/);
+    if (direct) return Number(direct[1]);
+
+    const words: Record<string, number> = {
+      primero: 1,
+      segundo: 2,
+      tercero: 3,
+      cuarto: 4,
+      quinto: 5,
+      sexto: 6,
+      septimo: 7,
+      octavo: 8,
+    };
+    return Object.entries(words).find(([word]) => normalized.includes(word))?.[1] ?? null;
+  }
+
   private async findCourseByName(courseName: string) {
     const normalized = courseName.trim();
-    return this.prisma.course.findFirst({
+    const normalizedLabel = this.normalizeCourseLabel(courseName);
+    const gradeLevel = this.getCourseGradeLevel(courseName);
+    const courses = await this.prisma.course.findMany({
       where: {
         isActive: true,
         OR: [
           { name: { equals: normalized, mode: "insensitive" } },
           { name: { contains: normalized, mode: "insensitive" } },
+          ...(gradeLevel ? [{ gradeLevel }] : []),
         ],
       },
       orderBy: { name: "asc" },
     });
+
+    const exact = courses.find((course) => {
+      const courseLabel = this.normalizeCourseLabel(course.name);
+      return courseLabel === normalizedLabel || courseLabel.includes(normalizedLabel) || normalizedLabel.includes(courseLabel);
+    });
+    if (exact) return { course: exact };
+
+    const sameGrade = gradeLevel ? courses.filter((course) => course.gradeLevel === gradeLevel) : [];
+    if (sameGrade.length === 1) return { course: sameGrade[0] };
+    if (sameGrade.length > 1) {
+      return {
+        course: null,
+        error: `Curso ambiguo: ${courseName}. Hay ${sameGrade.length} cursos activos para ${gradeLevel}°. Agrega la seccion/letra en la columna Curso.`,
+      };
+    }
+
+    return { course: null, error: `Curso no encontrado en la base de datos: ${courseName}` };
   }
 
   private async validateQuestions(job: { fileName: string }): Promise<{ data: ImportRow[]; errors: string[] }> {
@@ -449,10 +501,11 @@ export class ImportsService {
           failed++; continue;
         }
 
-        const course = await this.findCourseByName(courseName);
+        const courseMatch = await this.findCourseByName(courseName);
+        const course = courseMatch.course;
 
         if (!course) {
-          if (!skipErrors) throw new Error(`Curso no encontrado: ${courseName}`);
+          if (!skipErrors) throw new Error(courseMatch.error ?? `Curso no encontrado: ${courseName}`);
           failed++; continue;
         }
 
