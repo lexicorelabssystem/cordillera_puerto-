@@ -10,7 +10,7 @@ export const MANAGEMENT_ITEM_FEATURE_FLAGS: Record<string, FeatureFlag> = {
   monitoreo: "online_assessments",
 };
 
-export const ADMIN_ONLY_PATHS = ["importar", "exportar"];
+export const ADMIN_ONLY_PATHS = ["exportar"];
 
 export function getManagementBasePath(mode: ManagementMode) {
   return mode === "direction" ? "/direction" : mode === "utp" ? "/utp" : "/admin";
@@ -113,14 +113,19 @@ export function buildManagementCategories(basePath: string, mode: ManagementMode
 
   const opsCategory: SidebarCategory = {
     id: "operaciones",
-    label: mode === "admin" ? "Datos y Auditoria" : "Auditoria",
+    label: mode === "admin" || mode === "utp" ? "Datos y Auditoria" : "Auditoria",
     items: mode === "admin"
       ? [
           { id: "importar", label: "Importar Datos", description: "Carga masiva Excel/CSV", path: `${basePath}/importar` },
           { id: "exportar", label: "Exportar Datos", description: "Descarga en XLSX/CSV/JSON", path: `${basePath}/exportar` },
           { id: "auditoria", label: "Auditoria", description: "Registro de acciones", path: `${basePath}/auditoria` },
         ]
-      : [
+      : mode === "utp"
+        ? [
+          { id: "importar", label: "Importar Datos", description: "Carga masiva Excel/CSV de estudiantes", path: `${basePath}/importar` },
+          { id: "auditoria", label: "Auditoria institucional", description: "Registro de acciones del establecimiento", path: `${basePath}/auditoria` },
+        ]
+        : [
           { id: "auditoria", label: "Auditoria institucional", description: "Registro de acciones del establecimiento", path: `${basePath}/auditoria` },
         ],
   };

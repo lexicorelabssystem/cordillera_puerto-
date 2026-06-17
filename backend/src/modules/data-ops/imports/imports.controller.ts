@@ -43,7 +43,7 @@ export class ImportsController {
 
   @Post("confirm")
   @HttpCode(HttpStatus.OK)
-  @Roles("ADMIN", "SUPER_ADMIN", "DIRECTION")
+  @Roles("ADMIN", "SUPER_ADMIN", "DIRECTION", "UTP")
   @ApiOperation({ summary: "Confirmar y ejecutar importación" })
   confirm(@Body() dto: ImportConfirmDto) {
     return this.service.executeImport(dto.importJobId, dto.skipErrors ?? false);

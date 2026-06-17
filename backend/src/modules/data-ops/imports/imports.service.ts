@@ -250,7 +250,6 @@ export class ImportsService {
       const data = rows[i];
       const errors: string[] = [];
       if (!data["nombre"] && !data["firstname"] && !data["firstName"]) errors.push("Falta nombre del estudiante");
-      if (!data["apellido"] && !data["lastname"] && !data["lastName"]) errors.push("Falta apellido del estudiante");
       if (!data["curso"] && !data["course"] && !data["coursename"] && !data["courseName"]) errors.push("Falta curso");
       result.push({ rowNumber: i + 2, data, errors });
     }
@@ -319,13 +318,26 @@ export class ImportsService {
     for (let i = 0; i < rows.length; i++) {
       const data = rows[i];
       try {
-        const firstName = data["nombre"] || data["firstname"] || data["firstName"];
-        const lastName = data["apellido"] || data["lastname"] || data["lastName"];
+        let firstName = data["nombre"] || data["firstname"] || data["firstName"];
+        let lastName = data["apellido"] || data["lastname"] || data["lastName"];
         const courseName = data["curso"] || data["course"] || data["coursename"] || data["courseName"];
         const rut = data["rut"] || "";
         const email = data["correo"] || data["email"] || "";
 
-        if (!firstName || !lastName || !courseName) {
+        if (!firstName && !lastName) {
+          if (!skipErrors) throw new Error("Falta nombre del estudiante");
+          failed++; continue;
+        }
+
+        if (firstName && !lastName && firstName.includes(" ")) {
+          const parts = firstName.split(" ");
+          firstName = parts[0];
+          lastName = parts.slice(1).join(" ");
+        }
+
+        if (!lastName) lastName = "";
+
+        if (!firstName || !courseName) {
           if (!skipErrors) throw new Error("Campos obligatorios faltantes");
           failed++; continue;
         }

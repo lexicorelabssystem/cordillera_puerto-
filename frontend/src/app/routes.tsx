@@ -188,7 +188,7 @@ function adminRoutes(mode: "admin" | "direction" | "utp" = "admin") {
       <Route path="alertas" element={<Lazy><AlertsPageWrapper /></Lazy>} />
       <Route path="auditoria" element={<Lazy><AuditLogsPage /></Lazy>} />
       <Route path="bandeja" element={<Lazy><BandejaPage /></Lazy>} />
-      {includeAdminOnly && <Route path="importar" element={<Lazy><ImportPage /></Lazy>} />}
+      {(includeAdminOnly || mode === "utp") && <Route path="importar" element={<Lazy><ImportPage /></Lazy>} />}
       {includeAdminOnly && <Route path="exportar" element={<Lazy><ExportPage /></Lazy>} />}
     </>
   );

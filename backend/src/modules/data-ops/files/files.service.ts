@@ -195,7 +195,7 @@ export class FilesService {
     const templates: Record<string, { name: string; csvContent: string }> = {
       students: {
         name: "plantilla_estudiantes.csv",
-        csvContent: "Nombre,Apellido,RUT,Correo,Curso\nJuan,Perez,12345678-9,juan.perez@colegio.cl,4° A\n",
+        csvContent: "Nombre,RUT,Curso,Correo\nJuan Perez,12345678-9,4° A,juan.perez@colegio.cl\n",
       },
       questions: {
         name: "plantilla_preguntas.csv",
@@ -215,9 +215,7 @@ export class FilesService {
     if (!template) throw new NotFoundException(`Plantilla no encontrada: ${templateType}`);
 
     const filePath = path.join(this.filesDir, template.name);
-    if (!fs.existsSync(filePath)) {
-      fs.writeFileSync(filePath, "\uFEFF" + template.csvContent, "utf-8");
-    }
+    fs.writeFileSync(filePath, "\uFEFF" + template.csvContent, "utf-8");
 
     return filePath;
   }

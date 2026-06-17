@@ -334,6 +334,13 @@ export const api = {
     }),
   deleteUser: (id: string) =>
     request<{ ok: boolean }>(`/users/${id}`, { method: "DELETE" }),
+  permanentDeleteUser: (id: string) =>
+    request<{ ok: boolean }>(`/users/${id}/permanent`, { method: "DELETE" }),
+  bulkDeleteUsers: (ids: string[]) =>
+    request<{ total: number; succeeded: number; failed: number; results: { id: string; ok: boolean; error?: string }[] }>("/users/bulk-delete", {
+      method: "POST",
+      body: JSON.stringify({ ids }),
+    }),
 
   // ─── Teachers ───────────────────────────────────
   myAssignments: () => request<TeacherAssignment[]>("/teachers/my/assignments"),
@@ -574,6 +581,49 @@ export const api = {
       return r.json();
     });
   },
+
+  uploadImportWithProgress: (
+    entityType: string,
+    file: File,
+    onProgress: (percent: number) => void
+  ): Promise<{ importJobId: string; fileName: string; fileSize: number }> => {
+    return new Promise((resolve, reject) => {
+      const formData = new FormData();
+      formData.append("file", file);
+      const xhr = new XMLHttpRequest();
+      xhr.open("POST", `${API_BASE}/imports/upload/${entityType}`);
+      xhr.withCredentials = true;
+      xhr.upload.addEventListener("progress", (e) => {
+        if (e.lengthComputable) {
+          onProgress(Math.round((e.loaded / e.total) * 100));
+        }
+      });
+      xhr.addEventListener("load", () => {
+        if (xhr.status >= 200 && xhr.status < 300) {
+          resolve(JSON.parse(xhr.responseText));
+        } else {
+          reject(new Error(`Fallo al subir archivo (${xhr.status})`));
+        }
+      });
+      xhr.addEventListener("error", () => reject(new Error("Error de conexión al subir archivo")));
+      xhr.send(formData);
+    });
+  },
+
+  validateImport: (importJobId: string) =>
+    request<{
+      importJobId: string;
+      entityType: string;
+      status: string;
+      preview: { rowNumber: number; data: Record<string, string>; valid: boolean; errors: string[] }[];
+      summary: { totalRows: number; validRows: number; errorRows: number; errors: { row: number; errors: string[] }[] };
+    }>(`/imports/validate/${importJobId}`),
+
+  confirmImport: (importJobId: string, skipErrors?: boolean) =>
+    request<{ importJobId: string; status: string; success: number; failed: number }>("/imports/confirm", {
+      method: "POST",
+      body: JSON.stringify({ importJobId, skipErrors: skipErrors ?? false }),
+    }),
 
   // ─── Exports ────────────────────────────────────
   requestExport: (payload: { entityType: string; format: string; courseId?: string; institutionId?: string; academicYearId?: string; subjectId?: string }) =>
