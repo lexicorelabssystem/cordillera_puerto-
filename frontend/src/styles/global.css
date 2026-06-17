@@ -6167,3 +6167,27 @@ input::placeholder, textarea::placeholder { color: var(--muted-light); }
   .simce-exam__topbar { box-shadow: none; break-inside: avoid; }
   .simce-exam__question { page-break-inside: avoid; }
 }
+
+.bulk-actions-bar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 8px 12px;
+  margin-bottom: 8px;
+  background: var(--bg-muted, #f5f5f5);
+  border: 1px solid var(--border, #e0e0e0);
+  border-radius: 6px;
+  gap: 12px;
+  flex-wrap: wrap;
+}
+.bulk-actions-bar label {
+  display: flex;
+  font-size: 0.85rem;
+  color: var(--text-secondary, #555);
+  cursor: pointer;
+  user-select: none;
+}
+.bulk-select-all {
+  display: flex;
+  cursor: pointer;
+}

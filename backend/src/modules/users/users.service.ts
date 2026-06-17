@@ -360,6 +360,66 @@ export class UsersService {
     });
   }
 
+  async permanentDelete(id: string, actor?: JwtPayload) {
+    const scope = actor ? await resolveUserScope(this.prisma, actor) : null;
+    const user = await this.prisma.user.findUnique({
+      where: { id },
+      include: { student: true, teacher: true },
+    });
+    if (!user) throw new NotFoundException("Usuario no encontrado");
+    this.assertCanAccessUser(user.institutionId, scope);
+    this.assertReadableRole(user.role, scope);
+
+    const email = user.email;
+
+    await this.prisma.$transaction(async (tx) => {
+      if (user.student) {
+        await tx.enrollment.deleteMany({ where: { studentId: user.student.id } });
+        await tx.grade.deleteMany({ where: { studentId: user.student.id } });
+        await tx.attendance.deleteMany({ where: { studentId: user.student.id } });
+        await tx.assessmentAttempt.deleteMany({ where: { studentId: user.student.id } });
+        await tx.remedialPlan.deleteMany({ where: { studentId: user.student.id } });
+        await tx.observation.deleteMany({ where: { studentId: user.student.id } });
+        await tx.simceStudentResponse.deleteMany({ where: { studentId: user.student.id } });
+        await tx.student.delete({ where: { id: user.student.id } });
+      }
+
+      await tx.assessmentAttempt.deleteMany({ where: { userId: id } });
+      await tx.resourceUsageLog.deleteMany({ where: { usedById: id } });
+      await tx.gradeChangeRequest.deleteMany({
+        where: { OR: [{ requestedBy: id }, { reviewedBy: id }] },
+      });
+      await tx.learningResource.deleteMany({ where: { createdBy: id } });
+      await tx.simceAssessment.deleteMany({ where: { creatorId: id } });
+      await tx.grade.deleteMany({ where: { recordedBy: id } });
+
+      await tx.auditLog.updateMany({ where: { actorId: id }, data: { actorId: null } });
+      await tx.importJob.updateMany({ where: { actorId: id }, data: { actorId: null } });
+
+      await tx.user.delete({ where: { id } });
+    });
+
+    this.logger.log(`Usuario eliminado definitivamente: ${email}`);
+  }
+
+  async bulkPermanentDelete(ids: string[], actor?: JwtPayload) {
+    const results: { id: string; ok: boolean; error?: string }[] = [];
+
+    for (const id of ids) {
+      try {
+        await this.permanentDelete(id, actor);
+        results.push({ id, ok: true });
+      } catch (err) {
+        this.logger.warn(`No se pudo eliminar usuario ${id}: ${err instanceof Error ? err.message : err}`);
+        results.push({ id, ok: false, error: err instanceof Error ? err.message : "Error desconocido" });
+      }
+    }
+
+    const succeeded = results.filter((r) => r.ok).length;
+    this.logger.log(`Eliminacion masiva: ${succeeded}/${ids.length} usuarios eliminados`);
+    return { total: ids.length, succeeded, failed: ids.length - succeeded, results };
+  }
+
   private validatePasswordPolicy(password: string) {
     return validatePasswordPolicy(password);
   }
