@@ -66,7 +66,11 @@ export function useAuth() {
     setUser(currentUser);
   }
 
+  const loginRef = useRef(false);
+
   async function login(email: string, password: string) {
+    if (loginRef.current) return;
+    loginRef.current = true;
     setLoading(true);
     setError("");
     try {
@@ -79,6 +83,7 @@ export function useAuth() {
         setError(err instanceof Error ? err.message : "No fue posible iniciar sesion");
       }
     } finally {
+      loginRef.current = false;
       setLoading(false);
     }
   }

@@ -395,7 +395,7 @@ export class ImportsService {
       const errors: string[] = [];
       const courseName = this.getStudentCourseName(data);
       const rut = this.getStudentRut(data);
-      const email = this.getStudentEmail(data);
+      const email = this.getStudentEmail(data).toLowerCase().trim();
       if (!this.getStudentFullName(data) && !this.getStudentFirstName(data)) errors.push("Falta nombre del estudiante");
       if (!rut) errors.push("Falta RUT");
       if (!courseName) {
@@ -439,7 +439,7 @@ export class ImportsService {
   }
 
   private getStudentEmail(data: Record<string, string>) {
-    return data["correo"] || data["email"] || data["mail"] || data["correo electronico"] || data["correo electrónico"] || data["__col4"] || "";
+    return (data["correo"] || data["email"] || data["mail"] || data["correo electronico"] || data["correo electrónico"] || data["__col4"] || "").toLowerCase().trim();
   }
 
   private splitStudentName(fullName: string) {
@@ -584,7 +584,7 @@ export class ImportsService {
         let lastName = this.getStudentLastName(data);
         const courseName = this.getStudentCourseName(data);
         const rut = this.getStudentRut(data);
-        const email = this.getStudentEmail(data);
+        const email = this.getStudentEmail(data).toLowerCase().trim();
 
         if (!firstName && !lastName) {
           const splitName = this.splitStudentName(this.getStudentFullName(data));

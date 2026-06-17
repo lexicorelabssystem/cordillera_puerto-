@@ -150,6 +150,7 @@ export function StudentAssessmentAttemptPage({ user, onLogout }: Props) {
       });
       toast("Evaluacion enviada.", "success");
       queryClient.invalidateQueries({ queryKey: ["student-portal"] });
+      queryClient.invalidateQueries({ queryKey: ["student-assessment-attempt", attemptId] });
     },
     onError: (error) => {
       if (error instanceof Error && error.message === "Envio cancelado.") return;
@@ -268,7 +269,7 @@ export function StudentAssessmentAttemptPage({ user, onLogout }: Props) {
           </section>
         ) : null}
 
-        {attemptId || locked ? (
+        {!submitted && (attemptId || locked) ? (
           <>
             <div className="simce-exam__sticky">
               <div className="simce-exam__progress-wrap">
@@ -348,6 +349,10 @@ export function StudentAssessmentAttemptPage({ user, onLogout }: Props) {
 
         {submitted ? (
           <section className="simce-exam__result" style={{ display: "block" }}>
+            <div style={{ background: "var(--success-bg, #ecfdf3)", color: "var(--success-text, #067647)", padding: "12px 16px", borderRadius: 8, marginBottom: 20, fontWeight: 600, fontSize: 14, display: "flex", alignItems: "center", gap: 8 }}>
+              <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5"><path d="M20 6L9 17l-5-5"/></svg>
+              Evaluacion enviada exitosamente
+            </div>
             <h2 style={{ margin: 0 }}>Resultado de la evaluacion</h2>
             <p style={{ margin: "6px 0 0", color: "#475467" }}>{user.name} · {assessment.title}</p>
             <div className="simce-exam__result-grid">
@@ -407,6 +412,22 @@ export function StudentAssessmentAttemptPage({ user, onLogout }: Props) {
                       const selectedText = selectedOpt
                         ? `${letterFor(opts.indexOf(selectedOpt))}. ${selectedOpt.text}`
                         : a?.textAnswer?.trim() || "Sin responder";
+                      const attemptAnswer = attempt?.answers?.find((aa: { questionId: string }) => aa.questionId === item.questionId);
+                      let resultText = "Sin responder";
+                      let resultClass = "";
+                      if (attemptAnswer) {
+                        if (attemptAnswer.isCorrect === true) {
+                          resultText = "Correcta";
+                          resultClass = "ok";
+                        } else if (attemptAnswer.isCorrect === false) {
+                          resultText = "Incorrecta";
+                          resultClass = "bad";
+                        } else if (a?.selectedOptionId || a?.textAnswer?.trim()) {
+                          resultText = "Pendiente correccion";
+                        }
+                      } else if (a?.selectedOptionId || a?.textAnswer?.trim()) {
+                        resultText = "Pendiente correccion";
+                      }
                       return (
                         <tr key={item.id}>
                           <td>{index + 1}</td>
@@ -414,9 +435,7 @@ export function StudentAssessmentAttemptPage({ user, onLogout }: Props) {
                             {q.statement}
                           </td>
                           <td>{selectedText}</td>
-                          <td>
-                            {a?.selectedOptionId || a?.textAnswer ? "Pendiente correccion" : "Sin responder"}
-                          </td>
+                          <td className={resultClass || undefined}>{resultText}</td>
                         </tr>
                       );
                     })}
