@@ -33,13 +33,14 @@ export class ImportsService {
       throw new BadRequestException("Formato no soportado. Use .xlsx, .xls o .csv");
     }
 
-    const filePath = path.join(this.uploadDir, `${fileId}${ext}`);
+    const storedFileName = `${fileId}${ext}`;
+    const filePath = path.join(this.uploadDir, storedFileName);
     fs.writeFileSync(filePath, fileBuffer);
 
     const job = await this.prisma.importJob.create({
       data: {
         entityType,
-        fileName,
+        fileName: storedFileName,
         fileSize: fileBuffer.length,
         status: "VALIDATING",
         actorId: userId,
@@ -208,7 +209,9 @@ export class ImportsService {
   private async parseFile(fileName: string): Promise<Record<string, string>[]> {
     const ext = path.extname(fileName).toLowerCase();
     const possibleFiles = fs.readdirSync(this.uploadDir);
-    const actualFile = possibleFiles.find((f) => f.startsWith(path.basename(fileName, ext)));
+    const actualFile = possibleFiles.includes(fileName)
+      ? fileName
+      : possibleFiles.find((f) => f.startsWith(path.basename(fileName, ext)));
     if (!actualFile) throw new BadRequestException("Archivo no encontrado");
 
     const filePath = path.join(this.uploadDir, actualFile);
@@ -218,10 +221,15 @@ export class ImportsService {
       const content = fs.readFileSync(filePath, "utf-8");
       const lines = content.split("\n").filter((l) => l.trim());
       const headers = lines[0].split(",").map((h) => h.trim().toLowerCase());
-      for (let i = 1; i < lines.length; i++) {
+      const hasHeader = this.hasImportHeader(headers);
+      for (let i = hasHeader ? 1 : 0; i < lines.length; i++) {
         const values = lines[i].split(",").map((v) => v.trim());
         const row: Record<string, string> = {};
-        headers.forEach((h, idx) => { row[h] = values[idx] || ""; });
+        values.forEach((value, idx) => {
+          const header = hasHeader ? headers[idx] : "";
+          if (header) row[header] = value || "";
+          row[`__col${idx + 1}`] = value || "";
+        });
         if (Object.values(row).some((v) => v)) rows.push(row);
       }
     } else {
@@ -230,16 +238,31 @@ export class ImportsService {
       const sheet = workbook.worksheets[0];
       const headers: string[] = [];
       sheet.getRow(1).eachCell((cell, colNum) => { headers[colNum] = String(cell.value ?? "").trim().toLowerCase(); });
+      const hasHeader = this.hasImportHeader(headers);
 
       sheet.eachRow((row, rowNum) => {
-        if (rowNum === 1) return;
+        if (rowNum === 1 && hasHeader) return;
         const data: Record<string, string> = {};
-        row.eachCell((cell, colNum) => { data[headers[colNum]] = String(cell.value ?? "").trim(); });
+        row.eachCell((cell, colNum) => {
+          const value = String(cell.value ?? "").trim();
+          if (hasHeader && headers[colNum]) data[headers[colNum]] = value;
+          data[`__col${colNum}`] = value;
+        });
         if (Object.values(data).some((v) => v)) rows.push(data);
       });
     }
 
     return rows;
+  }
+
+  private hasImportHeader(headers: string[]) {
+    const knownHeaders = [
+      "nombre", "apellido", "rut", "run", "curso", "correo", "email", "mail",
+      "firstname", "lastname", "course", "coursename", "student", "studentid",
+      "estudiante", "asignatura", "subject", "enunciado", "statement", "nota", "grade",
+      "evaluacion", "tipo", "fecha",
+    ];
+    return headers.some((header) => knownHeaders.some((known) => header === known || header.includes(known)));
   }
 
   private async validateStudents(job: { fileName: string }): Promise<{ data: ImportRow[]; errors: string[] }> {
@@ -249,12 +272,46 @@ export class ImportsService {
     for (let i = 0; i < rows.length; i++) {
       const data = rows[i];
       const errors: string[] = [];
-      if (!data["nombre"] && !data["firstname"] && !data["firstName"]) errors.push("Falta nombre del estudiante");
-      if (!data["curso"] && !data["course"] && !data["coursename"] && !data["courseName"]) errors.push("Falta curso");
+      if (!this.getStudentFullName(data) && !this.getStudentFirstName(data)) errors.push("Falta nombre del estudiante");
+      if (!this.getStudentCourseName(data)) errors.push("Falta curso");
       result.push({ rowNumber: i + 2, data, errors });
     }
 
     return { data: result, errors: [] };
+  }
+
+  private getStudentFullName(data: Record<string, string>) {
+    return data["nombre completo"] || data["nombre_completo"] || data["nombre y apellido"] || data["nombres y apellidos"] || data["estudiante"] || data["alumno"] || data["fullname"] || data["fullName"] || data["nombre"] || data["__col1"] || "";
+  }
+
+  private getStudentFirstName(data: Record<string, string>) {
+    return data["firstname"] || data["firstName"] || "";
+  }
+
+  private getStudentLastName(data: Record<string, string>) {
+    return data["apellido"] || data["lastname"] || data["lastName"] || "";
+  }
+
+  private getStudentCourseName(data: Record<string, string>) {
+    return data["curso"] || data["course"] || data["coursename"] || data["courseName"] || data["__col3"] || "";
+  }
+
+  private getStudentRut(data: Record<string, string>) {
+    return data["rut"] || data["run"] || data["__col2"] || "";
+  }
+
+  private getStudentEmail(data: Record<string, string>) {
+    return data["correo"] || data["email"] || data["mail"] || data["correo electronico"] || data["correo electrónico"] || data["__col4"] || "";
+  }
+
+  private splitStudentName(fullName: string) {
+    const parts = fullName.trim().split(/\s+/).filter(Boolean);
+    if (parts.length <= 1) return { firstName: parts[0] || "", lastName: "" };
+    if (parts.length <= 3) return { firstName: parts[0], lastName: parts.slice(1).join(" ") };
+    return {
+      firstName: parts.slice(0, 2).join(" "),
+      lastName: parts.slice(2, 4).join(" "),
+    };
   }
 
   private async validateQuestions(job: { fileName: string }): Promise<{ data: ImportRow[]; errors: string[] }> {
@@ -318,21 +375,16 @@ export class ImportsService {
     for (let i = 0; i < rows.length; i++) {
       const data = rows[i];
       try {
-        let firstName = data["nombre"] || data["firstname"] || data["firstName"];
-        let lastName = data["apellido"] || data["lastname"] || data["lastName"];
-        const courseName = data["curso"] || data["course"] || data["coursename"] || data["courseName"];
-        const rut = data["rut"] || "";
-        const email = data["correo"] || data["email"] || "";
+        let firstName = this.getStudentFirstName(data);
+        let lastName = this.getStudentLastName(data);
+        const courseName = this.getStudentCourseName(data);
+        const rut = this.getStudentRut(data);
+        const email = this.getStudentEmail(data);
 
         if (!firstName && !lastName) {
-          if (!skipErrors) throw new Error("Falta nombre del estudiante");
-          failed++; continue;
-        }
-
-        if (firstName && !lastName && firstName.includes(" ")) {
-          const parts = firstName.split(" ");
-          firstName = parts[0];
-          lastName = parts.slice(1).join(" ");
+          const splitName = this.splitStudentName(this.getStudentFullName(data));
+          firstName = splitName.firstName;
+          lastName = splitName.lastName;
         }
 
         if (!lastName) lastName = "";

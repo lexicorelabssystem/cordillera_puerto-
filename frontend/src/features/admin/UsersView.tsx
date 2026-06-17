@@ -7,6 +7,7 @@ import { Modal } from "../../components/common/Modal";
 import { LoadingSpinner } from "../../components/common/LoadingSpinner";
 import { useToast } from "../../components/common/Toast";
 import { useInstitution } from "../../app/InstitutionContext";
+import { StudentBulkImportPanel } from "./StudentBulkImportPanel";
 
 const MANAGED_ROLES: { value: UserRole; label: string }[] = [
   { value: "SUPER_ADMIN", label: "Super Admin" },
@@ -230,6 +231,8 @@ export function UsersView() {
 
   return (
     <>
+      {isUtpMode ? <StudentBulkImportPanel /> : null}
+
       <section className="panel">
         <h3>{editingId ? "Editar Usuario" : "Crear Nuevo Usuario"}</h3>
         <div className="form-grid">
