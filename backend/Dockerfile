@@ -26,6 +26,7 @@ RUN apk add --no-cache wget
 COPY --from=builder /app/node_modules ./node_modules
 COPY --from=builder /app/backend/dist ./dist
 COPY --from=builder /app/backend/prisma ./prisma
+COPY backend/scripts ./scripts
 COPY backend/package.json ./
 
 RUN mkdir -p uploads/imports uploads/exports uploads/files && chown -R cordillera:cordillera uploads
