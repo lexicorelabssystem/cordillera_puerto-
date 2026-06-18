@@ -15,6 +15,7 @@
     "prisma:migrate": "prisma migrate dev",
     "prisma:migrate:prod": "prisma migrate deploy",
     "prisma:seed": "tsx prisma/seeds/seed.ts",
+    "students:reset-temp-passwords": "node scripts/resetImportedStudentPasswords.mjs",
     "prisma:studio": "prisma studio",
     "prisma:reset": "prisma migrate reset --force",
     "db:setup": "prisma migrate dev && tsx prisma/seeds/seed.ts",

@@ -1,5 +1,5 @@
 import {
-  Injectable, NotFoundException, BadRequestException, Logger,
+  Injectable, NotFoundException, BadRequestException, Logger, Inject,
 } from "@nestjs/common";
 import { PrismaService } from "../../prisma/prisma.service.js";
 import ExcelJS from "exceljs";
@@ -8,6 +8,7 @@ import * as path from "node:path";
 import * as crypto from "node:crypto";
 import bcrypt from "bcryptjs";
 import type { Prisma } from "@prisma/client";
+import type { AppConfig } from "../../../config/config.module.js";
 
 interface ImportRow { rowNumber: number; data: Record<string, string>; errors: string[] }
 interface ValidationResult { valid: boolean; rows: ImportRow[]; totalRows: number; validRows: number; errorRows: number }
@@ -19,7 +20,10 @@ export class ImportsService {
   private readonly logger = new Logger(ImportsService.name);
   private readonly uploadDir: string;
 
-  constructor(private readonly prisma: PrismaService) {
+  constructor(
+    private readonly prisma: PrismaService,
+    @Inject("APP_CONFIG") private readonly config: AppConfig,
+  ) {
     this.uploadDir = path.resolve("uploads", "imports");
     fs.mkdirSync(this.uploadDir, { recursive: true });
   }
@@ -617,7 +621,7 @@ export class ImportsService {
           let userId: string | undefined;
           const existingUser = await tx.user.findUnique({ where: { email } });
           if (!existingUser) {
-            const hash = await bcrypt.hash("Temp2026*", 10);
+            const hash = await bcrypt.hash("Temp2026*", this.config.bcryptRounds);
             const user = await tx.user.create({
               data: {
                 email, passwordHash: hash, firstName, lastName,
