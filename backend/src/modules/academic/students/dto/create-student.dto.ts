@@ -38,7 +38,7 @@ export class CreateStudentDto {
   @IsDateString()
   birthDate?: string;
 
-  @ApiPropertyOptional({ example: "Temp2026*", minLength: 10 })
+  @ApiPropertyOptional({ example: "Temp2026**", minLength: 10 })
   @IsOptional()
   @IsString()
   @MinLength(10)

@@ -18,7 +18,7 @@ export class CreateTeacherDto {
   @IsEmail()
   email!: string;
 
-  @ApiProperty({ example: "Temp2026*", minLength: 10 })
+  @ApiProperty({ example: "Temp2026**", minLength: 10 })
   @IsString()
   @MinLength(10)
   temporaryPassword!: string;

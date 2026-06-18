@@ -25,7 +25,7 @@ export class CreateUserDto {
   @IsEmail()
   email!: string;
 
-  @ApiProperty({ example: "Temp2026*" })
+  @ApiProperty({ example: "Temp2026**" })
   @IsString()
   @MinLength(10)
   temporaryPassword!: string;
@@ -63,7 +63,7 @@ export class UpdateUserDto {
   @IsEmail()
   email?: string;
 
-  @ApiPropertyOptional({ example: "Temp2026*" })
+  @ApiPropertyOptional({ example: "Temp2026**" })
   @IsOptional()
   @IsString()
   @MinLength(10)

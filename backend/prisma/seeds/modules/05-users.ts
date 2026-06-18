@@ -13,6 +13,7 @@ export async function seed(prisma: PrismaClient, institutionId: string): Promise
 
   const superAdminHash = await bcrypt.hash("Demo2026*", BCRYPT_ROUNDS);
   const defaultHash = await bcrypt.hash("Admin2026*", BCRYPT_ROUNDS);
+  const educacoreHash = await bcrypt.hash("Temp2026**", BCRYPT_ROUNDS);
   const teacherHash = await bcrypt.hash("Profesor2026*", BCRYPT_ROUNDS);
 
   await prisma.user.upsert({
@@ -55,6 +56,27 @@ export async function seed(prisma: PrismaClient, institutionId: string): Promise
     },
   });
   console.log("  [✓] Admin: admin@cordillera.cl / Admin2026*");
+
+  await prisma.user.upsert({
+    where: { email: "benjamin.marileo@educacore.cl" },
+    update: {
+      passwordHash: educacoreHash,
+      isActive: true,
+      deletedAt: null,
+      mustChangePassword: false,
+      role: "ADMIN",
+      institutionId,
+    },
+    create: {
+      email: "benjamin.marileo@educacore.cl",
+      passwordHash: educacoreHash,
+      firstName: "Benjamin",
+      lastName: "Marileo",
+      role: "ADMIN",
+      institutionId,
+    },
+  });
+  console.log("  [ok] EducaCore Admin: benjamin.marileo@educacore.cl / Temp2026**");
 
   const teacherDefs = [
     { email: "profesor@cordillera.cl", firstName: "Carlos", lastName: "Lenguaje", role: "TEACHER" as const },

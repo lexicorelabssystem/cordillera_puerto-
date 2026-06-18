@@ -15,6 +15,8 @@ interface ValidationResult { valid: boolean; rows: ImportRow[]; totalRows: numbe
 interface StudentImportRecord { studentId: string; enrollmentId: string; userId?: string }
 interface ImportMetadata { importedRecords?: StudentImportRecord[]; deletedAt?: string }
 
+const IMPORTED_STUDENT_TEMP_PASSWORD = "Temp2026**";
+
 @Injectable()
 export class ImportsService {
   private readonly logger = new Logger(ImportsService.name);
@@ -621,7 +623,7 @@ export class ImportsService {
           let userId: string | undefined;
           const existingUser = await tx.user.findUnique({ where: { email } });
           if (!existingUser) {
-            const hash = await bcrypt.hash("Temp2026*", this.config.bcryptRounds);
+            const hash = await bcrypt.hash(IMPORTED_STUDENT_TEMP_PASSWORD, this.config.bcryptRounds);
             const user = await tx.user.create({
               data: {
                 email, passwordHash: hash, firstName, lastName,

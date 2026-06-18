@@ -3,7 +3,7 @@ import { PrismaClient } from "@prisma/client";
 import bcrypt from "bcryptjs";
 
 const prisma = new PrismaClient();
-const password = process.env.STUDENT_TEMP_PASSWORD || "Temp2026*";
+const password = process.env.STUDENT_TEMP_PASSWORD || "Temp2026**";
 const rounds = Number(process.env.BCRYPT_ROUNDS || 10);
 const shouldApply = process.argv.includes("--apply");
 const includeAllStudents = process.argv.includes("--all-students");
