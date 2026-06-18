@@ -30,14 +30,6 @@ const DEMO_USERS: {
     needsInstitution: true,
   },
   {
-    email: "benjamin.marileo@educacore.cl",
-    password: "Temp2026**",
-    firstName: "Benjamin",
-    lastName: "Marileo",
-    role: "ADMIN",
-    needsInstitution: true,
-  },
-  {
     email: "utp@cordillera.cl",
     password: "Profesor2026*",
     firstName: "Jefa",
