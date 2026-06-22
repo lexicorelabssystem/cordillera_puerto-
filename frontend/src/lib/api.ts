@@ -585,13 +585,14 @@ export const api = {
   uploadImportWithProgress: (
     entityType: string,
     file: File,
-    onProgress: (percent: number) => void
+    onProgress: (percent: number) => void,
+    institutionId?: string,
   ): Promise<{ importJobId: string; fileName: string; fileSize: number }> => {
     return new Promise((resolve, reject) => {
       const formData = new FormData();
       formData.append("file", file);
       const xhr = new XMLHttpRequest();
-      xhr.open("POST", `${API_BASE}/imports/upload/${entityType}`);
+      xhr.open("POST", `${API_BASE}/imports/upload/${entityType}${buildQuery({ institutionId })}`);
       xhr.withCredentials = true;
       xhr.upload.addEventListener("progress", (e) => {
         if (e.lengthComputable) {
@@ -642,7 +643,7 @@ export const api = {
     }[]>(`/imports${buildQuery({ entityType })}`),
 
   deleteImportData: (importJobId: string) =>
-    request<{ importJobId: string; deleted: boolean; studentsDeleted: number; usersDeleted: number; enrollmentsDeleted: number }>(`/imports/${importJobId}/data`, {
+    request<{ importJobId: string; deleted: boolean; studentsDeleted: number; teachersDeleted: number; usersDeleted: number; enrollmentsDeleted: number }>(`/imports/${importJobId}/data`, {
       method: "DELETE",
     }),
 

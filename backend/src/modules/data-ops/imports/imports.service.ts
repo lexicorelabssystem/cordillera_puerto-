@@ -13,9 +13,17 @@ import type { AppConfig } from "../../../config/config.module.js";
 interface ImportRow { rowNumber: number; data: Record<string, string>; errors: string[] }
 interface ValidationResult { valid: boolean; rows: ImportRow[]; totalRows: number; validRows: number; errorRows: number }
 interface StudentImportRecord { studentId: string; enrollmentId: string; userId?: string }
-interface ImportMetadata { importedRecords?: StudentImportRecord[]; deletedAt?: string }
+interface TeacherImportRecord { teacherId: string; userId: string }
+interface ImportMetadata {
+  importedRecords?: StudentImportRecord[];
+  importedTeacherRecords?: TeacherImportRecord[];
+  institutionId?: string;
+  validationErrors?: { row: number; errors: string[] }[];
+  deletedAt?: string;
+}
 
 const IMPORTED_STUDENT_TEMP_PASSWORD = "Temp2026**";
+const IMPORTED_TEACHER_TEMP_PASSWORD = "Temp2026**";
 
 @Injectable()
 export class ImportsService {
@@ -34,9 +42,23 @@ export class ImportsService {
   //  UPLOAD & PARSE
   // ══════════════════════════════════════════════════════
 
-  async uploadFile(fileBuffer: Buffer, fileName: string, entityType: string, userId: string) {
+  async uploadFile(fileBuffer: Buffer, fileName: string, entityType: string, userId: string, institutionId?: string) {
     const fileId = crypto.randomUUID();
     const ext = path.extname(fileName).toLowerCase();
+    const metadata: ImportMetadata = {};
+
+    if (entityType === "teachers") {
+      const actor = await this.prisma.user.findUnique({
+        where: { id: userId },
+        select: { role: true, institutionId: true },
+      });
+      if (!actor) throw new BadRequestException("Usuario importador no encontrado");
+      if (institutionId && actor.institutionId && actor.institutionId !== institutionId && !["SUPER_ADMIN", "ADMIN"].includes(actor.role)) {
+        throw new BadRequestException("No tienes acceso a la institucion seleccionada");
+      }
+      metadata.institutionId = institutionId ?? actor.institutionId ?? undefined;
+      if (!metadata.institutionId) throw new BadRequestException("Selecciona una institucion antes de importar profesores");
+    }
 
     if (![".xlsx", ".xls", ".csv"].includes(ext)) {
       throw new BadRequestException("Formato no soportado. Use .xlsx, .xls o .csv");
@@ -53,6 +75,7 @@ export class ImportsService {
         fileSize: fileBuffer.length,
         status: "VALIDATING",
         actorId: userId,
+        errorDetails: this.toImportMetadataJson(metadata),
       },
     });
 
@@ -73,6 +96,9 @@ export class ImportsService {
       switch (job.entityType) {
         case "students":
           results.students = await this.validateStudents(job);
+          break;
+        case "teachers":
+          results.teachers = await this.validateTeachers(job);
           break;
         case "questions":
           results.questions = await this.validateQuestions(job);
@@ -103,10 +129,10 @@ export class ImportsService {
         totalRows: allRows.length,
         errorRows: allRows.filter((r) => r.errors.length > 0).length,
         successRows: allRows.filter((r) => r.errors.length === 0).length,
-        errorDetails: allRows.filter((r) => r.errors.length > 0).map((r) => ({
-          row: r.rowNumber,
-          errors: r.errors,
-        })),
+        errorDetails: this.toImportMetadataJson({
+          ...this.readImportMetadata(job.errorDetails),
+          validationErrors: allRows.filter((r) => r.errors.length > 0).map((r) => ({ row: r.rowNumber, errors: r.errors })),
+        }),
       },
     });
 
@@ -153,12 +179,18 @@ export class ImportsService {
     let success = 0;
     let failed = 0;
     let importedRecords: StudentImportRecord[] = [];
+    let importedTeacherRecords: TeacherImportRecord[] = [];
+    const metadata = this.readImportMetadata(job.errorDetails);
 
     try {
       switch (job.entityType) {
         case "students":
           const studentResult = await this.executeStudentImport(job, skipErrors);
           success = studentResult.success; failed = studentResult.failed; importedRecords = studentResult.importedRecords;
+          break;
+        case "teachers":
+          const teacherResult = await this.executeTeacherImport(job, skipErrors, metadata.institutionId);
+          success = teacherResult.success; failed = teacherResult.failed; importedTeacherRecords = teacherResult.importedTeacherRecords;
           break;
         case "questions":
           const questionResult = await this.executeQuestionImport(job, skipErrors);
@@ -187,7 +219,7 @@ export class ImportsService {
         successRows: success,
         errorRows: failed,
         completedAt: new Date(),
-        errorDetails: this.toImportMetadataJson({ importedRecords }),
+        errorDetails: this.toImportMetadataJson({ ...metadata, importedRecords, importedTeacherRecords, validationErrors: undefined }),
       },
     });
 
@@ -216,7 +248,7 @@ export class ImportsService {
   //  LIST JOBS
   // ══════════════════════════════════════════════════════
 
-  async deleteImportData(importJobId: string) {
+  async deleteImportData(importJobId: string, actorId?: string) {
     const job = await this.prisma.importJob.findUnique({ where: { id: importJobId } });
     if (!job) throw new NotFoundException("ImportJob no encontrado");
     if (job.status !== "COMPLETED") {
@@ -224,9 +256,32 @@ export class ImportsService {
     }
 
     const metadata = this.readImportMetadata(job.errorDetails);
+    if (job.entityType === "teachers" && metadata.institutionId && actorId) {
+      const actor = await this.prisma.user.findUnique({ where: { id: actorId }, select: { role: true, institutionId: true } });
+      if (!actor) throw new BadRequestException("Usuario no encontrado");
+      if (actor.institutionId && actor.institutionId !== metadata.institutionId && !["SUPER_ADMIN", "ADMIN"].includes(actor.role)) {
+        throw new BadRequestException("No tienes acceso a esta importacion");
+      }
+    }
     const records = metadata.importedRecords ?? [];
-    if (records.length === 0) {
+    const teacherRecords = metadata.importedTeacherRecords ?? [];
+    if (records.length === 0 && teacherRecords.length === 0) {
       throw new BadRequestException("Esta importacion no tiene trazabilidad de registros creados. Solo las importaciones nuevas pueden eliminarse automaticamente.");
+    }
+
+    if (job.entityType === "teachers") {
+      const teacherIds = teacherRecords.map((record) => record.teacherId);
+      const teacherUserIds = teacherRecords.map((record) => record.userId);
+      await this.prisma.$transaction(async (tx) => {
+        await tx.auditLog.updateMany({ where: { actorId: { in: teacherUserIds } }, data: { actorId: null } });
+        await tx.importJob.updateMany({ where: { actorId: { in: teacherUserIds } }, data: { actorId: null } });
+        await tx.user.deleteMany({ where: { id: { in: teacherUserIds } } });
+        await tx.importJob.update({
+          where: { id: importJobId },
+          data: { status: "FAILED", successRows: 0, errorRows: teacherRecords.length, errorDetails: this.toImportMetadataJson({ ...metadata, deletedAt: new Date().toISOString() }) },
+        });
+      });
+      return { importJobId, deleted: true, studentsDeleted: 0, teachersDeleted: teacherIds.length, usersDeleted: teacherUserIds.length, enrollmentsDeleted: 0 };
     }
 
     const studentIds = records.map((record) => record.studentId).filter(Boolean);
@@ -272,12 +327,23 @@ export class ImportsService {
       importJobId,
       deleted: true,
       studentsDeleted: studentIds.length,
+      teachersDeleted: 0,
       usersDeleted: userIds.length,
       enrollmentsDeleted: enrollmentIds.length,
     };
   }
 
-  async listJobs(entityType?: string) {
+  async listJobs(entityType?: string, actorId?: string, institutionId?: string) {
+    let allowedInstitutionId = institutionId;
+    if (entityType === "teachers" && actorId) {
+      const actor = await this.prisma.user.findUnique({ where: { id: actorId }, select: { role: true, institutionId: true } });
+      if (!actor) throw new BadRequestException("Usuario no encontrado");
+      if (actor.institutionId && institutionId && actor.institutionId !== institutionId && !["SUPER_ADMIN", "ADMIN"].includes(actor.role)) {
+        throw new BadRequestException("No tienes acceso a la institucion seleccionada");
+      }
+      allowedInstitutionId = institutionId ?? actor.institutionId ?? undefined;
+    }
+
     const jobs = await this.prisma.importJob.findMany({
       where: entityType ? { entityType } : {},
       orderBy: { createdAt: "desc" },
@@ -285,12 +351,13 @@ export class ImportsService {
     });
     return jobs.map((job) => {
       const metadata = this.readImportMetadata(job.errorDetails);
-      return {
+      return { job, metadata };
+    }).filter(({ metadata }) => entityType !== "teachers" || !allowedInstitutionId || metadata.institutionId === allowedInstitutionId)
+      .map(({ job, metadata }) => ({
         ...job,
-        trackedRecords: metadata.importedRecords?.length ?? 0,
+        trackedRecords: (metadata.importedRecords?.length ?? 0) + (metadata.importedTeacherRecords?.length ?? 0),
         deletedAt: metadata.deletedAt ?? null,
-      };
-    });
+      }));
   }
 
   private readImportMetadata(value: unknown): ImportMetadata {
@@ -298,15 +365,19 @@ export class ImportsService {
     const metadata = value as ImportMetadata;
     return {
       importedRecords: Array.isArray(metadata.importedRecords) ? metadata.importedRecords : undefined,
+      importedTeacherRecords: Array.isArray(metadata.importedTeacherRecords) ? metadata.importedTeacherRecords : undefined,
+      institutionId: typeof metadata.institutionId === "string" ? metadata.institutionId : undefined,
+      validationErrors: Array.isArray(metadata.validationErrors) ? metadata.validationErrors : undefined,
       deletedAt: typeof metadata.deletedAt === "string" ? metadata.deletedAt : undefined,
     };
   }
 
   private toImportMetadataJson(metadata: ImportMetadata): Prisma.InputJsonValue {
     return {
-      ...(metadata.importedRecords
-        ? { importedRecords: metadata.importedRecords.map((record) => ({ ...record })) }
-        : {}),
+      ...(metadata.importedRecords ? { importedRecords: metadata.importedRecords.map((record) => ({ ...record })) } : {}),
+      ...(metadata.importedTeacherRecords ? { importedTeacherRecords: metadata.importedTeacherRecords.map((record) => ({ ...record })) } : {}),
+      ...(metadata.institutionId ? { institutionId: metadata.institutionId } : {}),
+      ...(metadata.validationErrors ? { validationErrors: metadata.validationErrors.map((error) => ({ ...error })) } : {}),
       ...(metadata.deletedAt ? { deletedAt: metadata.deletedAt } : {}),
     };
   }
@@ -524,6 +595,75 @@ export class ImportsService {
     return { course: null, error: `Curso no encontrado en la base de datos: ${courseName}` };
   }
 
+  private async validateTeachers(job: { fileName: string }): Promise<{ data: ImportRow[]; errors: string[] }> {
+    const rows = await this.parseFile(job.fileName);
+    const result: ImportRow[] = [];
+    const seenEmails = new Set<string>();
+    const seenRuts = new Set<string>();
+    for (let i = 0; i < rows.length; i++) {
+      const data = rows[i];
+      const errors: string[] = [];
+      const fullName = this.getTeacherFullName(data);
+      const rut = this.normalizeRut(this.getTeacherRut(data));
+      const title = this.getTeacherTitle(data);
+      const email = this.getTeacherEmail(data);
+      if (!fullName) errors.push("Falta nombre del profesor");
+      if (!rut) errors.push("Falta RUT");
+      else if (!this.isValidRut(rut)) errors.push(`RUT invalido: ${rut}`);
+      else if (seenRuts.has(rut)) errors.push(`RUT duplicado en la planilla: ${rut}`);
+      else {
+        seenRuts.add(rut);
+        if (await this.prisma.teacher.findFirst({ where: { rut } })) errors.push(`Ya existe un profesor con el RUT: ${rut}`);
+      }
+      if (!title) errors.push("Falta asignatura o especialidad");
+      if (!email) errors.push("Falta correo electronico");
+      else if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) errors.push(`Correo invalido: ${email}`);
+      else if (seenEmails.has(email)) errors.push(`Correo duplicado en la planilla: ${email}`);
+      else {
+        seenEmails.add(email);
+        if (await this.prisma.user.findUnique({ where: { email } })) errors.push(`Ya existe un usuario con el correo: ${email}`);
+      }
+      result.push({ rowNumber: i + 2, data, errors });
+    }
+    return { data: result, errors: [] };
+  }
+
+  private getTeacherFullName(data: Record<string, string>) {
+    return data["nombre"] || data["nombre completo"] || data["profesor"] || data["docente"] || data["__col1"] || "";
+  }
+  private getTeacherRut(data: Record<string, string>) { return data["rut"] || data["run"] || data["__col2"] || ""; }
+  private getTeacherTitle(data: Record<string, string>) {
+    return data["asignatura"] || data["especialidad"] || data["titulo"] || data["título"] || data["subject"] || data["__col3"] || "";
+  }
+  private getTeacherEmail(data: Record<string, string>) {
+    return (data["correo"] || data["email"] || data["mail"] || data["correo electronico"] || data["correo electrónico"] || data["__col4"] || "").toLowerCase().trim();
+  }
+  private normalizeRut(value: string) {
+    const clean = value.replace(/[^0-9kK]/g, "").toUpperCase();
+    return clean.length > 1 ? `${clean.slice(0, -1)}-${clean.slice(-1)}` : clean;
+  }
+  private isValidRut(value: string) {
+    const clean = value.replace(/[^0-9kK]/g, "").toUpperCase();
+    if (clean.length < 2) return false;
+    const body = clean.slice(0, -1);
+    const verifier = clean.slice(-1);
+    let sum = 0;
+    let multiplier = 2;
+    for (let i = body.length - 1; i >= 0; i--) {
+      sum += Number(body[i]) * multiplier;
+      multiplier = multiplier === 7 ? 2 : multiplier + 1;
+    }
+    const result = 11 - (sum % 11);
+    const expected = result === 11 ? "0" : result === 10 ? "K" : String(result);
+    return verifier === expected;
+  }
+  private splitTeacherName(fullName: string) {
+    const parts = fullName.trim().split(/\s+/).filter(Boolean);
+    if (parts.length <= 1) return { firstName: parts[0] || "", lastName: "" };
+    if (parts.length === 2) return { firstName: parts[0], lastName: parts[1] };
+    return { firstName: parts.slice(0, 2).join(" "), lastName: parts.slice(2).join(" ") };
+  }
+
   private async validateQuestions(job: { fileName: string }): Promise<{ data: ImportRow[]; errors: string[] }> {
     const rows = await this.parseFile(job.fileName);
     const result: ImportRow[] = [];
@@ -645,6 +785,47 @@ export class ImportsService {
     }
 
     return { success, failed, importedRecords };
+  }
+
+  private async executeTeacherImport(
+    job: { fileName: string; actorId: string | null },
+    skipErrors: boolean,
+    institutionId?: string,
+  ): Promise<{ success: number; failed: number; importedTeacherRecords: TeacherImportRecord[] }> {
+    if (!institutionId) throw new BadRequestException("La importacion no tiene una institucion asociada");
+    const rows = await this.parseFile(job.fileName);
+    let success = 0;
+    let failed = 0;
+    const importedTeacherRecords: TeacherImportRecord[] = [];
+    for (const data of rows) {
+      try {
+        const fullName = this.getTeacherFullName(data);
+        const rut = this.normalizeRut(this.getTeacherRut(data));
+        const title = this.getTeacherTitle(data).trim();
+        const email = this.getTeacherEmail(data);
+        const { firstName, lastName } = this.splitTeacherName(fullName);
+        if (!firstName || !rut || !title || !email || !this.isValidRut(rut)) {
+          if (!skipErrors) throw new Error("Campos obligatorios faltantes o invalidos");
+          failed++; continue;
+        }
+        const record = await this.prisma.$transaction(async (tx) => {
+          if (await tx.user.findUnique({ where: { email } })) throw new Error(`Ya existe un usuario con el correo: ${email}`);
+          if (await tx.teacher.findFirst({ where: { rut } })) throw new Error(`Ya existe un profesor con el RUT: ${rut}`);
+          const passwordHash = await bcrypt.hash(IMPORTED_TEACHER_TEMP_PASSWORD, this.config.bcryptRounds);
+          const createdUser = await tx.user.create({
+            data: { email, passwordHash, firstName, lastName, role: "TEACHER", institutionId, mustChangePassword: true },
+          });
+          const teacher = await tx.teacher.create({ data: { userId: createdUser.id, rut, title } });
+          return { teacherId: teacher.id, userId: createdUser.id };
+        });
+        importedTeacherRecords.push(record);
+        success++;
+      } catch (error) {
+        if (!skipErrors) throw error;
+        failed++;
+      }
+    }
+    return { success, failed, importedTeacherRecords };
   }
 
   private async executeQuestionImport(job: { fileName: string; actorId: string | null }, skipErrors: boolean): Promise<{ success: number; failed: number }> {

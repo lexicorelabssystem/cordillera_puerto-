@@ -4,6 +4,7 @@ import { api } from "../../lib/api";
 import { LoadingSpinner } from "../../components/common/LoadingSpinner";
 import { useToast } from "../../components/common/Toast";
 import { useInstitution } from "../../app/InstitutionContext";
+import { TeacherBulkImportPanel } from "../../features/admin/TeacherBulkImportPanel";
 
 interface TeacherRow {
   id: string;
@@ -44,6 +45,7 @@ export function ProfesoresPage() {
   const [profesorSeleccionado, setProfesorSeleccionado] = useState<TeacherRow | null>(null);
   const [nuevaAsignacion, setNuevaAsignacion] = useState({ courseId: "", subjectId: "" });
   const [showCreate, setShowCreate] = useState(false);
+  const [showBulkImport, setShowBulkImport] = useState(false);
   const [createForm, setCreateForm] = useState({ firstName: "", lastName: "", email: "", temporaryPassword: "", rut: "", title: "" });
   const [editForm, setEditForm] = useState({ firstName: "", lastName: "", rut: "", title: "" });
 
@@ -140,6 +142,17 @@ export function ProfesoresPage() {
       queryClient.invalidateQueries({ queryKey: ["teachers"] });
     },
     onError: (err) => toast(err instanceof Error ? err.message : "Error al actualizar profesor.", "error"),
+  });
+
+  const permanentDeleteTeacher = useMutation({
+    mutationFn: (userId: string) => api.permanentDeleteUser(userId),
+    onSuccess: () => {
+      toast("Profesor eliminado definitivamente.", "success");
+      setProfesorSeleccionado(null);
+      queryClient.invalidateQueries({ queryKey: ["teachers"] });
+      queryClient.invalidateQueries({ queryKey: ["users"] });
+    },
+    onError: (err) => toast(err instanceof Error ? err.message : "No se pudo eliminar definitivamente.", "error"),
   });
 
   const retireTeacher = useMutation({
@@ -249,9 +262,14 @@ export function ProfesoresPage() {
               <input type="checkbox" checked={showInactive} onChange={(e) => setShowInactive(e.target.checked)} style={{ width: "auto" }} />
               Mostrar retirados
             </label>
+            <button className="btn-secondary" onClick={() => setShowBulkImport((value) => !value)} style={{ marginTop: 18 }}>
+              {showBulkImport ? "Cerrar importador" : "Importar Excel"}
+            </button>
             <button onClick={() => setShowCreate(!showCreate)} style={{ marginTop: 18 }}>{showCreate ? "Cancelar" : "+ Nuevo profesor / reemplazo"}</button>
           </div>
         </div>
+
+        {showBulkImport ? <TeacherBulkImportPanel /> : null}
 
         {showCreate && (
           <div style={{ marginTop: 12 }}>
@@ -316,9 +334,18 @@ export function ProfesoresPage() {
                         ) : null}
                         </>
                       ) : (
-                        <button className="btn-small" onClick={() => updateTeacherStatus.mutate({ teacherId: t.id, isActive: true })}>
-                          Reactivar
-                        </button>
+                        <>
+                          <button className="btn-small" onClick={() => updateTeacherStatus.mutate({ teacherId: t.id, isActive: true })}>
+                            Reactivar
+                          </button>
+                          <button className="btn-small btn-danger" disabled={permanentDeleteTeacher.isPending} onClick={() => {
+                            if (window.confirm(`Eliminar definitivamente a ${t.user.firstName} ${t.user.lastName}? Esta accion no se puede deshacer.`)) {
+                              permanentDeleteTeacher.mutate(t.userId);
+                            }
+                          }}>
+                            Eliminar definitivo
+                          </button>
+                        </>
                       )}
                     </div>
                   </td>

@@ -26,12 +26,13 @@ export class ImportsController {
     @Param("entityType") entityType: string,
     @Req() req: FastifyRequest,
     @CurrentUser() user: JwtPayload,
+    @Query("institutionId") institutionId?: string,
   ) {
     const data = await (req as unknown as { file: () => Promise<{ toBuffer: () => Promise<Buffer>; filename: string; mimetype: string }> }).file();
     if (!data) throw new BadRequestException("No se recibió ningún archivo");
 
     const buffer = await data.toBuffer();
-    return this.service.uploadFile(buffer, data.filename, entityType, user.sub);
+    return this.service.uploadFile(buffer, data.filename, entityType, user.sub, institutionId);
   }
 
   @Get("validate/:importJobId")
@@ -61,15 +62,22 @@ export class ImportsController {
   @HttpCode(HttpStatus.OK)
   @Roles("ADMIN", "SUPER_ADMIN", "DIRECTION", "UTP")
   @ApiOperation({ summary: "Eliminar definitivamente los datos creados por una importacion" })
-  deleteImportData(@Param("importJobId", ParseUUIDPipe) importJobId: string) {
-    return this.service.deleteImportData(importJobId);
+  deleteImportData(
+    @Param("importJobId", ParseUUIDPipe) importJobId: string,
+    @CurrentUser() user: JwtPayload,
+  ) {
+    return this.service.deleteImportData(importJobId, user.sub);
   }
 
   @Get()
   @Roles("ADMIN", "SUPER_ADMIN", "DIRECTION", "UTP")
   @ApiOperation({ summary: "Listar jobs de importación" })
   @ApiQuery({ name: "entityType", required: false })
-  list(@Query("entityType") entityType?: string) {
-    return this.service.listJobs(entityType);
+  list(
+    @CurrentUser() user: JwtPayload,
+    @Query("entityType") entityType?: string,
+    @Query("institutionId") institutionId?: string,
+  ) {
+    return this.service.listJobs(entityType, user.sub, institutionId);
   }
 }
