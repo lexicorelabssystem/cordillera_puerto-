@@ -273,6 +273,38 @@ export class ImportsService {
       const teacherIds = teacherRecords.map((record) => record.teacherId);
       const teacherUserIds = teacherRecords.map((record) => record.userId);
       await this.prisma.$transaction(async (tx) => {
+        const assessments = await tx.assessment.findMany({
+          where: { teacherId: { in: teacherIds } },
+          select: { id: true },
+        });
+        const assessmentIds = assessments.map((assessment) => assessment.id);
+
+        await tx.learningResource.deleteMany({
+          where: {
+            OR: [
+              { createdBy: { in: teacherUserIds } },
+              { assessmentId: { in: assessmentIds } },
+            ],
+          },
+        });
+        await tx.assessmentAttempt.deleteMany({ where: { assessmentId: { in: assessmentIds } } });
+        await tx.assessment.deleteMany({ where: { id: { in: assessmentIds } } });
+        await tx.lesson.deleteMany({ where: { teacherId: { in: teacherIds } } });
+        await tx.simceAssessment.deleteMany({
+          where: {
+            OR: [
+              { teacherId: { in: teacherIds } },
+              { creatorId: { in: teacherUserIds } },
+            ],
+          },
+        });
+        await tx.assessmentAttempt.deleteMany({ where: { userId: { in: teacherUserIds } } });
+        await tx.resourceUsageLog.deleteMany({ where: { usedById: { in: teacherUserIds } } });
+        await tx.gradeChangeRequest.deleteMany({
+          where: { OR: [{ requestedBy: { in: teacherUserIds } }, { reviewedBy: { in: teacherUserIds } }] },
+        });
+        await tx.grade.deleteMany({ where: { recordedBy: { in: teacherUserIds } } });
+        await tx.attendance.deleteMany({ where: { recordedBy: { in: teacherUserIds } } });
         await tx.auditLog.updateMany({ where: { actorId: { in: teacherUserIds } }, data: { actorId: null } });
         await tx.importJob.updateMany({ where: { actorId: { in: teacherUserIds } }, data: { actorId: null } });
         await tx.user.deleteMany({ where: { id: { in: teacherUserIds } } });

@@ -373,6 +373,24 @@ export class UsersService {
     const email = user.email;
 
     await this.prisma.$transaction(async (tx) => {
+      if (user.teacher) {
+        const assessments = await tx.assessment.findMany({
+          where: { teacherId: user.teacher.id },
+          select: { id: true },
+        });
+        const assessmentIds = assessments.map((assessment) => assessment.id);
+
+        await tx.learningResource.deleteMany({
+          where: { OR: [{ createdBy: id }, { assessmentId: { in: assessmentIds } }] },
+        });
+        await tx.assessmentAttempt.deleteMany({ where: { assessmentId: { in: assessmentIds } } });
+        await tx.assessment.deleteMany({ where: { id: { in: assessmentIds } } });
+        await tx.lesson.deleteMany({ where: { teacherId: user.teacher.id } });
+        await tx.simceAssessment.deleteMany({
+          where: { OR: [{ teacherId: user.teacher.id }, { creatorId: id }] },
+        });
+      }
+
       if (user.student) {
         await tx.enrollment.deleteMany({ where: { studentId: user.student.id } });
         await tx.grade.deleteMany({ where: { studentId: user.student.id } });
@@ -392,6 +410,7 @@ export class UsersService {
       await tx.learningResource.deleteMany({ where: { createdBy: id } });
       await tx.simceAssessment.deleteMany({ where: { creatorId: id } });
       await tx.grade.deleteMany({ where: { recordedBy: id } });
+      await tx.attendance.deleteMany({ where: { recordedBy: id } });
 
       await tx.auditLog.updateMany({ where: { actorId: id }, data: { actorId: null } });
       await tx.importJob.updateMany({ where: { actorId: id }, data: { actorId: null } });
