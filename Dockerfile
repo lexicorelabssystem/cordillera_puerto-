@@ -21,21 +21,31 @@ WORKDIR /app
 
 RUN addgroup -S cordillera && adduser -S cordillera -G cordillera
 
-RUN apk add --no-cache wget
+RUN apk add --no-cache wget openssl
 
-COPY --from=builder /app/node_modules ./node_modules
+# Install only runtime dependencies instead of copying the full builder tree.
+COPY package.json package-lock.json ./
+COPY backend/package.json ./backend/package.json
+RUN npm ci --omit=dev --workspace backend \
+  && npm cache clean --force
+
 COPY --from=builder /app/backend/dist ./dist
 COPY --from=builder /app/backend/prisma ./prisma
-COPY backend/scripts ./scripts
-COPY backend/package.json ./
+RUN npx prisma generate --schema=./prisma/schema.prisma
 
-RUN mkdir -p uploads/imports uploads/exports uploads/files && chown -R cordillera:cordillera uploads
+COPY backend/scripts ./scripts
+
+# Preserve backend package metadata so Node treats dist as ESM.
+COPY backend/package.json ./package.json
+
+RUN mkdir -p uploads/imports uploads/exports uploads/files \
+  && chown -R cordillera:cordillera uploads
 
 USER cordillera
 
 EXPOSE 4000
 
-HEALTHCHECK --interval=30s --timeout=3s --retries=3 \
+HEALTHCHECK --interval=30s --timeout=5s --start-period=30s --retries=5 \
   CMD wget -qO- http://localhost:4000/health || exit 1
 
 CMD ["sh", "-c", "npx prisma migrate deploy; node dist/main.js"]
