@@ -5774,11 +5774,13 @@ input::placeholder, textarea::placeholder { color: var(--muted-light); }
 
 .simce-exam__topbar-main {
   display: grid;
-  grid-template-columns: 1fr auto;
+  grid-template-columns: minmax(0, 1fr) auto;
   gap: 16px;
   align-items: center;
   padding: 20px 24px;
 }
+
+.simce-exam__topbar-main > div:first-child { min-width: 0; }
 
 .simce-exam__brand {
   font-size: 11px;
@@ -5790,10 +5792,13 @@ input::placeholder, textarea::placeholder { color: var(--muted-light); }
 
 .simce-exam__title {
   margin: 0;
-  font-size: clamp(22px, 3.5vw, 38px);
-  letter-spacing: .04em;
-  line-height: 1.1;
+  max-width: 100%;
+  font-size: clamp(22px, 3vw, 36px);
+  letter-spacing: .025em;
+  line-height: 1.12;
   font-weight: 900;
+  overflow-wrap: anywhere;
+  word-break: break-word;
 }
 
 .simce-exam__subtitle {
@@ -5812,6 +5817,8 @@ input::placeholder, textarea::placeholder { color: var(--muted-light); }
   letter-spacing: .12em;
   text-align: center;
   min-width: 120px;
+  max-width: 100%;
+  box-sizing: border-box;
   white-space: nowrap;
 }
 
@@ -6136,6 +6143,174 @@ input::placeholder, textarea::placeholder { color: var(--muted-light); }
 .simce-exam__init h3 { margin: 0 0 8px; font-size: 18px; }
 .simce-exam__init p { color: var(--muted); margin: 0 0 20px; }
 
+.modal-container.simce-submit-modal {
+  max-width: 470px;
+  overflow: hidden;
+  border: 1px solid #c9d8e8;
+  border-radius: 18px;
+  box-shadow: 0 28px 70px rgba(0, 35, 73, .24);
+  animation: simce-submit-modal-in .18s ease-out;
+}
+
+.simce-submit-modal .modal-header {
+  padding: 20px 22px;
+  background: linear-gradient(135deg, var(--simce-blue), var(--simce-blue-dark));
+  color: #fff;
+}
+
+.simce-submit-modal .modal-header h2 {
+  margin: 0;
+  color: #fff;
+  font-size: 1.25rem;
+  font-weight: 900;
+  letter-spacing: -.01em;
+}
+
+.simce-submit-modal .modal-close {
+  width: 36px;
+  height: 36px;
+  padding: 0;
+  display: grid;
+  place-items: center;
+  color: #fff;
+  background: rgba(255, 255, 255, .12);
+  border: 1px solid rgba(255, 255, 255, .18);
+  border-radius: 999px;
+}
+
+.simce-submit-modal .modal-close:hover {
+  color: #fff;
+  background: rgba(255, 255, 255, .22);
+}
+
+.simce-submit-modal .modal-body { padding: 24px 24px 18px; }
+
+.simce-submit-modal .modal-footer {
+  padding: 16px 24px 22px;
+  gap: 10px;
+  border-top: 1px solid #e5ebf2;
+  background: #f8fafc;
+}
+
+.simce-submit-modal .modal-footer .simce-exam__btn { min-height: 44px; }
+
+.simce-submit-confirm { text-align: center; }
+
+.simce-submit-confirm__icon {
+  width: 62px;
+  height: 62px;
+  margin: 0 auto 16px;
+  display: grid;
+  place-items: center;
+  color: var(--simce-blue);
+  background: var(--simce-sky);
+  border: 1px solid #bdd7f1;
+  border-radius: 18px;
+  transform: rotate(-3deg);
+}
+
+.simce-submit-confirm__icon svg {
+  width: 30px;
+  height: 30px;
+  transform: rotate(3deg);
+}
+
+.simce-submit-confirm__lead {
+  max-width: 390px;
+  margin: 0 auto;
+  color: #475467;
+  font-size: 14px;
+  line-height: 1.6;
+}
+
+.simce-submit-confirm__summary {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 10px;
+  margin-top: 20px;
+}
+
+.simce-submit-confirm__summary > div {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  padding: 13px 14px;
+  color: #344054;
+  background: #f3f7fb;
+  border: 1px solid #d8e2ef;
+  border-radius: 12px;
+  text-align: left;
+}
+
+.simce-submit-confirm__summary span {
+  font-size: 12px;
+  font-weight: 700;
+}
+
+.simce-submit-confirm__summary strong {
+  color: var(--simce-blue);
+  font-size: 20px;
+  line-height: 1;
+}
+
+.simce-submit-confirm__summary .is-pending {
+  color: #8a4b0b;
+  background: #fffaeb;
+  border-color: #fedf89;
+}
+
+.simce-submit-confirm__summary .is-pending strong { color: #b54708; }
+.simce-submit-confirm__summary .is-complete strong { color: var(--simce-ok); }
+
+.simce-submit-confirm__warning,
+.simce-submit-confirm__ready {
+  margin-top: 14px;
+  padding: 12px 14px;
+  border-radius: 12px;
+  font-size: 12px;
+  font-weight: 700;
+  line-height: 1.45;
+  text-align: left;
+}
+
+.simce-submit-confirm__warning {
+  display: grid;
+  grid-template-columns: 20px 1fr;
+  gap: 9px;
+  align-items: start;
+  color: #8a4b0b;
+  background: #fffaeb;
+  border: 1px solid #fedf89;
+}
+
+.simce-submit-confirm__warning svg { width: 20px; height: 20px; }
+
+.simce-submit-confirm__ready {
+  color: #067647;
+  background: #ecfdf3;
+  border: 1px solid #abefc6;
+  text-align: center;
+}
+
+@keyframes simce-submit-modal-in {
+  from { opacity: 0; transform: translateY(10px) scale(.98); }
+  to { opacity: 1; transform: translateY(0) scale(1); }
+}
+
+@media (max-width: 520px) {
+  .simce-submit-modal .modal-header,
+  .simce-submit-modal .modal-body,
+  .simce-submit-modal .modal-footer { padding-left: 18px; padding-right: 18px; }
+
+  .simce-submit-confirm__summary { grid-template-columns: 1fr; }
+
+  .simce-submit-modal .modal-footer {
+    flex-direction: column-reverse;
+  }
+
+  .simce-submit-modal .modal-footer .simce-exam__btn { width: 100%; }
+}
 .simce-exam__footer {
   text-align: center;
   color: var(--muted);

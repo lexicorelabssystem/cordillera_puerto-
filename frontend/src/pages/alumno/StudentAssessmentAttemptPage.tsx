@@ -3,8 +3,10 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useParams } from "react-router-dom";
 import { ShellLayout } from "../../components/common/ShellLayout";
 import { LoadingSpinner } from "../../components/common/LoadingSpinner";
+import { Modal } from "../../components/common/Modal";
 import { useToast } from "../../components/common/Toast";
 import { api } from "../../lib/api";
+import { formatGradeLevel } from "../../lib/grade-levels";
 import type { AuthUser } from "../../types/api";
 
 interface Props {
@@ -46,6 +48,7 @@ export function StudentAssessmentAttemptPage({ user, onLogout }: Props) {
   }>(null);
   const [timerSeconds, setTimerSeconds] = useState<number | null>(null);
   const [showReview, setShowReview] = useState(false);
+  const [showSubmitConfirm, setShowSubmitConfirm] = useState(false);
 
   const assessmentQuery = useQuery({
     queryKey: ["student-assessment-detail", id],
@@ -131,15 +134,13 @@ export function StudentAssessmentAttemptPage({ user, onLogout }: Props) {
   const submitMutation = useMutation({
     mutationFn: async () => {
       if (!attemptId) throw new Error("Primero inicia la evaluacion.");
-      if (!window.confirm("Al enviar la evaluacion no podras modificar tus respuestas. ¿Deseas continuar?")) {
-        throw new Error("Envio cancelado.");
-      }
       if (answerPayload.length) {
         await api.saveAssessmentAnswers(attemptId, { answers: answerPayload });
       }
       return api.submitAssessmentAttempt(attemptId, { confirmEmpty: true });
     },
     onSuccess: (result) => {
+      setShowSubmitConfirm(false);
       setSubmitted({
         correct: Math.round((result.percentage / 100) * totalQuestions),
         total: totalQuestions,
@@ -153,7 +154,6 @@ export function StudentAssessmentAttemptPage({ user, onLogout }: Props) {
       queryClient.invalidateQueries({ queryKey: ["student-assessment-attempt", attemptId] });
     },
     onError: (error) => {
-      if (error instanceof Error && error.message === "Envio cancelado.") return;
       toast(error instanceof Error ? error.message : "No se pudo enviar.", "error");
     },
   });
@@ -204,8 +204,13 @@ export function StudentAssessmentAttemptPage({ user, onLogout }: Props) {
     );
   }
 
-  const subjectName = assessment.subjectId ?? "General";
-  const gradeLabel = "Sin nivel";
+  const subjectName = assessment.subject?.name
+    ?? assessment.questions.find((item) => item.question.subject?.name)?.question.subject?.name
+    ?? "General";
+  const gradeLabel = assessment.course?.gradeLevel
+    ? formatGradeLevel(assessment.course.gradeLevel)
+    : assessment.course?.name ?? "Sin nivel";
+  const displayTitle = assessment.title.replace(/_+/g, " ").replace(/\s+/g, " ").trim();
 
   return (
     <ShellLayout title="" subtitle="" className="shell--student simce-exam-shell" right={<button onClick={onLogout}>Cerrar sesion</button>}>
@@ -214,7 +219,7 @@ export function StudentAssessmentAttemptPage({ user, onLogout }: Props) {
           <div className="simce-exam__topbar-main">
             <div>
               <div className="simce-exam__brand">Plataforma de Monitoreo de Aprendizajes · Cordillera</div>
-              <h1 className="simce-exam__title">{assessment.title}</h1>
+              <h1 className="simce-exam__title">{displayTitle}</h1>
               <p className="simce-exam__subtitle">{assessment.description || `${assessment.assessmentType} · ${subjectName} · ${gradeLabel}`}</p>
             </div>
             <div className="simce-exam__badge">{assessment.assessmentType === "SIMCE" ? "SIMCE" : "PRUEBA"}</div>
@@ -339,7 +344,7 @@ export function StudentAssessmentAttemptPage({ user, onLogout }: Props) {
                 <button className="simce-exam__btn simce-exam__btn--secondary" disabled={saveMutation.isPending} onClick={() => saveMutation.mutate()}>
                   {saveMutation.isPending ? "Guardando..." : "Guardar progreso"}
                 </button>
-                <button className="simce-exam__btn simce-exam__btn--primary" disabled={submitMutation.isPending} onClick={() => submitMutation.mutate()}>
+                <button className="simce-exam__btn simce-exam__btn--primary" disabled={submitMutation.isPending} onClick={() => setShowSubmitConfirm(true)}>
                   {submitMutation.isPending ? "Enviando..." : "Enviar evaluacion"}
                 </button>
               </div>
@@ -446,8 +451,73 @@ export function StudentAssessmentAttemptPage({ user, onLogout }: Props) {
           </section>
         ) : null}
 
+        <Modal
+          isOpen={showSubmitConfirm}
+          onClose={() => {
+            if (!submitMutation.isPending) setShowSubmitConfirm(false);
+          }}
+          title="¿Enviar evaluación?"
+          size="sm"
+          className="simce-submit-modal"
+          footer={(
+            <>
+              <button
+                type="button"
+                className="simce-exam__btn simce-exam__btn--secondary"
+                disabled={submitMutation.isPending}
+                onClick={() => setShowSubmitConfirm(false)}
+              >
+                Volver y revisar
+              </button>
+              <button
+                type="button"
+                className="simce-exam__btn simce-exam__btn--primary"
+                disabled={submitMutation.isPending}
+                onClick={() => submitMutation.mutate()}
+              >
+                {submitMutation.isPending ? "Enviando..." : "Sí, enviar evaluación"}
+              </button>
+            </>
+          )}
+        >
+          <div className="simce-submit-confirm">
+            <div className="simce-submit-confirm__icon" aria-hidden="true">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2">
+                <path d="M22 2 11 13" />
+                <path d="m22 2-7 20-4-9-9-4Z" />
+              </svg>
+            </div>
+            <p className="simce-submit-confirm__lead">
+              Revisa el resumen antes de finalizar. Después del envío ya no podrás modificar tus respuestas.
+            </p>
+            <div className="simce-submit-confirm__summary">
+              <div>
+                <span>Respondidas</span>
+                <strong>{answeredCount}</strong>
+              </div>
+              <div className={answeredCount < totalQuestions ? "is-pending" : "is-complete"}>
+                <span>Sin responder</span>
+                <strong>{Math.max(totalQuestions - answeredCount, 0)}</strong>
+              </div>
+            </div>
+            {answeredCount < totalQuestions ? (
+              <div className="simce-submit-confirm__warning" role="status">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                  <path d="M12 9v4" />
+                  <path d="M12 17h.01" />
+                  <path d="M10.3 3.7 2.4 17.4A2 2 0 0 0 4.1 20h15.8a2 2 0 0 0 1.7-2.6L13.7 3.7a2 2 0 0 0-3.4 0Z" />
+                </svg>
+                Aún tienes {totalQuestions - answeredCount} pregunta(s) sin responder. Puedes volver para completarlas.
+              </div>
+            ) : (
+              <div className="simce-submit-confirm__ready" role="status">
+                Todas las preguntas están respondidas. Tu evaluación está lista para enviar.
+              </div>
+            )}
+          </div>
+        </Modal>
         <div className="simce-exam__footer">
-          Plataforma Cordillera · Evaluacion digital · {assessment.title}
+          Plataforma Cordillera · Evaluacion digital · {displayTitle}
         </div>
       </div>
     </ShellLayout>
