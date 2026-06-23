@@ -1,6 +1,8 @@
 import { ExceptionFilter, Catch, ArgumentsHost, HttpException, Logger } from "@nestjs/common";
 import { FastifyReply, FastifyRequest } from "fastify";
 
+const isDev = process.env.NODE_ENV !== "production";
+
 @Catch()
 export class HttpExceptionFilter implements ExceptionFilter {
   private readonly logger = new Logger(HttpExceptionFilter.name);
@@ -13,6 +15,7 @@ export class HttpExceptionFilter implements ExceptionFilter {
     let status = 500;
     let message = "Error interno del servidor";
     let errors: unknown = undefined;
+    let stack: string | undefined;
 
     if (exception instanceof HttpException) {
       status = exception.getStatus();
@@ -26,6 +29,7 @@ export class HttpExceptionFilter implements ExceptionFilter {
       }
     } else if (exception instanceof Error) {
       message = exception.message;
+      stack = exception.stack;
     }
 
     if (status >= 500) {
@@ -42,9 +46,8 @@ export class HttpExceptionFilter implements ExceptionFilter {
       path: request.url,
     };
 
-    if (errors !== undefined) {
-      body.errors = errors;
-    }
+    if (errors !== undefined) body.errors = errors;
+    if (isDev && stack) body.stack = stack;
 
     reply.status(status).send(body);
   }
