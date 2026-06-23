@@ -9,6 +9,7 @@ import { ImportConfirmDto } from "./dto/import.dto.js";
 import { JwtAuthGuard } from "../../auth/jwt-auth.guard.js";
 import { RolesGuard } from "../../../common/guards/roles.guard.js";
 import { Roles } from "../../../common/decorators/roles.decorator.js";
+import { Permissions } from "../../../common/decorators/permissions.decorator.js";
 import { CurrentUser, JwtPayload } from "../../../common/decorators/current-user.decorator.js";
 
 @ApiTags("Imports")
@@ -20,6 +21,7 @@ export class ImportsController {
 
   @Post("upload/:entityType")
   @Roles("ADMIN", "SUPER_ADMIN", "DIRECTION", "UTP")
+  @Permissions("IMPORTS_EXECUTE")
   @ApiConsumes("multipart/form-data")
   @ApiOperation({ summary: "Subir archivo Excel/CSV para importar (students, questions, grades, enrollments)" })
   async upload(

@@ -38,12 +38,14 @@ async function bootstrap() {
     threshold: 1024,
   });
 
+  const isProd = process.env.NODE_ENV === "production";
+
   await app.register(helmet as never, {
     contentSecurityPolicy: {
       directives: {
         defaultSrc: ["'self'"],
-        scriptSrc: ["'self'", "'unsafe-inline'"],
-        styleSrc: ["'self'", "'unsafe-inline'"],
+        scriptSrc: isProd ? ["'self'"] : ["'self'", "'unsafe-inline'"],
+        styleSrc: isProd ? ["'self'"] : ["'self'", "'unsafe-inline'"],
         imgSrc: ["'self'", "data:", "blob:"],
         fontSrc: ["'self'"],
         connectSrc: ["'self'"],
@@ -55,6 +57,22 @@ async function bootstrap() {
       includeSubDomains: true,
     },
   });
+
+  if (isProd) {
+    app.getHttpAdapter().getInstance().addHook("onSend", (request: FastifyRequest, _reply: FastifyReply, payload: unknown) => {
+      if (request.url.startsWith("/api/docs")) {
+        _reply.header("Content-Security-Policy", [
+          "default-src 'self'",
+          "script-src 'self' 'unsafe-inline'",
+          "style-src 'self' 'unsafe-inline'",
+          "img-src 'self' data: blob:",
+          "font-src 'self'",
+          "connect-src 'self'",
+        ].join("; "));
+      }
+      return payload;
+    });
+  }
 
   const logger = new Logger("Bootstrap");
 
@@ -70,7 +88,6 @@ async function bootstrap() {
     "*.vercel.app",
     "*.sslip.io",
   ].map((o) => o?.trim()).filter((o): o is string => Boolean(o));
-  const isProd = process.env.NODE_ENV === "production";
 
   if (isProd && rawOrigins.some((o) => o.includes("localhost"))) {
     logger.warn("CORS_ORIGINS contiene localhost en produccion — cambiar a dominio real antes del despliegue");

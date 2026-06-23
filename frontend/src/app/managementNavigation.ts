@@ -99,6 +99,7 @@ export function buildManagementCategories(basePath: string, mode: ManagementMode
       { id: "reportes", label: "Reportes", description: "Generar y consultar", path: `${basePath}/reportes` },
       { id: "remedial", label: "Rutas Remediales", description: "Planes de refuerzo por OA", path: `${basePath}/remedial` },
       { id: "alertas", label: "Alertas", description: "Riesgo academico", path: `${basePath}/alertas` },
+      { id: "asistencia", label: "Asistencia", description: "Registro diario por curso", path: `${basePath}/asistencia` },
       { id: "bandeja", label: "Bandeja UTP", description: "Notificaciones de cambios de nota", path: `${basePath}/bandeja` },
     ],
   };

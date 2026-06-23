@@ -82,6 +82,9 @@ const AlumnosPorCursoPage = lazy(() =>
 const AlertsPage = lazy(() =>
   import("../pages/admin/AlertsPage").then((m) => ({ default: m.AlertsPage }))
 );
+const AttendancePage = lazy(() =>
+  import("../pages/admin/AttendancePage").then((m) => ({ default: m.AttendancePage }))
+);
 const AuditLogsPage = lazy(() =>
   import("../pages/admin/AuditLogsPage").then((m) => ({ default: m.AuditLogsPage }))
 );
@@ -186,6 +189,7 @@ function adminRoutes(mode: "admin" | "direction" | "utp" = "admin") {
       {ff.online_assessments && <Route path="correccion" element={<Lazy><CorreccionPruebasPage /></Lazy>} />}
       <Route path="correccion-rapida" element={<Lazy><FastCorrectionPage /></Lazy>} />
       <Route path="alertas" element={<Lazy><AlertsPageWrapper /></Lazy>} />
+      <Route path="asistencia" element={<Lazy><AttendancePage /></Lazy>} />
       <Route path="auditoria" element={<Lazy><AuditLogsPage /></Lazy>} />
       <Route path="bandeja" element={<Lazy><BandejaPage /></Lazy>} />
       {(includeAdminOnly || mode === "utp") && <Route path="importar" element={<Lazy><ImportPage /></Lazy>} />}

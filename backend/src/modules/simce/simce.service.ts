@@ -15,14 +15,14 @@ import { resolveUserScope } from "../../common/authz/access-scope.js";
 import type { JwtPayload } from "../../common/decorators/current-user.decorator.js";
 import { DocumentAssessmentParserService } from "../assessments/import/document-assessment-parser.service.js";
 
-const VALID_STATUS_TRANSITIONS: Record<SimceStatus, SimceStatus[]> = {
+export const VALID_STATUS_TRANSITIONS: Record<SimceStatus, SimceStatus[]> = {
   DRAFT:            ["KEY_PENDING"],
   KEY_PENDING:      ["READY_TO_CORRECT", "DRAFT"],
   READY_TO_CORRECT: ["CORRECTED", "KEY_PENDING"],
   CORRECTED:        ["READY_TO_CORRECT"],
 };
 
-function assertScopeForCourse(
+export function assertScopeForCourse(
   scope: Awaited<ReturnType<typeof resolveUserScope>>,
   courseInstitutionId: string,
   courseId: string,
@@ -52,7 +52,7 @@ function assertScopeForCourse(
   throw new ForbiddenException("No tienes acceso a este recurso");
 }
 
-function assertScopeForStudent(
+export function assertScopeForStudent(
   scope: Awaited<ReturnType<typeof resolveUserScope>>,
   enrollment: { course: { id: string; institutionId: string } } | null,
   studentId: string,

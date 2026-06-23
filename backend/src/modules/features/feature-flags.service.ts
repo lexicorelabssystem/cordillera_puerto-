@@ -1,6 +1,6 @@
 import { Injectable, Inject } from "@nestjs/common";
 import { PrismaService } from "../prisma/prisma.service.js";
-import { DEFAULT_FEATURES, type FeatureFlag } from "../../shared/features.js";
+import { DEFAULT_FEATURES, type FeatureFlag } from "@cordillera/shared/features.js";
 
 @Injectable()
 export class FeatureFlagsService {

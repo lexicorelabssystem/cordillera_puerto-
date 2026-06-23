@@ -6366,3 +6366,176 @@ input::placeholder, textarea::placeholder { color: var(--muted-light); }
   display: flex;
   cursor: pointer;
 }
+
+/* -----------------------------------------------
+   ATTENDANCE PAGE
+   ----------------------------------------------- */
+
+.attendance-page {
+  padding: 0 0 2rem 0;
+}
+
+.att-controls {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.75rem;
+  align-items: center;
+  padding: 1rem 1.5rem;
+  background: var(--card-bg, #fff);
+  border-bottom: 1px solid var(--border, #e2e8f0);
+}
+
+.att-select {
+  padding: 0.5rem 2rem 0.5rem 0.75rem;
+  border: 1px solid var(--border, #d1d5db);
+  border-radius: 8px;
+  font-size: 0.9rem;
+  background: #fff;
+  min-width: 220px;
+  cursor: pointer;
+}
+
+.att-date {
+  padding: 0.5rem 0.75rem;
+  border: 1px solid var(--border, #d1d5db);
+  border-radius: 8px;
+  font-size: 0.9rem;
+}
+
+.att-actions {
+  display: flex;
+  gap: 0.5rem;
+  margin-left: auto;
+  flex-wrap: wrap;
+}
+
+.att-btn {
+  padding: 0.5rem 1rem;
+  border: 1px solid var(--border, #d1d5db);
+  border-radius: 8px;
+  font-size: 0.85rem;
+  cursor: pointer;
+  background: #fff;
+  transition: background 0.15s, color 0.15s;
+}
+.att-btn:hover { opacity: 0.85; }
+.att-btn:disabled { opacity: 0.5; cursor: not-allowed; }
+
+.att-btn--present { border-color: #16a34a; color: #16a34a; }
+.att-btn--present:hover { background: #16a34a; color: #fff; }
+
+.att-btn--absent { border-color: #dc2626; color: #dc2626; }
+.att-btn--absent:hover { background: #dc2626; color: #fff; }
+
+.att-btn--save {
+  background: var(--primary, #2563eb);
+  color: #fff;
+  border-color: var(--primary, #2563eb);
+  font-weight: 600;
+}
+
+.att-stats {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+  padding: 0.75rem 1.5rem;
+  background: var(--card-bg, #f8fafc);
+  border-bottom: 1px solid var(--border, #e2e8f0);
+}
+
+.att-stat-badge {
+  padding: 0.25rem 0.75rem;
+  border-radius: 20px;
+  font-size: 0.8rem;
+  font-weight: 600;
+}
+
+.att-status--present   { background: #dcfce7; color: #166534; }
+.att-status--absent    { background: #fee2e2; color: #991b1b; }
+.att-status--late      { background: #fef3c7; color: #92400e; }
+.att-status--justified { background: #dbeafe; color: #1e40af; }
+.att-status--excused   { background: #f3e8ff; color: #6b21a8; }
+
+.att-empty {
+  text-align: center;
+  padding: 3rem 1rem;
+  color: var(--muted, #6b7280);
+  font-size: 0.95rem;
+}
+
+.att-table-wrap {
+  overflow-x: auto;
+  padding: 0 1.5rem 2rem;
+}
+
+.att-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 0.9rem;
+}
+
+.att-table th {
+  text-align: left;
+  padding: 0.6rem 0.5rem;
+  font-weight: 700;
+  font-size: 0.8rem;
+  text-transform: uppercase;
+  letter-spacing: 0.03em;
+  color: var(--muted, #6b7280);
+  border-bottom: 2px solid var(--border, #e2e8f0);
+  white-space: nowrap;
+}
+
+.att-table td {
+  padding: 0.55rem 0.5rem;
+  border-bottom: 1px solid var(--border, #f1f5f9);
+  vertical-align: middle;
+}
+
+.att-table tbody tr:hover { background: #f8fafc; }
+.att-row--dirty { background: #fffbeb; }
+
+.att-rut {
+  font-family: monospace;
+  font-size: 0.82rem;
+  color: var(--muted, #6b7280);
+}
+
+.att-radio-cell {
+  text-align: center;
+  width: 48px;
+}
+
+.att-radio {
+  appearance: none;
+  width: 20px;
+  height: 20px;
+  border-radius: 50%;
+  border: 2px solid #d1d5db;
+  cursor: pointer;
+  transition: all 0.15s;
+  position: relative;
+}
+.att-radio:checked::after {
+  content: "";
+  position: absolute;
+  inset: 3px;
+  border-radius: 50%;
+}
+.att-radio.att-status--present:checked   { border-color: #16a34a; }
+.att-radio.att-status--present:checked::after { background: #16a34a; }
+.att-radio.att-status--absent:checked    { border-color: #dc2626; }
+.att-radio.att-status--absent:checked::after { background: #dc2626; }
+.att-radio.att-status--late:checked      { border-color: #d97706; }
+.att-radio.att-status--late:checked::after { background: #d97706; }
+.att-radio.att-status--justified:checked { border-color: #2563eb; }
+.att-radio.att-status--justified:checked::after { background: #2563eb; }
+.att-radio.att-status--excused:checked   { border-color: #9333ea; }
+.att-radio.att-status--excused:checked::after { background: #9333ea; }
+
+@media (max-width: 768px) {
+  .att-controls { flex-direction: column; align-items: stretch; }
+  .att-actions { margin-left: 0; justify-content: flex-end; }
+  .att-table th, .att-table td { font-size: 0.78rem; padding: 0.4rem 0.3rem; }
+  .att-radio { width: 18px; height: 18px; }
+}

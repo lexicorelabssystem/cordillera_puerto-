@@ -20,6 +20,22 @@ enum UserRole {
   PARENT
 }
 
+enum AssessmentStatus {
+  DRAFT
+  PUBLISHED
+  ACTIVE
+  CLOSED
+  IN_GRADING
+  GRADED
+  REPORTED
+  ARCHIVED
+}
+
+enum PeriodStatus {
+  ACTIVE
+  CLOSED
+}
+
 enum AssessmentType {
   DIAGNOSTICA
   PROCESO
@@ -272,7 +288,7 @@ model Period {
   startDate      DateTime  @db.Date
   endDate        DateTime  @db.Date
   weight         Float?
-  status         String    @default("ACTIVE")
+  status         PeriodStatus    @default(ACTIVE)
   closedAt       DateTime? @db.Timestamptz()
   closedBy       String?   @db.Uuid
   reopenedAt     DateTime? @db.Timestamptz()
@@ -713,7 +729,7 @@ model Assessment {
   description      String?
   assessmentType   AssessmentType
   deliveryMode     AssessmentDeliveryMode @default(ONLINE)
-  status           String                 @default("DRAFT")
+  status           AssessmentStatus       @default(DRAFT)
   semester         Int
   maxScore         Float                  @default(100.0)
   weight           Float?                 @default(0)
@@ -865,6 +881,7 @@ model StudentAnswer {
 
   attempt  AssessmentAttempt @relation(fields: [attemptId], references: [id], onDelete: Cascade)
   question Question          @relation(fields: [questionId], references: [id])
+  option   QuestionOption?   @relation(fields: [selectedOptionId], references: [id])
 
   @@unique([attemptId, questionId])
   @@map("student_answers")
