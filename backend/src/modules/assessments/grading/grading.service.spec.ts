@@ -3,6 +3,7 @@ import { Test, TestingModule } from "@nestjs/testing";
 import { NotFoundException, BadRequestException, ForbiddenException } from "@nestjs/common";
 import { GradingService } from "./grading.service.js";
 import { PrismaService } from "../../prisma/prisma.service.js";
+import { NotificationsService } from "../../notifications/notifications.service.js";
 
 const MOCK_ANSWER_ID = "answer-001";
 const MOCK_TEACHER_USER_ID = "teacher-user-001";
@@ -114,6 +115,17 @@ describe("GradingService", () => {
   let prismaStudent: Record<string, jest.Mock<(...args: any[]) => any>>;
   let prismaCourse: Record<string, jest.Mock<(...args: any[]) => any>>;
   let prismaEnrollment: Record<string, jest.Mock<(...args: any[]) => any>>;
+  let prismaUser: Record<string, jest.Mock<(...args: any[]) => any>>;
+
+  const mockScopeUser = {
+    id: "scope-user-001",
+    role: "SUPER_ADMIN" as const,
+    isActive: true,
+    deletedAt: null,
+    institutionId: null,
+    teacher: null,
+    student: null,
+  };
 
   beforeEach(async () => {
     prismaStudentAnswer = {
@@ -149,6 +161,7 @@ describe("GradingService", () => {
     prismaEnrollment = {
       findFirst: jest.fn(),
     };
+    prismaUser = { findUnique: jest.fn<() => any>().mockResolvedValue(mockScopeUser) };
 
     const module: TestingModule = await Test.createTestingModule({
       providers: [
@@ -164,6 +177,14 @@ describe("GradingService", () => {
             student: prismaStudent,
             course: prismaCourse,
             enrollment: prismaEnrollment,
+            user: prismaUser,
+          },
+        },
+        {
+          provide: NotificationsService,
+          useValue: {
+            notifyGradeChangeRequest: jest.fn<() => any>().mockResolvedValue(undefined),
+            notifyAssessmentGraded: jest.fn<() => any>().mockResolvedValue(undefined),
           },
         },
       ],

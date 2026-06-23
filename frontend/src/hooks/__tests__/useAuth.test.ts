@@ -10,6 +10,7 @@ vi.mock("../../lib/api", () => ({
     logout: vi.fn(),
   },
   setSessionExpiredHandler: vi.fn(),
+  clearAuthTokens: vi.fn(),
 }));
 
 import { api } from "../../lib/api";

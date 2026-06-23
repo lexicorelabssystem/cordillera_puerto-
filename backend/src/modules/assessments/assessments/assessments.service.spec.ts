@@ -96,6 +96,17 @@ describe("AssessmentsService", () => {
   let prismaPeriod: Record<string, jest.Mock<(...args: any[]) => any>>;
   let prismaAssessmentQuestion: Record<string, jest.Mock<(...args: any[]) => any>>;
   let prismaQuestion: Record<string, jest.Mock<(...args: any[]) => any>>;
+  let prismaUser: Record<string, jest.Mock<(...args: any[]) => any>>;
+
+  const mockScopeUser = {
+    id: MOCK_USER_ID,
+    role: "SUPER_ADMIN" as const,
+    isActive: true,
+    deletedAt: null,
+    institutionId: null,
+    teacher: null,
+    student: null,
+  };
 
   beforeEach(async () => {
     prismaAssessment = {
@@ -119,6 +130,7 @@ describe("AssessmentsService", () => {
       delete: jest.fn(),
     };
     prismaQuestion = { findUnique: jest.fn() };
+    prismaUser = { findUnique: jest.fn<() => any>().mockResolvedValue(mockScopeUser) };
 
     const module: TestingModule = await Test.createTestingModule({
       providers: [
@@ -133,6 +145,7 @@ describe("AssessmentsService", () => {
             period: prismaPeriod,
             assessmentQuestion: prismaAssessmentQuestion,
             question: prismaQuestion,
+            user: prismaUser,
           },
         },
       ],
