@@ -237,7 +237,7 @@ export class StudentsService {
 
     const courseIds = student.enrollments.map((enrollment) => enrollment.course.id);
 
-    const grades = courseIds.length
+    const grades: any[] = courseIds.length
       ? await this.prisma.grade.findMany({
           where: {
             studentId: student.id,
@@ -267,12 +267,12 @@ export class StudentsService {
         })
       : [];
 
-    const assessments = courseIds.length
+    const assessments: any[] = courseIds.length
       ? await this.prisma.assessment.findMany({
           where: {
             courseId: { in: courseIds },
             isActive: true,
-            status: { in: visibleAssessmentStatuses },
+            status: { in: visibleAssessmentStatuses as any },
           },
           include: {
             course: { select: { id: true, name: true } },
@@ -283,7 +283,7 @@ export class StudentsService {
               where: { studentId: student.id },
               select: { id: true, grade: true, comments: true, updatedAt: true },
             },
-          },
+          } as any,
           orderBy: [{ startDate: "desc" }, { updatedAt: "desc" }],
         })
       : [];
