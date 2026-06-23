@@ -5,7 +5,7 @@ import * as fs from "node:fs";
 import * as path from "node:path";
 import * as crypto from "node:crypto";
 import type { Prisma } from "@prisma/client";
-import type { PrismaService } from "../../prisma/prisma.service.js";
+import { PrismaService } from "../../prisma/prisma.service.js";
 import { ImportsParserService } from "./imports-parser.service.js";
 import { ImportsStudentService } from "./imports-student.service.js";
 import { ImportsTeacherService } from "./imports-teacher.service.js";
