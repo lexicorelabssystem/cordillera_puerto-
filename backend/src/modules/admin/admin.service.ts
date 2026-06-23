@@ -9,6 +9,7 @@ export class AdminService {
   constructor(private readonly prisma: PrismaService) {}
 
   async getOverview(institutionId?: string) {
+    try {
     const [totals, courses, students, teachers, subjects, recentAssessments] =
       await Promise.all([
         this.getTotals(institutionId),
@@ -32,6 +33,10 @@ export class AdminService {
       semaforoCursos: semaforo,
       alertas: alerts,
     };
+    } catch (error) {
+      this.logger.error("Error en getOverview", error instanceof Error ? error.stack : String(error));
+      throw error;
+    }
   }
 
   private async getTotals(institutionId?: string) {
