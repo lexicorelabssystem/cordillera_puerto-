@@ -22,7 +22,7 @@ services:
   backend:
     build:
       context: .
-      dockerfile: backend/Dockerfile
+      dockerfile: Dockerfile
     container_name: cordillera-backend
     restart: unless-stopped
     environment:
