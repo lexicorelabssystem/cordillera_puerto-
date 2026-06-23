@@ -121,7 +121,7 @@ export function StudentBulkImportPanel() {
       <h3>Importar alumnos masivamente</h3>
       <p style={{ color: "var(--muted)", marginBottom: 12 }}>
         Formato requerido: columna A nombre completo, B RUT, C curso y D correo electronico.
-        El nombre completo se separa como dos primeros nombres y dos apellidos.
+        El nombre completo se separa como dos primeros nombres y dos apellidos. Si el curso viene sin letra (por ejemplo, 1° básico), se conservará como curso de procedencia sin sección.
       </p>
 
       {!uploadPhase ? (

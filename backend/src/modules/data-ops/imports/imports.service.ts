@@ -22,6 +22,26 @@ interface ImportMetadata {
   deletedAt?: string;
 }
 
+interface ImportCourseTarget {
+  institutionId: string;
+  academicYearId: string;
+  name: string;
+  gradeLevel: number;
+}
+
+interface ImportCourseMatch {
+  course: {
+    id: string;
+    institutionId: string;
+    academicYearId: string;
+    name: string;
+    gradeLevel: number;
+    section: string | null;
+  } | null;
+  pendingCourse?: ImportCourseTarget;
+  error?: string;
+}
+
 const IMPORTED_STUDENT_TEMP_PASSWORD = "Temp2026**";
 const IMPORTED_TEACHER_TEMP_PASSWORD = "Temp2026**";
 
@@ -47,7 +67,7 @@ export class ImportsService {
     const ext = path.extname(fileName).toLowerCase();
     const metadata: ImportMetadata = {};
 
-    if (entityType === "teachers") {
+    if (["students", "teachers"].includes(entityType)) {
       const actor = await this.prisma.user.findUnique({
         where: { id: userId },
         select: { role: true, institutionId: true },
@@ -57,7 +77,9 @@ export class ImportsService {
         throw new BadRequestException("No tienes acceso a la institucion seleccionada");
       }
       metadata.institutionId = institutionId ?? actor.institutionId ?? undefined;
-      if (!metadata.institutionId) throw new BadRequestException("Selecciona una institucion antes de importar profesores");
+      if (!metadata.institutionId) {
+        throw new BadRequestException(`Selecciona una institucion antes de importar ${entityType === "students" ? "alumnos" : "profesores"}`);
+      }
     }
 
     if (![".xlsx", ".xls", ".csv"].includes(ext)) {
@@ -95,7 +117,7 @@ export class ImportsService {
     try {
       switch (job.entityType) {
         case "students":
-          results.students = await this.validateStudents(job);
+          results.students = await this.validateStudents(job, this.readImportMetadata(job.errorDetails).institutionId);
           break;
         case "teachers":
           results.teachers = await this.validateTeachers(job);
@@ -185,7 +207,7 @@ export class ImportsService {
     try {
       switch (job.entityType) {
         case "students":
-          const studentResult = await this.executeStudentImport(job, skipErrors);
+          const studentResult = await this.executeStudentImport(job, skipErrors, metadata.institutionId);
           success = studentResult.success; failed = studentResult.failed; importedRecords = studentResult.importedRecords;
           break;
         case "teachers":
@@ -256,7 +278,7 @@ export class ImportsService {
     }
 
     const metadata = this.readImportMetadata(job.errorDetails);
-    if (job.entityType === "teachers" && metadata.institutionId && actorId) {
+    if (["students", "teachers"].includes(job.entityType) && metadata.institutionId && actorId) {
       const actor = await this.prisma.user.findUnique({ where: { id: actorId }, select: { role: true, institutionId: true } });
       if (!actor) throw new BadRequestException("Usuario no encontrado");
       if (actor.institutionId && actor.institutionId !== metadata.institutionId && !["SUPER_ADMIN", "ADMIN"].includes(actor.role)) {
@@ -367,7 +389,7 @@ export class ImportsService {
 
   async listJobs(entityType?: string, actorId?: string, institutionId?: string) {
     let allowedInstitutionId = institutionId;
-    if (entityType === "teachers" && actorId) {
+    if (["students", "teachers"].includes(entityType ?? "") && actorId) {
       const actor = await this.prisma.user.findUnique({ where: { id: actorId }, select: { role: true, institutionId: true } });
       if (!actor) throw new BadRequestException("Usuario no encontrado");
       if (actor.institutionId && institutionId && actor.institutionId !== institutionId && !["SUPER_ADMIN", "ADMIN"].includes(actor.role)) {
@@ -384,7 +406,7 @@ export class ImportsService {
     return jobs.map((job) => {
       const metadata = this.readImportMetadata(job.errorDetails);
       return { job, metadata };
-    }).filter(({ metadata }) => entityType !== "teachers" || !allowedInstitutionId || metadata.institutionId === allowedInstitutionId)
+    }).filter(({ metadata }) => !["students", "teachers"].includes(entityType ?? "") || !allowedInstitutionId || metadata.institutionId === allowedInstitutionId)
       .map(({ job, metadata }) => ({
         ...job,
         trackedRecords: (metadata.importedRecords?.length ?? 0) + (metadata.importedTeacherRecords?.length ?? 0),
@@ -495,7 +517,7 @@ export class ImportsService {
     return headers.some((header) => knownHeaders.some((known) => header === known || header.includes(known)));
   }
 
-  private async validateStudents(job: { fileName: string }): Promise<{ data: ImportRow[]; errors: string[] }> {
+  private async validateStudents(job: { fileName: string }, institutionId?: string): Promise<{ data: ImportRow[]; errors: string[] }> {
     const rows = await this.parseFile(job.fileName);
     const result: ImportRow[] = [];
 
@@ -510,8 +532,10 @@ export class ImportsService {
       if (!courseName) {
         errors.push("Falta curso");
       } else {
-        const courseMatch = await this.findCourseByName(courseName);
-        if (!courseMatch.course) errors.push(courseMatch.error ?? `Curso no encontrado en la base de datos: ${courseName}`);
+        const courseMatch = await this.findCourseByName(courseName, institutionId);
+        if (!courseMatch.course && !courseMatch.pendingCourse) {
+          errors.push(courseMatch.error ?? `Curso no encontrado en la base de datos: ${courseName}`);
+        }
       }
       if (!email) {
         errors.push("Falta correo electronico");
@@ -578,7 +602,10 @@ export class ImportsService {
   private getCourseGradeLevel(courseName: string) {
     const normalized = this.normalizeCourseLabel(courseName);
     const direct = normalized.match(/^(\d{1,2})\s*°?/);
-    if (direct) return Number(direct[1]);
+    if (direct) {
+      const level = Number(direct[1]);
+      return /\bmedio\b/.test(normalized) && level <= 4 ? level + 8 : level;
+    }
 
     const words: Record<string, number> = {
       primero: 1,
@@ -593,40 +620,61 @@ export class ImportsService {
     return Object.entries(words).find(([word]) => normalized.includes(word))?.[1] ?? null;
   }
 
-  private async findCourseByName(courseName: string) {
+  private getCourseSection(courseName: string) {
+    const normalized = this.normalizeCourseLabel(courseName);
+    const withoutLevelName = normalized
+      .replace(/^\d{1,2}\s*°?\s*/, "")
+      .replace(/\b(basico|medio)\b/g, "")
+      .trim();
+    const section = withoutLevelName.match(/^(?:seccion\s*)?([a-z])$/);
+    return section?.[1]?.toUpperCase() ?? null;
+  }
+
+  private async findCourseByName(courseName: string, institutionId?: string): Promise<ImportCourseMatch> {
+    if (!institutionId) {
+      return { course: null, error: "No se pudo determinar la institucion de la importacion" };
+    }
+
     const normalized = courseName.trim();
     const normalizedLabel = this.normalizeCourseLabel(courseName);
     const gradeLevel = this.getCourseGradeLevel(courseName);
+    if (!gradeLevel || gradeLevel < 1 || gradeLevel > 12) {
+      return { course: null, error: `No se pudo reconocer el nivel del curso: ${courseName}` };
+    }
+
+    const academicYear = await this.prisma.academicYear.findFirst({
+      where: { institutionId, isActive: true },
+      select: { id: true },
+      orderBy: { year: "desc" },
+    });
+    if (!academicYear) {
+      return { course: null, error: "La institucion no tiene un año academico activo" };
+    }
+
     const courses = await this.prisma.course.findMany({
-      where: {
-        isActive: true,
-        OR: [
-          { name: { equals: normalized, mode: "insensitive" } },
-          { name: { contains: normalized, mode: "insensitive" } },
-          ...(gradeLevel ? [{ gradeLevel }] : []),
-        ],
-      },
+      where: { institutionId, academicYearId: academicYear.id, isActive: true, gradeLevel },
       orderBy: { name: "asc" },
     });
 
-    const exact = courses.find((course) => {
-      const courseLabel = this.normalizeCourseLabel(course.name);
-      return courseLabel === normalizedLabel || courseLabel.includes(normalizedLabel) || normalizedLabel.includes(courseLabel);
-    });
-    if (exact) return { course: exact };
+    const requestedSection = this.getCourseSection(courseName);
+    if (!requestedSection) {
+      const unsectioned = courses.find((course) =>
+        !course.section?.trim() && this.normalizeCourseLabel(course.name) === normalizedLabel,
+      ) ?? courses.find((course) => !course.section?.trim());
+      if (unsectioned) return { course: unsectioned };
 
-    const sameGrade = gradeLevel ? courses.filter((course) => course.gradeLevel === gradeLevel) : [];
-    if (sameGrade.length === 1) return { course: sameGrade[0] };
-    if (sameGrade.length > 1) {
       return {
         course: null,
-        error: `Curso ambiguo: ${courseName}. Hay ${sameGrade.length} cursos activos para ${gradeLevel}°. Agrega la seccion/letra en la columna Curso.`,
+        pendingCourse: { institutionId, academicYearId: academicYear.id, name: normalized, gradeLevel },
       };
     }
 
-    return { course: null, error: `Curso no encontrado en la base de datos: ${courseName}` };
-  }
+    const sectioned = courses.find((course) => course.section?.trim().toUpperCase() === requestedSection)
+      ?? courses.find((course) => this.getCourseSection(course.name) === requestedSection);
+    if (sectioned) return { course: sectioned };
 
+    return { course: null, error: `Curso no encontrado: ${courseName}` };
+  }
   private async validateTeachers(job: { fileName: string }): Promise<{ data: ImportRow[]; errors: string[] }> {
     const rows = await this.parseFile(job.fileName);
     const result: ImportRow[] = [];
@@ -749,7 +797,11 @@ export class ImportsService {
   //  EXECUTORS
   // ══════════════════════════════════════════════════════
 
-  private async executeStudentImport(job: { fileName: string; actorId: string | null }, skipErrors: boolean): Promise<{ success: number; failed: number; importedRecords: StudentImportRecord[] }> {
+  private async executeStudentImport(
+    job: { fileName: string; actorId: string | null },
+    skipErrors: boolean,
+    institutionId?: string,
+  ): Promise<{ success: number; failed: number; importedRecords: StudentImportRecord[] }> {
     const rows = await this.parseFile(job.fileName);
     let success = 0;
     let failed = 0;
@@ -777,8 +829,17 @@ export class ImportsService {
           failed++; continue;
         }
 
-        const courseMatch = await this.findCourseByName(courseName);
-        const course = courseMatch.course;
+        const courseMatch = await this.findCourseByName(courseName, institutionId);
+        let course = courseMatch.course;
+
+        if (!course && courseMatch.pendingCourse) {
+          const target = courseMatch.pendingCourse;
+          course = await this.prisma.course.upsert({
+            where: { academicYearId_name: { academicYearId: target.academicYearId, name: target.name } },
+            update: {},
+            create: { ...target, section: null },
+          });
+        }
 
         if (!course) {
           if (!skipErrors) throw new Error(courseMatch.error ?? `Curso no encontrado: ${courseName}`);
