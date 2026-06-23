@@ -244,7 +244,7 @@ export class StudentsService {
             assessment: {
               courseId: { in: courseIds },
               isActive: true,
-              status: { in: visibleAssessmentStatuses },
+              status: { in: visibleAssessmentStatuses as any },
             },
           },
           include: {
