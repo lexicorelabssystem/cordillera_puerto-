@@ -1,0 +1,12 @@
+node_modules
+dist
+.git
+*.xlsx
+*.pdf
+*.zip
+*.docx
+~$*
+uploads
+coverage
+.env
+*.tsbuildinfo

@@ -273,7 +273,7 @@ export class StudentsService {
             courseId: { in: courseIds },
             isActive: true,
             status: { in: visibleAssessmentStatuses as any },
-          },
+          } as any,
           include: {
             course: { select: { id: true, name: true } },
             subject: { select: { id: true, name: true } },
