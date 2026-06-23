@@ -89,7 +89,7 @@ export class PeriodsService {
     }
 
     const activeAssessments = await this.prisma.assessment.count({
-      where: { periodId: id, status: { in: ["ACTIVE", "PUBLISHED"] } },
+      where: { periodId: id, status: { in: ["ACTIVE", "PUBLISHED"] as any } },
     });
     if (activeAssessments > 0) {
       throw new BadRequestException(
@@ -98,7 +98,7 @@ export class PeriodsService {
     }
 
     const pendingGrading = await this.prisma.assessment.count({
-      where: { periodId: id, status: { in: ["CLOSED", "IN_GRADING"] } },
+      where: { periodId: id, status: { in: ["CLOSED", "IN_GRADING"] as any } },
     });
     if (pendingGrading > 0) {
       throw new BadRequestException(

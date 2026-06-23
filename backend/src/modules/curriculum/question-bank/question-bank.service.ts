@@ -104,7 +104,7 @@ export class QuestionBankService {
   async update(id: string, dto: UpdateQuestionDto) {
     const question = await this.prisma.question.findUnique({
       where: { id },
-      include: { assessmentQuestions: { where: { assessment: { status: { in: ["ACTIVE", "PUBLISHED"] } } } } },
+      include: { assessmentQuestions: { where: { assessment: { status: { in: ["ACTIVE", "PUBLISHED"] as any } } } } },
     });
     if (!question) throw new NotFoundException("Pregunta no encontrada");
 

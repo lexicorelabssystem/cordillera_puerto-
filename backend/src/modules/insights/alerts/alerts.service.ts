@@ -89,7 +89,7 @@ export class AlertsService {
     const assessments = await this.prisma.assessment.findMany({
       where: {
         courseId,
-        status: { in: ["GRADED", "REPORTED"] },
+        status: { in: ["GRADED", "REPORTED"] as any },
         ...(subjectId ? { subjectId } : {}),
       },
       include: {
@@ -183,7 +183,7 @@ export class AlertsService {
       include: {
         academicYear: { select: { year: true } },
         assessments: {
-          where: { status: { in: ["GRADED", "REPORTED", "CLOSED"] } },
+          where: { status: { in: ["GRADED", "REPORTED", "CLOSED"] as any } },
           select: { status: true },
         },
         enrollments: {
