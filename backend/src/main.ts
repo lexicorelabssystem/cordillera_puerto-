@@ -2,11 +2,14 @@ import { NestFactory } from "@nestjs/core";
 import { FastifyAdapter, NestFastifyApplication } from "@nestjs/platform-fastify";
 import { Logger, ValidationPipe, VersioningType, VERSION_NEUTRAL } from "@nestjs/common";
 import { SwaggerModule, DocumentBuilder } from "@nestjs/swagger";
+import { JwtService } from "@nestjs/jwt";
 import multipart from "@fastify/multipart";
 import cookie from "@fastify/cookie";
 import compress from "@fastify/compress";
 import helmet from "@fastify/helmet";
+import type { FastifyRequest, FastifyReply } from "fastify";
 import { AppModule } from "./app.module.js";
+import { PrismaService } from "./modules/prisma/prisma.service.js";
 import { HttpExceptionFilter } from "./common/filters/http-exception.filter.js";
 import { PrismaExceptionFilter } from "./common/filters/prisma-exception.filter.js";
 import { LoggingInterceptor } from "./common/interceptors/logging.interceptor.js";
@@ -148,6 +151,38 @@ async function bootstrap() {
   const document = SwaggerModule.createDocument(app, swaggerConfig);
   SwaggerModule.setup("api/docs", app, document, {
     swaggerOptions: { persistAuthorization: true },
+  });
+
+  const jwtService = app.get(JwtService);
+  const prismaService = app.get(PrismaService);
+
+  app.getHttpAdapter().getInstance().addHook("preHandler", async (request: FastifyRequest, reply: FastifyReply) => {
+    if (!request.url.startsWith("/api/docs")) return;
+
+    let token: string | null = null;
+    if (request.cookies?.access_token) {
+      token = request.cookies.access_token;
+    }
+    if (!token) {
+      const authHeader = request.headers.authorization;
+      if (authHeader?.startsWith("Bearer ")) {
+        token = authHeader.slice(7);
+      }
+    }
+
+    if (!token) {
+      return reply.status(401).send({ statusCode: 401, message: "Autenticación requerida para acceder a la documentación" });
+    }
+
+    try {
+      const payload = jwtService.verify(token) as { sub: string };
+      const user = await prismaService.user.findUnique({ where: { id: payload.sub } });
+      if (!user || !user.isActive || user.deletedAt) {
+        return reply.status(401).send({ statusCode: 401, message: "Usuario no autorizado o desactivado" });
+      }
+    } catch {
+      return reply.status(401).send({ statusCode: 401, message: "Token inválido o expirado" });
+    }
   });
 
   const port = process.env.PORT ?? 4000;
