@@ -1,27 +1,46 @@
--- Create native PostgreSQL enums (idempotent: skip if already exist)
+-- Create native PostgreSQL enums if they do not already exist.
 DO $$ BEGIN
   CREATE TYPE "AssessmentStatus" AS ENUM (
-    'DRAFT', 'PUBLISHED', 'ACTIVE', 'CLOSED',
-    'IN_GRADING', 'GRADED', 'REPORTED', 'ARCHIVED'
+    'DRAFT',
+    'PUBLISHED',
+    'ACTIVE',
+    'CLOSED',
+    'IN_GRADING',
+    'GRADED',
+    'REPORTED',
+    'ARCHIVED'
   );
-EXCEPTION WHEN duplicate_object THEN NULL;
+EXCEPTION
+  WHEN duplicate_object THEN NULL;
 END $$;
 
 DO $$ BEGIN
-  CREATE TYPE "PeriodStatus" AS ENUM ('ACTIVE', 'CLOSED');
-EXCEPTION WHEN duplicate_object THEN NULL;
+  CREATE TYPE "PeriodStatus" AS ENUM (
+    'ACTIVE',
+    'CLOSED'
+  );
+EXCEPTION
+  WHEN duplicate_object THEN NULL;
 END $$;
 
--- Alter assessment status column (idempotent: skip if already enum)
-DO $$ BEGIN
-  ALTER TABLE assessments
-    ALTER COLUMN status TYPE "AssessmentStatus" USING status::"AssessmentStatus";
-EXCEPTION WHEN duplicate_object OR invalid_text_representation THEN NULL;
-END $$;
+-- Convert assessments.status from text to AssessmentStatus.
+ALTER TABLE "assessments"
+  ALTER COLUMN "status" DROP DEFAULT;
 
--- Alter period status column (idempotent: skip if already enum)
-DO $$ BEGIN
-  ALTER TABLE periods
-    ALTER COLUMN status TYPE "PeriodStatus" USING status::"PeriodStatus";
-EXCEPTION WHEN duplicate_object OR invalid_text_representation THEN NULL;
-END $$;
+ALTER TABLE "assessments"
+  ALTER COLUMN "status" TYPE "AssessmentStatus"
+  USING ("status"::text::"AssessmentStatus");
+
+ALTER TABLE "assessments"
+  ALTER COLUMN "status" SET DEFAULT 'DRAFT'::"AssessmentStatus";
+
+-- Convert periods.status from text to PeriodStatus.
+ALTER TABLE "periods"
+  ALTER COLUMN "status" DROP DEFAULT;
+
+ALTER TABLE "periods"
+  ALTER COLUMN "status" TYPE "PeriodStatus"
+  USING ("status"::text::"PeriodStatus");
+
+ALTER TABLE "periods"
+  ALTER COLUMN "status" SET DEFAULT 'ACTIVE'::"PeriodStatus";
