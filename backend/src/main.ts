@@ -59,7 +59,7 @@ async function bootstrap() {
   });
 
   if (isProd) {
-    app.getHttpAdapter().getInstance().addHook("onSend", (request: FastifyRequest, _reply: FastifyReply, payload: unknown) => {
+    app.getHttpAdapter().getInstance().addHook("onSend", async (request: FastifyRequest, _reply: FastifyReply, payload: unknown) => {
       if (request.url.startsWith("/api/docs")) {
         _reply.header("Content-Security-Policy", [
           "default-src 'self'",
