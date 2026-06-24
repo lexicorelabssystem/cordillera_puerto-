@@ -166,6 +166,15 @@ export function StudentAssessmentAttemptPage({ user, onLogout }: Props) {
     setAnswers((cur) => ({ ...cur, [questionId]: { textAnswer } }));
   }
 
+  async function printSubmittedResult() {
+    if (!attemptId) return;
+    try {
+      await attemptQuery.refetch();
+      window.setTimeout(() => window.print(), 0);
+    } catch {
+      toast("No se pudo preparar la revisión para imprimir.", "error");
+    }
+  }
   function downloadCSV() {
     const rows = questions.map((q) => {
       const a = answers[q.questionId];
@@ -395,59 +404,76 @@ export function StudentAssessmentAttemptPage({ user, onLogout }: Props) {
               <button className="simce-exam__btn simce-exam__btn--secondary" onClick={() => setShowReview(!showReview)}>
                 {showReview ? "Ocultar revision" : "Mostrar/ocultar revision"}
               </button>
-              <button className="simce-exam__btn simce-exam__btn--secondary" onClick={window.print}>Imprimir resultado</button>
+              <button className="simce-exam__btn simce-exam__btn--secondary" disabled={attemptQuery.isFetching} onClick={printSubmittedResult}>{attemptQuery.isFetching ? "Preparando..." : "Imprimir resultado"}</button>
             </div>
-            {showReview ? (
-              <div className="simce-exam__review" style={{ display: "block" }}>
-                <table>
-                  <thead>
-                    <tr>
-                      <th>N°</th>
-                      <th>Pregunta</th>
-                      <th>Tu respuesta</th>
-                      <th>Resultado</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {questions.map((item, index) => {
-                      const q = item.question;
-                      const a = answers[item.questionId];
-                      const opts = q.options ?? [];
-                      const selectedOpt = a?.selectedOptionId ? opts.find((o) => o.id === a.selectedOptionId) : null;
-                      const selectedText = selectedOpt
-                        ? `${letterFor(opts.indexOf(selectedOpt))}. ${selectedOpt.text}`
-                        : a?.textAnswer?.trim() || "Sin responder";
-                      const attemptAnswer = attempt?.answers?.find((aa: { questionId: string }) => aa.questionId === item.questionId);
-                      let resultText = "Sin responder";
-                      let resultClass = "";
-                      if (attemptAnswer) {
-                        if (attemptAnswer.isCorrect === true) {
-                          resultText = "Correcta";
-                          resultClass = "ok";
-                        } else if (attemptAnswer.isCorrect === false) {
-                          resultText = "Incorrecta";
-                          resultClass = "bad";
-                        } else if (a?.selectedOptionId || a?.textAnswer?.trim()) {
-                          resultText = "Pendiente correccion";
-                        }
-                      } else if (a?.selectedOptionId || a?.textAnswer?.trim()) {
-                        resultText = "Pendiente correccion";
-                      }
-                      return (
-                        <tr key={item.id}>
-                          <td>{index + 1}</td>
-                          <td style={{ maxWidth: 280, overflow: "hidden", textOverflow: "ellipsis" }}>
-                            {q.statement}
-                          </td>
-                          <td>{selectedText}</td>
-                          <td className={resultClass || undefined}>{resultText}</td>
-                        </tr>
-                      );
-                    })}
-                  </tbody>
-                </table>
+            <div className={`simce-exam__answer-review ${showReview ? "is-visible" : ""}`}>
+              <div className="simce-exam__answer-review-heading">
+                <h3>Revisión de respuestas</h3>
+                <p>Compara tu alternativa con la respuesta correcta y revisa su explicación.</p>
               </div>
-            ) : null}
+              {questions.map((item, index) => {
+                const question = item.question;
+                const answerData = attempt?.answers?.find((answer) => answer.questionId === item.questionId) as undefined | {
+                  selectedOptionId: string | null;
+                  textAnswer: string | null;
+                  isCorrect?: boolean | null;
+                  status?: string;
+                  question?: { explanation?: string | null; options: { id: string; text: string; sortOrder: number; isCorrect?: boolean }[] };
+                };
+                const reviewOptions = ([...(answerData?.question?.options ?? question.options ?? [])] as { id: string; text: string; sortOrder: number; isCorrect?: boolean }[]).sort((a, b) => a.sortOrder - b.sortOrder);
+                const selectedOptionId = answerData?.selectedOptionId ?? answers[item.questionId]?.selectedOptionId ?? null;
+                const selectedOption = reviewOptions.find((option) => option.id === selectedOptionId);
+                const correctOption = reviewOptions.find((option) => option.isCorrect);
+                const explanation = answerData?.question?.explanation?.trim();
+                const isObjective = question.type === "MULTIPLE_CHOICE" || question.type === "TRUE_FALSE";
+                const isCorrect = answerData?.isCorrect === true;
+                const isPending = answerData?.isCorrect == null && Boolean(answerData);
+                const feedback = explanation
+                  ? explanation
+                  : correctOption
+                    ? `La alternativa correcta es ${letterFor(reviewOptions.indexOf(correctOption))}: ${correctOption.text}.`
+                    : "Esta pregunta requiere revisión del profesor.";
+
+                return (
+                  <article className={`simce-exam__answer-card ${isCorrect ? "is-correct" : isPending ? "is-pending" : "is-incorrect"}`} key={item.id}>
+                    <div className="simce-exam__answer-card-head">
+                      <span className="simce-exam__answer-number">{index + 1}</span>
+                      <strong>{question.statement}</strong>
+                      <span className="simce-exam__answer-status">
+                        {isCorrect ? "✓ Correcta" : isPending ? "Pendiente" : "✕ Incorrecta"}
+                      </span>
+                    </div>
+                    {isObjective ? (
+                      <div className="simce-exam__answer-options">
+                        {reviewOptions.map((option, optionIndex) => {
+                          const selected = option.id === selectedOptionId;
+                          const correct = option.isCorrect === true;
+                          return (
+                            <div className={`simce-exam__answer-option ${correct ? "is-correct" : ""} ${selected && !correct ? "is-selected-wrong" : ""}`} key={option.id}>
+                              <span className="simce-exam__answer-letter">{letterFor(optionIndex)}</span>
+                              <span>{option.text}</span>
+                              <span className="simce-exam__answer-option-tag">
+                                {correct && selected ? "Tu respuesta · Correcta" : correct ? "Respuesta correcta" : selected ? "Tu respuesta" : ""}
+                              </span>
+                            </div>
+                          );
+                        })}
+                        {!selectedOption ? <p className="simce-exam__answer-omitted">No respondiste esta pregunta.</p> : null}
+                      </div>
+                    ) : (
+                      <div className="simce-exam__answer-written">
+                        <strong>Tu respuesta:</strong>
+                        <p>{answerData?.textAnswer?.trim() || answers[item.questionId]?.textAnswer?.trim() || "Sin responder"}</p>
+                      </div>
+                    )}
+                    <div className="simce-exam__answer-feedback">
+                      <strong>{isCorrect ? "¿Por qué es correcta?" : isPending ? "Criterio de revisión" : "¿Por qué es incorrecta?"}</strong>
+                      <p>{feedback}</p>
+                    </div>
+                  </article>
+                );
+              })}
+            </div>
           </section>
         ) : null}
 

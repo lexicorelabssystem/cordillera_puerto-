@@ -152,11 +152,38 @@ export interface AssessmentWithKey {
     options: { text: string; isCorrect: boolean }[];
     type: string;
     points: number;
+    explanation?: string | null;
   }[];
   totalPoints: number;
 }
 
-export function exportAssessmentToPdf(assessment: AssessmentWithKey, generatedBy: string = "Sistema") {
+export interface AssessmentPdfOptions {
+  includeAnswerKey?: boolean;
+  includeAnswerSheet?: boolean;
+  fontSize?: "normal" | "large";
+}
+
+export interface GeneratedAssessmentPdf {
+  kind: "assessment" | "answer-sheet";
+  fileName: string;
+  label: string;
+}
+
+function assessmentFileSlug(title: string) {
+  return title.trim().replace(/[^a-zA-Z0-9\u00c0-\u017f]+/g, "-").replace(/^-|-$/g, "").toLowerCase();
+}
+
+function addStudentFields(doc: jsPDF, y: number) {
+  doc.setFont("helvetica", "normal");
+  doc.setFontSize(9);
+  doc.setTextColor(35, 35, 35);
+  doc.text("Nombre:", 14, y);
+  doc.line(30, y + 1, 126, y + 1);
+  doc.text("Fecha:", 139, y);
+  doc.line(153, y + 1, 196, y + 1);
+}
+
+function createAssessmentDocument(assessment: AssessmentWithKey, options: Required<AssessmentPdfOptions>) {
   const doc = new jsPDF("portrait", "mm", "a4");
   const typeLabels: Record<string, string> = {
     DIAGNOSTICA: "Evaluaci\u00f3n Diagn\u00f3stica",
@@ -166,59 +193,138 @@ export function exportAssessmentToPdf(assessment: AssessmentWithKey, generatedBy
     FINAL: "Examen Final",
     SIMCE: "Ensayo SIMCE",
   };
-
-  const title = assessment.title;
   const subtitle = `${assessment.courseName} \u2022 ${assessment.subjectName} \u2022 ${typeLabels[assessment.assessmentType] ?? assessment.assessmentType}`;
+  const baseSize = options.fontSize === "large" ? 11 : 8.5;
+  const lineHeight = options.fontSize === "large" ? 5.4 : 4.5;
 
-  addHeader(doc, title, subtitle);
-
-  let y = 38;
+  addHeader(doc, assessment.title, subtitle);
+  addStudentFields(doc, 36);
+  let y = 48;
 
   for (let i = 0; i < assessment.items.length; i++) {
     const item = assessment.items[i]!;
-
-    if (y > 240) {
+    const textLines = doc.splitTextToSize(item.statement, 168);
+    const estimatedHeight = textLines.length * lineHeight + Math.max(item.options.length, 1) * lineHeight + 12;
+    if (y + estimatedHeight > 276) {
       doc.addPage();
       y = 20;
     }
 
-    doc.setFontSize(8.5);
+    doc.setFontSize(baseSize);
     doc.setFont("helvetica", "bold");
     doc.setTextColor(30, 64, 175);
     doc.text(`${i + 1}.`, 14, y);
-
-    const textLines = doc.splitTextToSize(item.statement, 155);
-    let textY = y;
-    doc.setFontSize(8.5);
     doc.setTextColor(30, 30, 30);
-    doc.text(textLines, 22, textY);
-    textY += textLines.length * 4.5 + 2;
+    doc.text(textLines, 22, y);
+    let textY = y + textLines.length * lineHeight + 2;
 
-    for (const opt of item.options) {
-      const prefix = opt.isCorrect ? "\u2713" : "\u25CB";
-      doc.setFont("helvetica", opt.isCorrect ? "bold" : "normal");
-      doc.text(`${prefix}  ${opt.text}`, 26, textY);
-      textY += 4;
+    for (let optionIndex = 0; optionIndex < item.options.length; optionIndex++) {
+      const option = item.options[optionIndex]!;
+      const marked = options.includeAnswerKey && option.isCorrect;
+      const prefix = marked ? "\u2713" : "\u25cb";
+      doc.setFont("helvetica", marked ? "bold" : "normal");
+      if (marked) doc.setTextColor(6, 118, 71);
+      else doc.setTextColor(30, 30, 30);
+      const optionLines = doc.splitTextToSize(`${prefix}  ${String.fromCharCode(65 + optionIndex)}. ${option.text}`, 158);
+      doc.text(optionLines.length === 1 ? optionLines[0]! : optionLines, 26, textY);
+      textY += optionLines.length * lineHeight;
     }
 
+    if (options.includeAnswerKey && item.explanation) {
+      doc.setFontSize(Math.max(baseSize - 1, 7.5));
+      doc.setFont("helvetica", "italic");
+      doc.setTextColor(70, 85, 105);
+      const explanation = doc.splitTextToSize(`Explicaci\u00f3n: ${item.explanation}`, 158);
+      doc.text(explanation, 26, textY + 1);
+      textY += explanation.length * lineHeight + 1;
+    }
     y = textY + 5;
   }
 
-  if (y < 250) {
-    y += 5;
+  if (y < 274) {
     doc.setDrawColor(220, 220, 220);
     doc.line(14, y, doc.internal.pageSize.width - 14, y);
-    y += 6;
     doc.setFontSize(9);
     doc.setFont("helvetica", "bold");
     doc.setTextColor(30, 64, 175);
-    doc.text(`Total preguntas: ${assessment.items.length}  |  Puntaje total: ${assessment.totalPoints} pts`, 14, y);
+    doc.text(`Total preguntas: ${assessment.items.length}  |  Puntaje total: ${assessment.totalPoints} pts`, 14, y + 6);
   }
-
   addFooter(doc);
-  doc.save(`prueba-${assessment.title.replace(/\s/g, "-").toLowerCase()}.pdf`);
+  return doc;
 }
 
+function createAnswerSheetDocument(assessment: AssessmentWithKey, includeAnswerKey: boolean) {
+  const doc = new jsPDF("portrait", "mm", "a4");
+  addHeader(doc, "Hoja de respuestas", assessment.title);
+  addStudentFields(doc, 36);
+  doc.setFontSize(9);
+  doc.setTextColor(55, 65, 81);
+  doc.text(`Curso: ${assessment.courseName}`, 14, 44);
+
+  const questionsPerColumn = Math.ceil(Math.max(assessment.items.length, 1) / 4);
+  const columnWidth = 46;
+  const startX = 14;
+  const startY = 57;
+  const rowHeight = Math.min(8, 205 / Math.max(questionsPerColumn, 1));
+
+  assessment.items.forEach((item, index) => {
+    const column = Math.floor(index / questionsPerColumn);
+    const row = index % questionsPerColumn;
+    const x = startX + column * columnWidth;
+    const y = startY + row * rowHeight;
+    if (column > 0 && row === 0) {
+      doc.setDrawColor(185, 195, 207);
+      doc.line(x - 4, startY - 5, x - 4, 272);
+    }
+    doc.setFontSize(8.5);
+    doc.setFont("helvetica", "bold");
+    doc.setTextColor(20, 30, 45);
+    doc.text(`${index + 1}.`, x, y);
+
+    const visibleOptions = item.options.slice(0, 4);
+    visibleOptions.forEach((option, optionIndex) => {
+      const isMarked = includeAnswerKey && option.isCorrect;
+      const optionX = x + 9 + optionIndex * 8;
+      doc.setFont("helvetica", isMarked ? "bold" : "normal");
+      doc.setTextColor(isMarked ? 6 : 55, isMarked ? 118 : 65, isMarked ? 71 : 81);
+      doc.text(`${isMarked ? "\u25cf" : "\u25cb"}${String.fromCharCode(65 + optionIndex)}`, optionX, y);
+    });
+  });
+
+  if (includeAnswerKey) {
+    doc.setFontSize(8);
+    doc.setTextColor(6, 118, 71);
+    doc.text("Pauta: las alternativas correctas aparecen marcadas.", 14, 282);
+  }
+  addFooter(doc);
+  return doc;
+}
+
+export function exportAssessmentToPdf(
+  assessment: AssessmentWithKey,
+  generatedBy: string = "Sistema",
+  pdfOptions: AssessmentPdfOptions = {},
+): GeneratedAssessmentPdf[] {
+  void generatedBy;
+  const options: Required<AssessmentPdfOptions> = {
+    includeAnswerKey: pdfOptions.includeAnswerKey ?? true,
+    includeAnswerSheet: pdfOptions.includeAnswerSheet ?? false,
+    fontSize: pdfOptions.fontSize ?? "normal",
+  };
+  const slug = assessmentFileSlug(assessment.title) || "evaluacion";
+  const assessmentName = `${pdfOptions.includeAnswerKey === undefined ? "prueba" : options.includeAnswerKey ? "pauta" : "prueba"}-${slug}.pdf`;
+  const generated: GeneratedAssessmentPdf[] = [
+    { kind: "assessment", fileName: assessmentName, label: options.includeAnswerKey ? "Prueba con pauta" : "Prueba para estudiantes" },
+  ];
+
+  createAssessmentDocument(assessment, options).save(assessmentName);
+  if (options.includeAnswerSheet) {
+    const answerSheetName = `hoja-respuestas-${slug}.pdf`;
+    createAnswerSheetDocument(assessment, options.includeAnswerKey).save(answerSheetName);
+    generated.push({ kind: "answer-sheet", fileName: answerSheetName, label: "Hoja de respuestas" });
+  }
+  return generated;
+}
 export interface ReportData {
   type: string;
   institutionName: string;

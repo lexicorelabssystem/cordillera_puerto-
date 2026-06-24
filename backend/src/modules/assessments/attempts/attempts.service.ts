@@ -392,15 +392,18 @@ export class AttemptsService {
       timeRemainingSec: timeStatus.remainingSec,
       timeExpired: timeStatus.expired,
       // Ocultar isCorrect de las opciones si el intento está en progreso
-      answers: attempt.answers.map((a) => ({
-        ...a,
-        question: {
-          ...a.question,
-          options: attempt.status === "IN_PROGRESS"
-            ? a.question.options.map(({ isCorrect, ...rest }) => rest)
-            : a.question.options,
-        },
-      })),
+      answers: attempt.answers.map((answer) => {
+        if (attempt.status !== "IN_PROGRESS") return answer;
+        const { isCorrect: _isCorrect, score: _score, status: _status, isGraded: _isGraded, question, ...safeAnswer } = answer;
+        const { explanation: _explanation, options, ...safeQuestion } = question;
+        return {
+          ...safeAnswer,
+          question: {
+            ...safeQuestion,
+            options: options.map(({ isCorrect: _optionIsCorrect, ...option }) => option),
+          },
+        };
+      }),
     };
   }
 

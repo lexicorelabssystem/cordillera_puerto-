@@ -8,8 +8,10 @@ import { VoiceTextarea } from "../../components/voice/VoiceTextarea";
 import { useToast } from "../../components/common/Toast";
 import { Modal } from "../../components/common/Modal";
 import { LoadingSpinner } from "../../components/common/LoadingSpinner";
+import { AssessmentDownloadModal } from "../../components/common/AssessmentDownloadModal";
 import { api } from "../../lib/api";
-import { exportGradebookToPdf } from "../../lib/pdf";
+import { exportAssessmentToPdf, exportGradebookToPdf } from "../../lib/pdf";
+import type { AssessmentPdfOptions, AssessmentWithKey, GeneratedAssessmentPdf } from "../../lib/pdf";
 import type { AuthUser, CourseStudentRow } from "../../types/api";
 
 interface Props {
@@ -1564,6 +1566,9 @@ function SharedAssessmentTemplatesPanel({ courseId, subjectId, gradeLevel }: { c
   const [modalOpen, setModalOpen] = useState(false);
   const [selectedTemplate, setSelectedTemplate] = useState<{ id: string; title: string; questionsCount: number; totalPoints: number } | null>(null);
   const [timeLimit, setTimeLimit] = useState("");
+  const [downloadTemplate, setDownloadTemplate] = useState<{ id: string; title: string; questionsCount: number; totalPoints: number; gradeLevel?: number | null } | null>(null);
+  const [isPreparingDownload, setIsPreparingDownload] = useState(false);
+  const [recentDownloads, setRecentDownloads] = useState<GeneratedAssessmentPdf[]>([]);
   const templatesQuery = useQuery({
     queryKey: ["teacher-assessment-templates", courseId, subjectId],
     queryFn: () => api.listAssessmentTemplates({ status: "PUBLISHED" }) as Promise<{
@@ -1613,6 +1618,40 @@ function SharedAssessmentTemplatesPanel({ courseId, subjectId, gradeLevel }: { c
     onSettled: () => setPublishingId(""),
   });
 
+  async function downloadPublishedTemplate(options: Required<AssessmentPdfOptions>) {
+    if (!downloadTemplate) return [];
+    setIsPreparingDownload(true);
+    try {
+      const detail = await api.getAssessmentTemplate(downloadTemplate.id) as {
+        title: string; gradeLevel: number | null; totalPoints: number;
+        questions: { type: string; sortOrder: number; statement: string; points: number; explanation?: string | null; options: { text: string; isCorrect: boolean; sortOrder: number }[] }[];
+      };
+      const assessment: AssessmentWithKey = {
+        title: detail.title,
+        courseName: detail.gradeLevel ? `${detail.gradeLevel}° básico/medio` : "Nivel flexible",
+        subjectName: "Asignatura del curso",
+        assessmentType: "SIMCE",
+        totalPoints: detail.totalPoints,
+        items: [...detail.questions].sort((a, b) => a.sortOrder - b.sortOrder).map((question, index) => ({
+          nro: index + 1,
+          statement: question.statement,
+          type: question.type,
+          points: question.points,
+          explanation: question.explanation,
+          options: [...question.options].sort((a, b) => a.sortOrder - b.sortOrder).map((option) => ({ text: option.text, isCorrect: option.isCorrect })),
+        })),
+      };
+      const files = exportAssessmentToPdf(assessment, "Profesor", options);
+      setRecentDownloads(files);
+      toast(`${files.length} archivo(s) PDF descargado(s).`, "success");
+      return files;
+    } catch (error) {
+      toast(error instanceof Error ? error.message : "No se pudo preparar la descarga.", "error");
+      return [];
+    } finally {
+      setIsPreparingDownload(false);
+    }
+  }
   const templates = templatesQuery.data || [];
   if (!courseId || !subjectId) return null;
 
@@ -1667,18 +1706,23 @@ function SharedAssessmentTemplatesPanel({ courseId, subjectId, gradeLevel }: { c
                   <td>{template.questionsCount}</td>
                   <td>{template.totalPoints}</td>
                   <td>
-                    <button
-                      className="btn-small"
-                      disabled={createFromTemplate.isPending}
-                      onClick={() => {
-                        setSelectedTemplate(template);
-                        setTimeLimit("");
-                        setModalOpen(true);
-                      }}
-                      title={gradeMismatch ? "El nivel no coincide con el curso, pero puedes usarlo igual" : "Configurar y asignar prueba al curso"}
-                    >
-                      Asignar al curso
-                    </button>
+                    <div className="assessment-template-actions">
+                      <button type="button" className="btn-small btn-secondary" onClick={() => setDownloadTemplate(template)} title="Descargar prueba, pauta u hoja de respuestas">
+                        Descargar
+                      </button>
+                      <button
+                        className="btn-small"
+                        disabled={createFromTemplate.isPending}
+                        onClick={() => {
+                          setSelectedTemplate(template);
+                          setTimeLimit("");
+                          setModalOpen(true);
+                        }}
+                        title={gradeMismatch ? "El nivel no coincide con el curso, pero puedes usarlo igual" : "Configurar y asignar prueba al curso"}
+                      >
+                        Asignar al curso
+                      </button>
+                    </div>
                   </td>
                 </tr>
                 );
@@ -1688,6 +1732,29 @@ function SharedAssessmentTemplatesPanel({ courseId, subjectId, gradeLevel }: { c
         </div>
       ) : null}
 
+      <AssessmentDownloadModal
+        isOpen={Boolean(downloadTemplate)}
+        title={downloadTemplate?.title ?? "Prueba"}
+        isPending={isPreparingDownload}
+        onClose={() => setDownloadTemplate(null)}
+        onDownload={downloadPublishedTemplate}
+      />
+
+      {recentDownloads.length > 0 ? (
+        <aside className="assessment-downloads-panel" aria-live="polite">
+          <button type="button" className="assessment-downloads-panel__close" onClick={() => setRecentDownloads([])} aria-label="Cerrar descargas">×</button>
+          <h4>Descargas</h4>
+          <strong>{recentDownloads.length} lista(s)</strong>
+          <div>
+            {recentDownloads.map((file) => (
+              <div className="assessment-downloads-panel__item" key={file.fileName}>
+                <span className="assessment-downloads-panel__status">✓</span>
+                <span><strong>{file.label}</strong><small>PDF · {file.fileName}</small></span>
+              </div>
+            ))}
+          </div>
+        </aside>
+      ) : null}
       <Modal
         isOpen={modalOpen}
         onClose={() => { setModalOpen(false); setSelectedTemplate(null); setTimeLimit(""); }}

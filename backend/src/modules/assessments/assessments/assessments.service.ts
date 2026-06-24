@@ -209,6 +209,7 @@ export class AssessmentsService {
     if (!assessment) throw new NotFoundException("Evaluación no encontrada");
     if (!canSeeAnswerKey) {
       assessment.questions.forEach((item) => {
+        delete (item.question as { explanation?: string | null }).explanation;
         item.question.options.forEach((option) => {
           delete (option as { isCorrect?: boolean }).isCorrect;
         });

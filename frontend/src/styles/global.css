@@ -6539,3 +6539,60 @@ input::placeholder, textarea::placeholder { color: var(--muted-light); }
   .att-table th, .att-table td { font-size: 0.78rem; padding: 0.4rem 0.3rem; }
   .att-radio { width: 18px; height: 18px; }
 }
+
+/* Assessment PDF download and submitted-answer review */
+.modal-container.assessment-download-modal { max-width: 700px; border-radius: 20px; overflow: hidden; }
+.assessment-download-modal__body { display: grid; gap: 20px; padding: 4px; }
+.assessment-download-modal__body h3 { margin: 0; color: #27364f; font-size: 20px; }
+.assessment-download-modal__body fieldset { border: 0; padding: 0; margin: 0; min-width: 0; }
+.assessment-download-modal__body legend { margin-bottom: 9px; color: #536179; font-size: 13px; font-weight: 800; }
+.assessment-download-modal__versions { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
+.assessment-download-modal__versions button { display: grid; gap: 5px; text-align: left; padding: 18px; border: 1px solid #d9e0ea; border-radius: 18px; background: #fff; color: #27364f; }
+.assessment-download-modal__versions button span { color: #8792a8; font-size: 13px; }
+.assessment-download-modal__versions button.is-selected, .assessment-download-modal__sheet.is-selected { border-color: #18c6ac; background: #e8faf6; box-shadow: 0 0 0 3px rgba(24,198,172,.18); }
+.assessment-download-modal__sheet { display: grid; grid-template-columns: auto auto 1fr; align-items: center; gap: 12px; padding: 18px; border: 1px solid #d9e0ea; border-radius: 18px; cursor: pointer; }
+.assessment-download-modal__sheet input { position: absolute; opacity: 0; pointer-events: none; }
+.assessment-download-modal__check { display: grid; place-items: center; width: 28px; height: 28px; border-radius: 8px; background: #20c8ae; color: #fff; font-weight: 900; }
+.assessment-download-modal__sheet > span:last-child { display: grid; gap: 3px; color: #27364f; }
+.assessment-download-modal__sheet small { color: #8792a8; }
+.assessment-download-modal__font-size { display: inline-flex; padding: 3px; border: 1px solid #d9e0ea; border-radius: 999px; background: #f4f7fb; }
+.assessment-download-modal__font-size button { border: 0; border-radius: 999px; padding: 10px 24px; background: transparent; color: #657188; font-weight: 800; }
+.assessment-download-modal__font-size button.is-selected { background: #fff; color: #079c86; box-shadow: 0 4px 12px rgba(31,55,80,.09); }
+.assessment-download-modal__submit { width: 100%; border: 0; border-radius: 14px; padding: 16px; background: #1fc6ad; color: #fff; font-size: 16px; font-weight: 900; }
+.assessment-download-modal__submit:disabled { opacity: .65; cursor: wait; }
+.assessment-template-actions { display: flex; flex-wrap: wrap; gap: 7px; justify-content: flex-end; }
+.assessment-downloads-panel { position: fixed; right: 22px; bottom: 22px; z-index: 80; width: min(380px, calc(100vw - 30px)); overflow: hidden; border-radius: 20px; background: #fff; box-shadow: 0 20px 55px rgba(27,43,68,.25); }
+.assessment-downloads-panel > h4 { margin: 0; padding: 20px 22px 3px; background: #2274ae; color: #fff; font-size: 19px; }
+.assessment-downloads-panel > strong { display: block; padding: 0 22px 16px; background: #2274ae; color: #fff; }
+.assessment-downloads-panel__close { position: absolute; top: 15px; right: 18px; border: 0; background: transparent; color: #fff; font-size: 25px; }
+.assessment-downloads-panel__item { display: grid; grid-template-columns: auto 1fr; align-items: center; gap: 12px; padding: 15px 20px; border-bottom: 1px solid #e4e9f0; color: #24334c; }
+.assessment-downloads-panel__item > span:last-child { display: grid; min-width: 0; }
+.assessment-downloads-panel__item small { overflow: hidden; color: #67748b; text-overflow: ellipsis; white-space: nowrap; }
+.assessment-downloads-panel__status { display: grid; place-items: center; width: 40px; height: 40px; border-radius: 999px; background: #e6f8f3; color: #0a9c83; font-size: 20px; font-weight: 900; }
+.simce-exam__answer-review { display: none; gap: 14px; margin-top: 18px; }
+.simce-exam__answer-review.is-visible { display: grid; }
+.simce-exam__answer-review-heading { padding: 16px 18px; border-radius: 14px; background: #edf7ff; border: 1px solid #cfe5f7; }
+.simce-exam__answer-review-heading h3, .simce-exam__answer-review-heading p { margin: 0; }
+.simce-exam__answer-review-heading p { margin-top: 4px; color: #607089; font-size: 13px; }
+.simce-exam__answer-card { overflow: hidden; border: 1px solid #d7dee8; border-left: 5px solid #d7dee8; border-radius: 14px; background: #fff; break-inside: avoid; }
+.simce-exam__answer-card.is-correct { border-left-color: #12a875; }
+.simce-exam__answer-card.is-incorrect { border-left-color: #e5484d; }
+.simce-exam__answer-card.is-pending { border-left-color: #d99000; }
+.simce-exam__answer-card-head { display: grid; grid-template-columns: auto 1fr auto; align-items: start; gap: 12px; padding: 15px 16px; background: #f8fafc; }
+.simce-exam__answer-number { display: grid; place-items: center; width: 28px; height: 28px; border-radius: 999px; background: #1476ae; color: #fff; font-weight: 900; }
+.simce-exam__answer-status { font-weight: 900; color: #667085; white-space: nowrap; }
+.is-correct .simce-exam__answer-status { color: #087a55; }
+.is-incorrect .simce-exam__answer-status { color: #c43237; }
+.simce-exam__answer-options { display: grid; gap: 8px; padding: 14px 16px; }
+.simce-exam__answer-option { display: grid; grid-template-columns: auto 1fr auto; gap: 10px; align-items: center; padding: 10px 12px; border: 1px solid #e0e5ec; border-radius: 10px; }
+.simce-exam__answer-option.is-correct { border-color: #65c9a5; background: #ecfdf5; }
+.simce-exam__answer-option.is-selected-wrong { border-color: #f3a6a8; background: #fff1f2; }
+.simce-exam__answer-letter { display: grid; place-items: center; width: 26px; height: 26px; border: 2px solid currentColor; border-radius: 999px; font-weight: 900; }
+.simce-exam__answer-option-tag { color: #68758a; font-size: 11px; font-weight: 900; }
+.simce-exam__answer-option.is-correct .simce-exam__answer-option-tag { color: #087a55; }
+.simce-exam__answer-option.is-selected-wrong .simce-exam__answer-option-tag { color: #c43237; }
+.simce-exam__answer-feedback, .simce-exam__answer-written { margin: 0 16px 16px; padding: 12px 14px; border-radius: 10px; background: #f5f8fc; color: #475467; }
+.simce-exam__answer-feedback p, .simce-exam__answer-written p { margin: 4px 0 0; line-height: 1.5; }
+.simce-exam__answer-omitted { margin: 2px 0; color: #c43237; font-weight: 700; }
+@media (max-width: 600px) { .assessment-download-modal__versions { grid-template-columns: 1fr; } .simce-exam__answer-card-head, .simce-exam__answer-option { grid-template-columns: auto 1fr; } .simce-exam__answer-status, .simce-exam__answer-option-tag { grid-column: 2; } }
+@media print { .simce-exam__result { display: block !important; box-shadow: none; border: 0; padding: 0; } .simce-exam__answer-review { display: grid !important; } .simce-exam__topbar, .simce-exam__footer, .simce-exam__actions { display: none !important; } .simce-exam__answer-card { page-break-inside: avoid; } }
