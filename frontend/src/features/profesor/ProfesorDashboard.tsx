@@ -157,6 +157,7 @@ function getStudentField(student: CourseStudentRow, snakeKey: "student_id" | "fi
 
 export function ProfesorDashboard({ user, onLogout }: Props) {
   const fileInputRef = useRef<HTMLInputElement | null>(null);
+  const gradeBookPanelRef = useRef<HTMLElement | null>(null);
   const queryClient = useQueryClient();
   const assignmentsQuery = useQuery({
     queryKey: ["teacher-assignments"],
@@ -218,10 +219,14 @@ export function ProfesorDashboard({ user, onLogout }: Props) {
     queryFn: () => api.listCourses(),
   });
   const selectedCourse = coursesQuery.data?.find((course) => course.course_id === courseId);
+  const [shouldLoadGradeBook, setShouldLoadGradeBook] = useState(() =>
+    typeof window !== "undefined" && window.location.hash === "#teacher-grades"
+  );
   const gradeBookQuery = useQuery({
     queryKey: ["teacher-course-book", courseId, subjectId],
     queryFn: () => api.getCourseGradeBook(courseId, { subjectId }),
-    enabled: Boolean(courseId) && Boolean(subjectId),
+    enabled: shouldLoadGradeBook && Boolean(courseId) && Boolean(subjectId),
+    staleTime: 60_000,
   });
   const objectivesQuery = useQuery({
     queryKey: ["teacher-learning-objectives", subjectId, selectedCourse?.grade_level],
@@ -239,6 +244,34 @@ export function ProfesorDashboard({ user, onLogout }: Props) {
     queryFn: () => api.listLearningResources({ courseId, subjectId }) as Promise<LearningResourceRow[]>,
     enabled: Boolean(courseId) && Boolean(subjectId),
   });
+  useEffect(() => {
+    if (shouldLoadGradeBook || typeof window === "undefined") return;
+
+    const activateFromHash = () => {
+      if (window.location.hash === "#teacher-grades") setShouldLoadGradeBook(true);
+    };
+
+    activateFromHash();
+    window.addEventListener("hashchange", activateFromHash);
+
+    const node = gradeBookPanelRef.current;
+    if (!node || !("IntersectionObserver" in window)) {
+      return () => window.removeEventListener("hashchange", activateFromHash);
+    }
+
+    const observer = new IntersectionObserver(
+      ([entry]) => {
+        if (entry?.isIntersecting) setShouldLoadGradeBook(true);
+      },
+      { rootMargin: "180px 0px" },
+    );
+
+    observer.observe(node);
+    return () => {
+      window.removeEventListener("hashchange", activateFromHash);
+      observer.disconnect();
+    };
+  }, [shouldLoadGradeBook]);
   const [title, setTitle] = useState("Control unidad 1");
   const [assessmentType, setAssessmentType] = useState("PROCESO");
   const [semester, setSemester] = useState(1);
@@ -966,7 +999,7 @@ export function ProfesorDashboard({ user, onLogout }: Props) {
           <strong>{selectedAssignment ? `${selectedAssignment.course_name} - ${selectedAssignment.subject_name}` : "Sin curso asignado"}</strong>
           <p>Libro de notas, evaluaciones, recursos, reportes y registro de clase del curso activo en una vista preparada para trabajo diario.</p>
           <div className="teacher-hero-actions">
-            <a href="#teacher-grades">Notas</a>
+            <a href="#teacher-grades" onClick={() => setShouldLoadGradeBook(true)}>Notas</a>
             <Link to="/teacher/importar-prueba">Importar prueba</Link>
             <a href="#teacher-classbook">Clase</a>
             <a href="#teacher-material">Materiales</a>
@@ -999,7 +1032,7 @@ export function ProfesorDashboard({ user, onLogout }: Props) {
 
       <div className="teacher-complete-grid">
         <aside className="teacher-module-rail" aria-label="Módulos del profesor">
-          <a href="#teacher-grades">Notas</a>
+          <a href="#teacher-grades" onClick={() => setShouldLoadGradeBook(true)}>Notas</a>
           <Link to="/teacher/importar-prueba">Importar prueba</Link>
           <a href="#teacher-classbook">Clase diaria</a>
           <a href="#teacher-material">Materiales</a>
@@ -1079,7 +1112,7 @@ export function ProfesorDashboard({ user, onLogout }: Props) {
             </div>
           </section>
 
-          <section id="teacher-grades" className="panel teacher-work-panel teacher-gradebook-panel">
+          <section id="teacher-grades" ref={gradeBookPanelRef} className="panel teacher-work-panel teacher-gradebook-panel">
             <div className="panel-heading">
               <div>
                 <h3>Libro de Calificaciones</h3>
@@ -1146,10 +1179,18 @@ export function ProfesorDashboard({ user, onLogout }: Props) {
               />
             </div>
 
-            {gradeBookQuery.isLoading ? <LoadingSpinner label="Cargando libro de calificaciones..." /> : null}
-            {gradeBookQuery.isError ? <p className="error">No se pudo cargar el libro del curso asignado.</p> : null}
+            {!shouldLoadGradeBook ? (
+              <div className="empty-inline" style={{ marginTop: 16 }}>
+                <strong>Libro de calificaciones</strong>
+                <button type="button" className="btn-small" onClick={() => setShouldLoadGradeBook(true)} disabled={!courseId || !subjectId}>
+                  Cargar libro
+                </button>
+              </div>
+            ) : null}
+            {shouldLoadGradeBook && gradeBookQuery.isLoading ? <LoadingSpinner label="Cargando libro de calificaciones..." /> : null}
+            {shouldLoadGradeBook && gradeBookQuery.isError ? <p className="error">No se pudo cargar el libro del curso asignado.</p> : null}
 
-            {!gradeBookQuery.isLoading && gradeBookQuery.data ? (
+            {shouldLoadGradeBook && !gradeBookQuery.isLoading && gradeBookQuery.data ? (
               <>
                 <div className="gradebook-kpi-grid" style={{ marginTop: 16 }}>
                   <div className="gradebook-kpi-card"><div><span>Promedio</span><strong style={{ color: colorNota(gradeBookQuery.data.stats.courseAvg) }}>{formatearNota(gradeBookQuery.data.stats.courseAvg)}</strong></div></div>

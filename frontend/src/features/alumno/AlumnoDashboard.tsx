@@ -19,9 +19,9 @@ export function AlumnoDashboard({ user, onLogout }: Props) {
   const portalQuery = useQuery({
     queryKey: ["student-portal"],
     queryFn: api.studentPortal,
-    staleTime: 0,
-    refetchInterval: 30000,
-    refetchOnWindowFocus: true,
+    staleTime: 60000,
+    refetchInterval: false,
+    refetchOnWindowFocus: false,
   });
   const portal = portalQuery.data;
 
@@ -488,9 +488,9 @@ function SimceEssaysSection() {
   const essaysQuery = useQuery({
     queryKey: ["student-simce-essays"],
     queryFn: () => api.getStudentSimceEssays() as Promise<SimceEssayRow[]>,
-    staleTime: 0,
-    refetchInterval: 30000,
-    refetchOnWindowFocus: true,
+    staleTime: 60000,
+    refetchInterval: false,
+    refetchOnWindowFocus: false,
   });
 
   const essays = essaysQuery.data || [];

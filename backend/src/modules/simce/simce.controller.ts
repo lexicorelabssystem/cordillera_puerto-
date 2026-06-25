@@ -13,13 +13,19 @@ import { JwtAuthGuard } from "../auth/jwt-auth.guard.js";
 import { RolesGuard } from "../../common/guards/roles.guard.js";
 import { Roles } from "../../common/decorators/roles.decorator.js";
 import { CurrentUser, JwtPayload } from "../../common/decorators/current-user.decorator.js";
+import { QueueService } from "../queue/queue.service.js";
+import { PrismaService } from "../prisma/prisma.service.js";
 
 @ApiTags("SIMCE")
 @Controller("simce")
 @UseGuards(JwtAuthGuard, RolesGuard)
 @ApiBearerAuth("access-token")
 export class SimceController {
-  constructor(private readonly service: SimceService) {}
+  constructor(
+    private readonly service: SimceService,
+    private readonly queueService: QueueService,
+    private readonly prisma: PrismaService,
+  ) {}
 
   // ─── CRUD SimceAssessment ────────────────────────────
 
@@ -149,9 +155,24 @@ export class SimceController {
 
   @Post(":id/answer-key/confirm")
   @Roles("ADMIN", "SUPER_ADMIN", "DIRECTION", "UTP", "TEACHER")
-  @ApiOperation({ summary: "Confirmar pauta y pasar a READY_TO_CORRECT" })
-  confirmAnswerKey(@Param("id", ParseUUIDPipe) id: string, @CurrentUser() user: JwtPayload) {
-    return this.service.confirmAnswerKey(id, user);
+  @ApiOperation({ summary: "Confirmar pauta y pasar a READY_TO_CORRECT. Pre-procesa el PDF en segundo plano." })
+  async confirmAnswerKey(@Param("id", ParseUUIDPipe) id: string, @CurrentUser() user: JwtPayload) {
+    const result = await this.service.confirmAnswerKey(id, user);
+
+    const assessment = await this.prisma.simceAssessment.findUnique({
+      where: { id },
+      select: { pdfFile: { select: { id: true, originalName: true, storagePath: true, mimeType: true } } },
+    });
+
+    if (assessment?.pdfFile) {
+      this.queueService.enqueueSimcePdfProcessing({
+        assessmentId: id,
+        pdfFileId: assessment.pdfFile.id,
+        userId: user.sub,
+      }).catch(() => {});
+    }
+
+    return result;
   }
 
   // ─── Respuestas de estudiantes ───────────────────────

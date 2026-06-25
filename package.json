@@ -32,6 +32,7 @@
     "typecheck:backend": "npm --workspace backend run typecheck",
     "typecheck:frontend": "npm --workspace frontend run typecheck",
     "security:audit": "npm audit --omit=dev",
+    "load:students": "k6 run scripts/load/student-assessment-50.js",
     "prerelease:check": "npm run lint && npm run typecheck && npm run build && npm run security:audit"
   },
   "devDependencies": {
@@ -44,5 +45,8 @@
     "globals": "^17.6.0",
     "prettier": "^3.8.3",
     "typescript-eslint": "^8.59.3"
+  },
+  "dependencies": {
+    "bullmq": "^5.0.0"
   }
 }

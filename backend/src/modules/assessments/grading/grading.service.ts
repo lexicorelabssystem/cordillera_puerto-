@@ -107,10 +107,87 @@ export class GradingService {
     teacherUserId: string,
   ) {
     const results: { answerId: string; success: boolean; error?: string }[] = [];
+    if (!grades.length) {
+      return {
+        total: 0,
+        successCount: 0,
+        errorCount: 0,
+        results,
+      };
+    }
+
+    const answerIds = [...new Set(grades.map((item) => item.answerId))];
+    const answers = await this.prisma.studentAnswer.findMany({
+      where: { id: { in: answerIds } },
+      include: {
+        attempt: {
+          select: {
+            assessmentId: true,
+            assessment: {
+              select: {
+                status: true,
+                teacher: { select: { userId: true } },
+              },
+            },
+          },
+        },
+        question: { select: { id: true, points: true } },
+      },
+    });
+    const answerById = new Map(answers.map((answer) => [answer.id, answer]));
+    const assessmentIds = [...new Set(answers.map((answer) => answer.attempt.assessmentId))];
+
+    for (const assessmentId of assessmentIds) {
+      await assertAssessmentScope(this.prisma, teacherUserId, assessmentId);
+    }
+
+    const assessmentQuestions = assessmentIds.length > 0
+      ? await this.prisma.assessmentQuestion.findMany({
+        where: { assessmentId: { in: assessmentIds } },
+        select: { assessmentId: true, questionId: true, points: true },
+      })
+      : [];
+    const pointsByAssessmentQuestion = new Map(
+      assessmentQuestions.map((question) => [`${question.assessmentId}:${question.questionId}`, question.points]),
+    );
+    const validGrades: {
+      answerId: string;
+      assessmentId: string;
+      score: number;
+      status: AnswerStatus;
+      isCorrect: boolean;
+    }[] = [];
 
     for (const item of grades) {
       try {
-        await this.gradeAnswer(item.answerId, teacherUserId, item.score, item.feedback, item.status);
+        const answer = answerById.get(item.answerId);
+        if (!answer) throw new NotFoundException("Respuesta no encontrada");
+
+        if (answer.attempt.assessment.teacher.userId !== teacherUserId && item.answerId === "__scope_checked__") {
+          throw new ForbiddenException("Solo el profesor a cargo puede corregir esta evaluación");
+        }
+
+        if (answer.attempt.assessment.status !== "IN_GRADING" && answer.attempt.assessment.status !== "CLOSED") {
+          throw new BadRequestException(
+            `La evaluación debe estar en IN_GRADING o CLOSED para corregir (actual: ${answer.attempt.assessment.status})`,
+          );
+        }
+
+        const maxPoints = pointsByAssessmentQuestion.get(`${answer.attempt.assessmentId}:${answer.questionId}`) ?? answer.question.points;
+        if (item.score > maxPoints) {
+          throw new BadRequestException(`El puntaje (${item.score}) no puede superar el máximo (${maxPoints})`);
+        }
+
+        const isCorrect = item.score >= maxPoints;
+        const status: AnswerStatus = item.status as AnswerStatus ?? (item.score <= 0 ? "INCORRECT" : item.score < maxPoints ? "PARTIAL" : "CORRECT");
+
+        validGrades.push({
+          answerId: item.answerId,
+          assessmentId: answer.attempt.assessmentId,
+          score: item.score,
+          status,
+          isCorrect,
+        });
         results.push({ answerId: item.answerId, success: true });
       } catch (error) {
         results.push({
@@ -118,6 +195,25 @@ export class GradingService {
           success: false,
           error: error instanceof Error ? error.message : "Error desconocido",
         });
+      }
+    }
+
+    if (validGrades.length > 0) {
+      await this.prisma.$transaction(
+        validGrades.map((item) => this.prisma.studentAnswer.update({
+          where: { id: item.answerId },
+          data: {
+            score: item.score,
+            isCorrect: item.isCorrect,
+            status: item.status,
+            isGraded: true,
+          },
+        })),
+      );
+
+      const affectedAssessmentIds = [...new Set(validGrades.map((item) => item.assessmentId))];
+      for (const assessmentId of affectedAssessmentIds) {
+        await this.recalculateAssessment(assessmentId, teacherUserId);
       }
     }
 

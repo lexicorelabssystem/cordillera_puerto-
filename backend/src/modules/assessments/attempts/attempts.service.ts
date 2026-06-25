@@ -127,16 +127,26 @@ export class AttemptsService {
       throw new BadRequestException("El tiempo de la evaluación ha expirado");
     }
 
-    const questionIds = attempt.assessment.questions.map((aq) => aq.questionId);
+    const assessmentQuestionById = new Map(
+      attempt.assessment.questions.map((aq) => [aq.questionId, aq]),
+    );
+    const selectedOptionIds = [
+      ...new Set(answers.map((answer) => answer.selectedOptionId).filter((id): id is string => Boolean(id))),
+    ];
+    const options = selectedOptionIds.length > 0
+      ? await this.prisma.questionOption.findMany({
+        where: { id: { in: selectedOptionIds } },
+        select: { id: true, questionId: true, isCorrect: true },
+      })
+      : [];
+    const optionById = new Map(options.map((option) => [option.id, option]));
+    const now = new Date();
 
-    const results = [];
-    for (const answer of answers) {
-      if (!questionIds.includes(answer.questionId)) {
+    const preparedAnswers = answers.map((answer) => {
+      const aq = assessmentQuestionById.get(answer.questionId);
+      if (!aq) {
         throw new BadRequestException(`La pregunta ${answer.questionId} no pertenece a esta evaluación`);
       }
-
-      const aq = attempt.assessment.questions.find((q) => q.questionId === answer.questionId);
-      if (!aq) continue;
 
       // Auto-grade if possible
       let isCorrect: boolean | null = null;
@@ -145,10 +155,11 @@ export class AttemptsService {
       let status: AnswerStatus = "PENDING";
 
       if (answer.selectedOptionId && ["MULTIPLE_CHOICE", "TRUE_FALSE"].includes(aq.question.type)) {
-        const option = await this.prisma.questionOption.findUnique({
-          where: { id: answer.selectedOptionId },
-        });
-        isCorrect = option?.isCorrect ?? false;
+        const option = optionById.get(answer.selectedOptionId);
+        if (!option || option.questionId !== answer.questionId) {
+          throw new BadRequestException(`La alternativa ${answer.selectedOptionId} no pertenece a la pregunta ${answer.questionId}`);
+        }
+        isCorrect = option.isCorrect;
         score = isCorrect ? aq.points : 0;
         isGraded = true;
         status = isCorrect ? "CORRECT" : "INCORRECT";
@@ -160,40 +171,58 @@ export class AttemptsService {
         score = 0;
       }
 
-      const saved = await this.prisma.studentAnswer.upsert({
-        where: { attemptId_questionId: { attemptId, questionId: answer.questionId } },
-        create: {
-          attemptId,
-          questionId: answer.questionId,
-          selectedOptionId: answer.selectedOptionId ?? null,
-          textAnswer: answer.textAnswer ?? null,
-          isCorrect,
-          score,
-          status,
-          isGraded,
-          answeredAt: new Date(),
-        },
-        update: {
-          selectedOptionId: answer.selectedOptionId ?? null,
-          textAnswer: answer.textAnswer ?? null,
-          isCorrect,
-          score,
-          status,
-          isGraded,
-          answeredAt: new Date(),
-        },
-      });
+      return {
+        questionId: answer.questionId,
+        selectedOptionId: answer.selectedOptionId ?? null,
+        textAnswer: answer.textAnswer ?? null,
+        isCorrect,
+        score,
+        status,
+        isGraded,
+      };
+    });
 
-      results.push(saved);
-    }
+    const results = await this.prisma.$transaction(async (tx) => {
+      const savedAnswers = [];
 
-    // Update time spent
-    if (timeSpentSec !== undefined) {
-      await this.prisma.assessmentAttempt.update({
-        where: { id: attemptId },
-        data: { timeSpentSec },
-      });
-    }
+      for (const answer of preparedAnswers) {
+        const saved = await tx.studentAnswer.upsert({
+          where: { attemptId_questionId: { attemptId, questionId: answer.questionId } },
+          create: {
+            attemptId,
+            questionId: answer.questionId,
+            selectedOptionId: answer.selectedOptionId,
+            textAnswer: answer.textAnswer,
+            isCorrect: answer.isCorrect,
+            score: answer.score,
+            status: answer.status,
+            isGraded: answer.isGraded,
+            answeredAt: now,
+          },
+          update: {
+            selectedOptionId: answer.selectedOptionId,
+            textAnswer: answer.textAnswer,
+            isCorrect: answer.isCorrect,
+            score: answer.score,
+            status: answer.status,
+            isGraded: answer.isGraded,
+            answeredAt: now,
+          },
+        });
+
+        savedAnswers.push(saved);
+      }
+
+      // Update time spent
+      if (timeSpentSec !== undefined) {
+        await tx.assessmentAttempt.update({
+          where: { id: attemptId },
+          data: { timeSpentSec },
+        });
+      }
+
+      return savedAnswers;
+    });
 
     return {
       saved: results.length,
@@ -247,102 +276,117 @@ export class AttemptsService {
       }
     }
 
-    // Auto-grade any remaining ungraded answers
-    const ungradedAnswers = attempt.answers.filter(
-      (a) => !a.isGraded && a.selectedOptionId,
+    const assessmentQuestionById = new Map(
+      attempt.assessment.questions.map((question) => [question.questionId, question]),
     );
-
-    for (const answer of ungradedAnswers) {
-      const aq = attempt.assessment.questions.find((q) => q.questionId === answer.questionId);
-      if (!aq || !["MULTIPLE_CHOICE", "TRUE_FALSE"].includes(aq.question.type)) continue;
-
-      const option = await this.prisma.questionOption.findUnique({
-        where: { id: answer.selectedOptionId! },
-      });
-
-      await this.prisma.studentAnswer.update({
-        where: { id: answer.id },
-        data: {
-          isCorrect: option?.isCorrect ?? false,
-          score: (option?.isCorrect ?? false) ? aq.points : 0,
-          isGraded: true,
-        },
-      });
-    }
-
+    const ungradedAnswers = attempt.answers.filter(
+      (answer) => !answer.isGraded && answer.selectedOptionId,
+    );
+    const optionIds = [
+      ...new Set(ungradedAnswers.map((answer) => answer.selectedOptionId).filter((id): id is string => Boolean(id))),
+    ];
+    const options = optionIds.length > 0
+      ? await this.prisma.questionOption.findMany({
+        where: { id: { in: optionIds } },
+        select: { id: true, questionId: true, isCorrect: true },
+      })
+      : [];
+    const optionById = new Map(options.map((option) => [option.id, option]));
     const savedAnswerIds = new Set(attempt.answers.map((answer) => answer.questionId));
     const omittedQuestions = attempt.assessment.questions.filter((question) => !savedAnswerIds.has(question.questionId));
-    for (const question of omittedQuestions) {
-      await this.prisma.studentAnswer.create({
-        data: {
-          attemptId,
-          questionId: question.questionId,
-          selectedOptionId: null,
-          textAnswer: null,
-          isCorrect: false,
-          score: 0,
-          status: "OMITTED",
-          isGraded: true,
-          answeredAt: new Date(),
-        },
-      });
-    }
-
-    // Calculate total score
-    const allAnswers = await this.prisma.studentAnswer.findMany({
-      where: { attemptId },
-    });
-
-    const totalScore = allAnswers.reduce((sum, a) => sum + (a.score ?? 0), 0);
     const maxScore = attempt.assessment.questions.reduce((sum, q) => sum + q.points, 0);
-    const percentage = maxScore > 0 ? Number(((totalScore / maxScore) * 100).toFixed(1)) : 0;
-    const pendingManualCount = allAnswers.filter((a) => !a.isGraded).length;
-    const finalGrade = this.percentageToGrade(percentage);
-
     const elapsed = timeSpentSec ?? Math.floor(
       (Date.now() - attempt.startedAt.getTime()) / 1000,
     );
+    const now = new Date();
 
-    await this.prisma.assessmentAttempt.update({
-      where: { id: attemptId },
-      data: {
-        status: "COMPLETED",
-        submittedAt: new Date(),
-        timeSpentSec: elapsed,
-        totalScore,
-        percentage,
-      },
-    });
+    return this.prisma.$transaction(async (tx) => {
+      for (const answer of ungradedAnswers) {
+        const aq = assessmentQuestionById.get(answer.questionId);
+        if (!aq || !["MULTIPLE_CHOICE", "TRUE_FALSE"].includes(aq.question.type)) continue;
 
-    if (pendingManualCount === 0) {
-      await this.prisma.grade.upsert({
-        where: { assessmentId_studentId: { assessmentId: attempt.assessmentId, studentId: attempt.studentId } },
-        create: {
-          assessmentId: attempt.assessmentId,
-          studentId: attempt.studentId,
-          grade: finalGrade,
-          score: totalScore,
-          percentage,
-          recordedBy: userId,
-        },
-        update: {
-          grade: finalGrade,
-          score: totalScore,
+        const option = answer.selectedOptionId ? optionById.get(answer.selectedOptionId) : null;
+        const isCorrect = option?.questionId === answer.questionId ? option.isCorrect : false;
+
+        await tx.studentAnswer.update({
+          where: { id: answer.id },
+          data: {
+            isCorrect,
+            score: isCorrect ? aq.points : 0,
+            status: isCorrect ? "CORRECT" : "INCORRECT",
+            isGraded: true,
+          },
+        });
+      }
+
+      if (omittedQuestions.length > 0) {
+        await tx.studentAnswer.createMany({
+          data: omittedQuestions.map((question) => ({
+            attemptId,
+            questionId: question.questionId,
+            selectedOptionId: null,
+            textAnswer: null,
+            isCorrect: false,
+            score: 0,
+            status: "OMITTED",
+            isGraded: true,
+            answeredAt: now,
+          })),
+          skipDuplicates: true,
+        });
+      }
+
+      // Calculate total score
+      const allAnswers = await tx.studentAnswer.findMany({
+        where: { attemptId },
+      });
+
+      const totalScore = allAnswers.reduce((sum, a) => sum + (a.score ?? 0), 0);
+      const percentage = maxScore > 0 ? Number(((totalScore / maxScore) * 100).toFixed(1)) : 0;
+      const pendingManualCount = allAnswers.filter((a) => !a.isGraded).length;
+      const finalGrade = this.percentageToGrade(percentage);
+
+      await tx.assessmentAttempt.update({
+        where: { id: attemptId },
+        data: {
+          status: "COMPLETED",
+          submittedAt: now,
+          timeSpentSec: elapsed,
+          totalScore,
           percentage,
         },
       });
-    }
 
-    return {
-      attemptId,
-      status: "COMPLETED",
-      totalScore,
-      maxScore,
-      percentage,
-      grade: pendingManualCount === 0 ? finalGrade : null,
-      gradedCount: allAnswers.filter((a) => a.isGraded).length,
-      pendingManualCount,
-    };
+      if (pendingManualCount === 0) {
+        await tx.grade.upsert({
+          where: { assessmentId_studentId: { assessmentId: attempt.assessmentId, studentId: attempt.studentId } },
+          create: {
+            assessmentId: attempt.assessmentId,
+            studentId: attempt.studentId,
+            grade: finalGrade,
+            score: totalScore,
+            percentage,
+            recordedBy: userId,
+          },
+          update: {
+            grade: finalGrade,
+            score: totalScore,
+            percentage,
+          },
+        });
+      }
+
+      return {
+        attemptId,
+        status: "COMPLETED",
+        totalScore,
+        maxScore,
+        percentage,
+        grade: pendingManualCount === 0 ? finalGrade : null,
+        gradedCount: allAnswers.filter((a) => a.isGraded).length,
+        pendingManualCount,
+      };
+    });
   }
 
   // ══════════════════════════════════════════════════════

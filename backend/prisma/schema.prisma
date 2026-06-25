@@ -765,7 +765,10 @@ model Assessment {
   learningResources LearningResource[]
 
   @@index([courseId, subjectId, assessmentType])
+  @@index([courseId])
+  @@index([subjectId])
   @@index([status])
+  @@index([courseId, status])
   @@index([isActive, startDate, endDate])
   @@map("assessments")
 }
@@ -885,6 +888,9 @@ model StudentAnswer {
   option   QuestionOption?   @relation(fields: [selectedOptionId], references: [id])
 
   @@unique([attemptId, questionId])
+  @@index([attemptId])
+  @@index([questionId])
+  @@index([selectedOptionId])
   @@map("student_answers")
 }
 
@@ -909,6 +915,7 @@ model Grade {
   changeRequests GradeChangeRequest[]
 
   @@unique([assessmentId, studentId])
+  @@index([assessmentId])
   @@index([studentId])
   @@map("grades")
 }
@@ -1023,17 +1030,45 @@ model ImportJob {
 }
 
 model ExportJob {
-  id          String    @id @default(uuid()) @db.Uuid
-  entityType  String
-  format      String
-  filters     Json?
-  status      String    @default("PENDING")
-  fileUrl     String?
-  actorId     String?   @db.Uuid
-  createdAt   DateTime  @default(now()) @db.Timestamptz()
-  completedAt DateTime? @db.Timestamptz()
+  id            String    @id @default(uuid()) @db.Uuid
+  entityType    String
+  format        String
+  filters       Json?
+  status        String    @default("PENDING")
+  bullJobId     String?   @map("bull_job_id")
+  institutionId String?   @db.Uuid @map("institution_id")
+  fileUrl       String?
+  errorMessage  String?   @map("error_message")
+  rowCount      Int?      @map("row_count")
+  actorId       String?   @db.Uuid
+  createdAt     DateTime  @default(now()) @db.Timestamptz()
+  completedAt   DateTime? @db.Timestamptz()
 
+  @@index([bullJobId])
+  @@index([actorId, status])
   @@map("export_jobs")
+}
+
+model BackgroundJob {
+  id            String    @id @default(uuid()) @db.Uuid
+  jobType       String    @map("job_type")
+  queueName     String    @map("queue_name")
+  bullJobId     String?   @map("bull_job_id")
+  status        String    @default("PENDING")
+  payload       Json?
+  result        Json?
+  errorMessage  String?   @map("error_message")
+  requestedById String?   @db.Uuid @map("requested_by_id")
+  institutionId String?   @db.Uuid @map("institution_id")
+  createdAt     DateTime  @default(now()) @db.Timestamptz() @map("created_at")
+  updatedAt     DateTime  @updatedAt @db.Timestamptz() @map("updated_at")
+  completedAt   DateTime? @db.Timestamptz() @map("completed_at")
+  failedAt      DateTime? @db.Timestamptz() @map("failed_at")
+
+  @@index([jobType, status])
+  @@index([bullJobId])
+  @@index([requestedById])
+  @@map("background_jobs")
 }
 
 // ─── AUDITORÍA ───────────────────────────────────────
@@ -1370,6 +1405,8 @@ model SimceAssessment {
   responses    SimceStudentResponse[]
 
   @@index([courseId, subjectId])
+  @@index([courseId, status])
+  @@index([subjectId, status])
   @@index([teacherId, status])
   @@index([status])
   @@index([academicYearId])
@@ -1396,6 +1433,9 @@ model SimceAnswerKey {
 
   @@unique([assessmentId, questionNumber])
   @@index([assessmentId])
+  @@index([axisId])
+  @@index([skillId])
+  @@index([oaId])
   @@map("simce_answer_keys")
 }
 
@@ -1415,6 +1455,8 @@ model SimceStudentResponse {
 
   @@unique([assessmentId, studentId, questionNumber])
   @@index([assessmentId, studentId])
+  @@index([assessmentId, questionNumber])
   @@index([assessmentId])
+  @@index([studentId])
   @@map("simce_student_responses")
 }

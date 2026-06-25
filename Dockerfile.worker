@@ -1,0 +1,44 @@
+# ─── BUILD STAGE (identico al Dockerfile de la API) ───
+FROM node:22-alpine AS builder
+
+WORKDIR /app
+
+COPY package.json package-lock.json ./
+COPY backend/package.json ./backend/package.json
+RUN npm ci --workspace backend --include=dev
+
+COPY backend/prisma ./backend/prisma
+RUN npm --workspace backend run prisma:generate
+
+COPY backend/tsconfig.json backend/tsconfig.build.json ./backend/
+COPY backend/src ./backend/src
+RUN npm --workspace backend run build
+
+# ─── PRODUCTION STAGE ──────────────────────────────────
+FROM node:22-alpine
+
+WORKDIR /app
+
+RUN addgroup -S cordillera && adduser -S cordillera -G cordillera
+
+# Solo dependencias runtime (mismas que la API)
+COPY package.json package-lock.json ./
+COPY backend/package.json ./backend/package.json
+RUN npm ci --omit=dev --workspace backend \
+  && npm cache clean --force
+
+# Copiar solo lo necesario para el worker
+COPY --from=builder /app/backend/dist ./dist
+COPY --from=builder /app/backend/prisma ./prisma
+RUN npx prisma generate --schema=./prisma/schema.prisma
+
+# Preservar backend package.json para que Node trate dist como ESM
+COPY backend/package.json ./package.json
+
+RUN mkdir -p uploads/exports \
+  && chown -R cordillera:cordillera uploads
+
+USER cordillera
+
+# ─── WORKER: sin EXPOSE, sin HEALTHCHECK, sin migraciones ───
+CMD ["node", "dist/main.worker.js"]

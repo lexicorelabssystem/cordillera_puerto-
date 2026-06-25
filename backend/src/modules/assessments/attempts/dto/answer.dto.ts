@@ -1,5 +1,5 @@
 import { ApiProperty, ApiPropertyOptional } from "@nestjs/swagger";
-import { IsUUID, IsOptional, IsString, IsArray, ValidateNested, IsBoolean } from "class-validator";
+import { IsUUID, IsOptional, IsString, IsArray, ValidateNested, IsBoolean, ArrayMaxSize, MaxLength, IsInt, Min } from "class-validator";
 import { Type } from "class-transformer";
 
 export class SingleAnswerDto {
@@ -15,24 +15,30 @@ export class SingleAnswerDto {
   @ApiPropertyOptional({ description: "Respuesta de texto (para preguntas abiertas)" })
   @IsOptional()
   @IsString()
+  @MaxLength(8000)
   textAnswer?: string;
 }
 
 export class SaveAnswersDto {
   @ApiProperty({ description: "Array de respuestas a guardar", type: [SingleAnswerDto] })
   @IsArray()
+  @ArrayMaxSize(120)
   @ValidateNested({ each: true })
   @Type(() => SingleAnswerDto)
   answers!: SingleAnswerDto[];
 
   @ApiPropertyOptional({ description: "Tiempo transcurrido en segundos hasta ahora" })
   @IsOptional()
+  @IsInt()
+  @Min(0)
   timeSpentSec?: number;
 }
 
 export class SubmitAttemptDto {
   @ApiPropertyOptional({ description: "Tiempo total empleado en segundos" })
   @IsOptional()
+  @IsInt()
+  @Min(0)
   timeSpentSec?: number;
 
   @ApiPropertyOptional({ description: "Confirmar envío aunque haya preguntas sin responder" })

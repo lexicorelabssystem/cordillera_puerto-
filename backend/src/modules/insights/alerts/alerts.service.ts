@@ -15,7 +15,10 @@ export class AlertsService {
 
     const assignments = await this.prisma.teacherCourseAssignment.findMany({
       where: { teacherId: teacher.id },
-      include: { course: true, subject: true },
+      include: {
+        course: { select: { id: true, name: true, gradeLevel: true } },
+        subject: { select: { id: true, name: true } },
+      },
     });
 
     const alerts: {
@@ -25,25 +28,64 @@ export class AlertsService {
       details: unknown;
     }[] = [];
 
-    for (const assignment of assignments) {
-      const students = await this.prisma.enrollment.findMany({
-        where: { courseId: assignment.courseId, isActive: true },
-        include: {
-          student: {
-            include: {
-              grades: {
-                where: { assessment: { subjectId: assignment.subjectId } },
-                select: { grade: true, assessmentId: true },
+    if (assignments.length === 0) {
+      return { teacherId: teacher.id, totalAlerts: 0, alerts };
+    }
+
+    const courseIds = [...new Set(assignments.map((assignment) => assignment.courseId))];
+    const subjectIds = [...new Set(assignments.map((assignment) => assignment.subjectId))];
+
+    const enrollments = await this.prisma.enrollment.findMany({
+      where: { courseId: { in: courseIds }, isActive: true },
+      select: {
+        courseId: true,
+        student: {
+          select: {
+            id: true,
+            firstName: true,
+            lastName: true,
+            grades: {
+              where: {
+                assessment: {
+                  courseId: { in: courseIds },
+                  subjectId: { in: subjectIds },
+                },
+              },
+              select: {
+                grade: true,
+                assessmentId: true,
+                assessment: { select: { courseId: true, subjectId: true } },
               },
             },
           },
         },
-      });
+      },
+    });
 
-      for (const enrollment of students) {
-        if (enrollment.student.grades.length === 0) continue;
+    const assignmentsByCourse = new Map<string, typeof assignments>();
+    for (const assignment of assignments) {
+      const courseAssignments = assignmentsByCourse.get(assignment.courseId) ?? [];
+      courseAssignments.push(assignment);
+      assignmentsByCourse.set(assignment.courseId, courseAssignments);
+    }
 
-        const avg = enrollment.student.grades.reduce((s, g) => s + g.grade, 0) / enrollment.student.grades.length;
+    for (const enrollment of enrollments) {
+      const courseAssignments = assignmentsByCourse.get(enrollment.courseId) ?? [];
+      if (courseAssignments.length === 0) continue;
+
+      const gradesByAssignment = new Map<string, typeof enrollment.student.grades>();
+      for (const grade of enrollment.student.grades) {
+        const key = `${grade.assessment.courseId}:${grade.assessment.subjectId}`;
+        const groupedGrades = gradesByAssignment.get(key) ?? [];
+        groupedGrades.push(grade);
+        gradesByAssignment.set(key, groupedGrades);
+      }
+
+      for (const assignment of courseAssignments) {
+        const subjectGrades = gradesByAssignment.get(`${assignment.courseId}:${assignment.subjectId}`) ?? [];
+        if (subjectGrades.length === 0) continue;
+
+        const avg = subjectGrades.reduce((s, g) => s + g.grade, 0) / subjectGrades.length;
         const avgRounded = Number(avg.toFixed(2));
 
         if (avgRounded < 3.5) {
@@ -53,7 +95,7 @@ export class AlertsService {
             type: "STUDENT_RISK",
             severity: "CRITICAL",
             message: `${enrollment.student.firstName} ${enrollment.student.lastName} tiene promedio ${avgRounded} en ${assignment.subject.name}`,
-            details: { studentId: enrollment.student.id, average: avgRounded, gradeCount: enrollment.student.grades.length },
+            details: { studentId: enrollment.student.id, average: avgRounded, gradeCount: subjectGrades.length },
           });
         } else if (avgRounded < 4.0) {
           alerts.push({
@@ -62,7 +104,7 @@ export class AlertsService {
             type: "STUDENT_RISK",
             severity: "HIGH",
             message: `${enrollment.student.firstName} ${enrollment.student.lastName} está en riesgo (${avgRounded}) en ${assignment.subject.name}`,
-            details: { studentId: enrollment.student.id, average: avgRounded, gradeCount: enrollment.student.grades.length },
+            details: { studentId: enrollment.student.id, average: avgRounded, gradeCount: subjectGrades.length },
           });
         }
       }
@@ -77,7 +119,6 @@ export class AlertsService {
       }),
     };
   }
-
   // ══════════════════════════════════════════════════════
   //  OA BREACHES — Objetivos descendidos por curso
   // ══════════════════════════════════════════════════════

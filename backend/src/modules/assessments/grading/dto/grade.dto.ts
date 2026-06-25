@@ -1,5 +1,5 @@
 import { ApiProperty, ApiPropertyOptional } from "@nestjs/swagger";
-import { IsUUID, IsNumber, IsOptional, IsString, IsEnum, Min, Max, IsArray, ValidateNested } from "class-validator";
+import { IsUUID, IsNumber, IsOptional, IsString, IsEnum, Min, Max, IsArray, ValidateNested, ArrayMaxSize, MaxLength } from "class-validator";
 import { Type } from "class-transformer";
 import { AnswerStatus } from "@prisma/client";
 
@@ -12,6 +12,7 @@ export class GradeAnswerDto {
   @ApiPropertyOptional({ description: "Comentario de retroalimentación" })
   @IsOptional()
   @IsString()
+  @MaxLength(2000)
   feedback?: string;
 
   @ApiPropertyOptional({ enum: AnswerStatus, description: "Estado manual de la respuesta" })
@@ -33,6 +34,7 @@ export class BulkGradeItemDto {
   @ApiPropertyOptional()
   @IsOptional()
   @IsString()
+  @MaxLength(2000)
   feedback?: string;
 
   @ApiPropertyOptional({ enum: AnswerStatus })
@@ -44,6 +46,7 @@ export class BulkGradeItemDto {
 export class BulkGradeDto {
   @ApiProperty({ description: "Array de respuestas a calificar", type: [BulkGradeItemDto] })
   @IsArray()
+  @ArrayMaxSize(50)
   @ValidateNested({ each: true })
   @Type(() => BulkGradeItemDto)
   grades!: BulkGradeItemDto[];
@@ -69,11 +72,13 @@ export class DirectGradeDto {
   @ApiPropertyOptional({ description: "Comentario u observación" })
   @IsOptional()
   @IsString()
+  @MaxLength(2000)
   comments?: string;
 
   @ApiPropertyOptional({ description: "Motivo del cambio de nota (requerido al modificar)" })
   @IsOptional()
   @IsString()
+  @MaxLength(2000)
   reason?: string;
 }
 
@@ -95,12 +100,14 @@ export class BulkDirectGradeItemDto {
   @ApiPropertyOptional({ description: "Comentario u observación" })
   @IsOptional()
   @IsString()
+  @MaxLength(2000)
   comments?: string;
 }
 
 export class BulkDirectGradeDto {
   @ApiProperty({ description: "Array de notas directas a crear/actualizar", type: [BulkDirectGradeItemDto] })
   @IsArray()
+  @ArrayMaxSize(50)
   @ValidateNested({ each: true })
   @Type(() => BulkDirectGradeItemDto)
   grades!: BulkDirectGradeItemDto[];

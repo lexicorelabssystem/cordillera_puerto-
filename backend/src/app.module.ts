@@ -18,6 +18,8 @@ import { FeatureFlagsModule } from "./modules/features/feature-flags.module.js";
 import { NotificationsModule } from "./modules/notifications/notifications.module.js";
 import { CacheModule } from "./modules/cache/cache.module.js";
 import { SimceModule } from "./modules/simce/simce.module.js";
+import { QueueModule } from "./modules/queue/queue.module.js";
+import { JobsModule } from "./modules/jobs/jobs.module.js";
 import { HealthController } from "./health.controller.js";
 import { DemoSeedService } from "./demo-seed.service.js";
 
@@ -47,6 +49,8 @@ import { DemoSeedService } from "./demo-seed.service.js";
     NotificationsModule,
     CacheModule,
     SimceModule,
+    QueueModule,
+    JobsModule,
   ],
   controllers: [HealthController],
   providers: [

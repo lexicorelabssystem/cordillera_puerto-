@@ -1,9 +1,15 @@
-import { Injectable, NotFoundException, BadRequestException } from "@nestjs/common";
+import { ForbiddenException, Injectable } from "@nestjs/common";
 import { PrismaService } from "../../prisma/prisma.service.js";
 import * as ExcelJS from "exceljs";
 import * as path from "node:path";
 import * as fs from "node:fs";
 import * as crypto from "node:crypto";
+import {
+  assertCourseScope,
+  assertInstitutionScope,
+  resolveUserScope,
+  type UserScope,
+} from "../../../common/authz/access-scope.js";
 
 @Injectable()
 export class ExportsService {
@@ -14,18 +20,23 @@ export class ExportsService {
     fs.mkdirSync(this.exportDir, { recursive: true });
   }
 
-  // ══════════════════════════════════════════════════════
-  //  EXPORT STUDENTS
-  // ══════════════════════════════════════════════════════
-
   async exportStudents(courseId?: string, institutionId?: string, format = "xlsx", userId?: string) {
+    const scope = userId ? await this.resolveExportScope(userId) : null;
     const where: Record<string, unknown> = { deletedAt: null };
+
     if (courseId) {
+      if (userId) await assertCourseScope(this.prisma, userId, courseId);
       where.enrollments = { some: { courseId, isActive: true } };
-    }
-    if (institutionId) {
-      if (!courseId) {
-        where.enrollments = { some: { course: { institutionId } } };
+    } else if (scope?.role === "TEACHER") {
+      const courseIds = this.assignedCourseIds(scope);
+      if (!courseIds.length) return this.generateFile([], format, "estudiantes");
+      where.enrollments = { some: { courseId: { in: courseIds }, isActive: true } };
+    } else {
+      const scopedInstitutionId = userId
+        ? await this.resolveInstitutionFilter(userId, scope, institutionId)
+        : institutionId;
+      if (scopedInstitutionId) {
+        where.enrollments = { some: { course: { institutionId: scopedInstitutionId }, isActive: true } };
       }
     }
 
@@ -50,17 +61,31 @@ export class ExportsService {
       Nivel: s.enrollments[0]?.course.gradeLevel ?? "",
     }));
 
-    return this.generateFile(rows, format, `estudiantes`);
+    return this.generateFile(rows, format, "estudiantes");
   }
 
-  // ══════════════════════════════════════════════════════
-  //  EXPORT GRADES
-  // ══════════════════════════════════════════════════════
-
   async exportGrades(courseId?: string, subjectId?: string, format = "xlsx", userId?: string) {
+    const scope = userId ? await this.resolveExportScope(userId) : null;
     const where: Record<string, unknown> = {};
-    if (courseId) where.assessment = { courseId };
-    if (subjectId) where.assessment = { ...(where.assessment as object || {}), subjectId };
+    const assessmentWhere: Record<string, unknown> = {};
+
+    if (courseId) {
+      if (userId) await assertCourseScope(this.prisma, userId, courseId, subjectId);
+      assessmentWhere.courseId = courseId;
+    } else if (scope?.role === "TEACHER") {
+      const assignments = subjectId
+        ? scope.assignments.filter((assignment) => assignment.subjectId === subjectId)
+        : scope.assignments;
+      const courseIds = [...new Set(assignments.map((assignment) => assignment.courseId))];
+      if (!courseIds.length) return this.generateFile([], format, "notas");
+      assessmentWhere.courseId = { in: courseIds };
+    } else if (scope && !scope.isGlobalAdmin) {
+      if (!scope.institutionId) throw new ForbiddenException("Usuario sin institucion asignada");
+      assessmentWhere.course = { institutionId: scope.institutionId };
+    }
+
+    if (subjectId) assessmentWhere.subjectId = subjectId;
+    if (Object.keys(assessmentWhere).length > 0) where.assessment = assessmentWhere;
 
     const grades = await this.prisma.grade.findMany({
       where,
@@ -68,7 +93,8 @@ export class ExportsService {
         student: { select: { firstName: true, lastName: true } },
         assessment: {
           select: {
-            title: true, assessmentType: true,
+            title: true,
+            assessmentType: true,
             subject: { select: { name: true } },
             course: { select: { name: true, gradeLevel: true } },
           },
@@ -90,15 +116,24 @@ export class ExportsService {
       Comentario: g.comments ?? "",
     }));
 
-    return this.generateFile(rows, format, `notas`);
+    return this.generateFile(rows, format, "notas");
   }
 
-  // ══════════════════════════════════════════════════════
-  //  EXPORT QUESTIONS
-  // ══════════════════════════════════════════════════════
-
   async exportQuestions(subjectId?: string, format = "xlsx", userId?: string) {
+    const scope = userId ? await this.resolveExportScope(userId) : null;
     const where: Record<string, unknown> = { isActive: true };
+
+    if (scope?.role === "TEACHER") {
+      const subjectIds = this.assignedSubjectIds(scope);
+      if (subjectId && !subjectIds.includes(subjectId)) {
+        throw new ForbiddenException("No tienes asignada esta asignatura");
+      }
+      if (!subjectId) {
+        if (!subjectIds.length) return this.generateFile([], format, "banco_preguntas");
+        where.subjectId = { in: subjectIds };
+      }
+    }
+
     if (subjectId) where.subjectId = subjectId;
 
     const questions = await this.prisma.question.findMany({
@@ -126,16 +161,24 @@ export class ExportsService {
       Opciones: q.options.map((o) => `${o.text}${o.isCorrect ? " [CORRECTA]" : ""}`).join(" | "),
     }));
 
-    return this.generateFile(rows, format, `banco_preguntas`);
+    return this.generateFile(rows, format, "banco_preguntas");
   }
 
-  // ══════════════════════════════════════════════════════
-  //  EXPORT COURSES
-  // ══════════════════════════════════════════════════════
-
   async exportCourses(institutionId?: string, academicYearId?: string, format = "xlsx", userId?: string) {
+    const scope = userId ? await this.resolveExportScope(userId) : null;
     const where: Record<string, unknown> = { isActive: true };
-    if (institutionId) where.institutionId = institutionId;
+
+    if (scope?.role === "TEACHER") {
+      const courseIds = this.assignedCourseIds(scope);
+      if (!courseIds.length) return this.generateFile([], format, "cursos");
+      where.id = { in: courseIds };
+    } else {
+      const scopedInstitutionId = userId
+        ? await this.resolveInstitutionFilter(userId, scope, institutionId)
+        : institutionId;
+      if (scopedInstitutionId) where.institutionId = scopedInstitutionId;
+    }
+
     if (academicYearId) where.academicYearId = academicYearId;
 
     const courses = await this.prisma.course.findMany({
@@ -150,17 +193,13 @@ export class ExportsService {
     const rows = courses.map((c) => ({
       Curso: c.name,
       Nivel: c.gradeLevel,
-      Año: c.academicYear.year,
+      Ano: c.academicYear.year,
       Alumnos: c._count.enrollments,
       Evaluaciones: c._count.assessments,
     }));
 
-    return this.generateFile(rows, format, `cursos`);
+    return this.generateFile(rows, format, "cursos");
   }
-
-  // ══════════════════════════════════════════════════════
-  //  FILE GENERATION
-  // ══════════════════════════════════════════════════════
 
   private async generateFile(rows: Record<string, unknown>[], format: string, prefix: string) {
     const fileId = crypto.randomUUID();
@@ -176,7 +215,6 @@ export class ExportsService {
       return { fileName, format: "json", rowCount: rows.length, downloadUrl: `/api/v1/files/download/${fileName}` };
     }
 
-    // Default: xlsx
     const workbook = new ExcelJS.Workbook();
     const sheet = workbook.addWorksheet("Datos");
 
@@ -188,7 +226,6 @@ export class ExportsService {
         sheet.addRow(headers.map((h) => row[h] ?? ""));
       }
 
-      // Style header
       const headerRow = sheet.getRow(1);
       headerRow.font = { bold: true };
       headerRow.eachCell((cell) => {
@@ -226,8 +263,37 @@ export class ExportsService {
     }
 
     const filePath = path.join(this.exportDir, fileName);
-    fs.writeFileSync(filePath, "\uFEFF" + lines.join("\n"), "utf-8"); // BOM for Excel UTF-8
+    fs.writeFileSync(filePath, "\uFEFF" + lines.join("\n"), "utf-8");
 
     return { fileName, format: "csv", rowCount: rows.length, downloadUrl: `/api/v1/files/download/${fileName}` };
+  }
+
+  private async resolveExportScope(userId: string) {
+    const scope = await resolveUserScope(this.prisma, userId);
+    if (!["SUPER_ADMIN", "ADMIN", "DIRECTION", "UTP", "TEACHER"].includes(scope.role)) {
+      throw new ForbiddenException("No tienes permisos para exportar datos");
+    }
+    return scope;
+  }
+
+  private async resolveInstitutionFilter(userId: string, scope: UserScope | null, requestedInstitutionId?: string) {
+    if (!scope) return requestedInstitutionId;
+
+    if (requestedInstitutionId) {
+      await assertInstitutionScope(this.prisma, userId, requestedInstitutionId);
+      return requestedInstitutionId;
+    }
+
+    if (scope.isGlobalAdmin) return undefined;
+    if (!scope.institutionId) throw new ForbiddenException("Usuario sin institucion asignada");
+    return scope.institutionId;
+  }
+
+  private assignedCourseIds(scope: UserScope) {
+    return [...new Set(scope.assignments.map((assignment) => assignment.courseId))];
+  }
+
+  private assignedSubjectIds(scope: UserScope) {
+    return [...new Set(scope.assignments.map((assignment) => assignment.subjectId))];
   }
 }

@@ -6,6 +6,17 @@ interface Props {
 }
 
 export function AppProviders({ children }: Props) {
-  const [client] = useState(() => new QueryClient());
+  const [client] = useState(
+    () =>
+      new QueryClient({
+        defaultOptions: {
+          queries: {
+            staleTime: 60_000,
+            refetchOnWindowFocus: false,
+            retry: 1,
+          },
+        },
+      }),
+  );
   return <QueryClientProvider client={client}>{children}</QueryClientProvider>;
 }

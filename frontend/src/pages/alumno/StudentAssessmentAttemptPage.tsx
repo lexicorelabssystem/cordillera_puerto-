@@ -60,7 +60,7 @@ export function StudentAssessmentAttemptPage({ user, onLogout }: Props) {
     queryKey: ["student-assessment-attempt", attemptId],
     queryFn: () => api.getAssessmentAttempt(attemptId),
     enabled: Boolean(attemptId),
-    refetchInterval: (q) => q.state.data?.status === "IN_PROGRESS" ? 15000 : false,
+    refetchInterval: (q) => q.state.data?.status === "IN_PROGRESS" ? 60000 : false,
   });
 
   const assessment = assessmentQuery.data;

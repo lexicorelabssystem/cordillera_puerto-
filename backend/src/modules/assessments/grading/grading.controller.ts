@@ -9,6 +9,7 @@ import { JwtAuthGuard } from "../../auth/jwt-auth.guard.js";
 import { RolesGuard } from "../../../common/guards/roles.guard.js";
 import { Roles } from "../../../common/decorators/roles.decorator.js";
 import { CurrentUser, JwtPayload } from "../../../common/decorators/current-user.decorator.js";
+import { QueueService } from "../../queue/queue.service.js";
 
 class UpdateGradeDto {
   @ApiProperty({ description: "Nota entre 1.0 y 7.0" })
@@ -33,7 +34,10 @@ class UpdateGradeDto {
 @UseGuards(JwtAuthGuard, RolesGuard)
 @ApiBearerAuth("access-token")
 export class GradingController {
-  constructor(private readonly service: GradingService) {}
+  constructor(
+    private readonly service: GradingService,
+    private readonly queueService: QueueService,
+  ) {}
 
   @Post("answer/:answerId")
   @Roles("TEACHER", "ADMIN", "SUPER_ADMIN", "UTP")
@@ -63,12 +67,21 @@ export class GradingController {
   @Post("recalculate/:assessmentId")
   @HttpCode(HttpStatus.OK)
   @Roles("TEACHER", "ADMIN", "SUPER_ADMIN", "UTP")
-  @ApiOperation({ summary: "Recalcular puntajes y notas de toda la evaluación" })
-  recalculate(
+  @ApiOperation({ summary: "Encolar recalculo de puntajes y notas de toda la evaluacion (procesado en segundo plano)" })
+  async recalculate(
     @Param("assessmentId", ParseUUIDPipe) assessmentId: string,
     @CurrentUser() user: JwtPayload,
   ) {
-    return this.service.recalculateAssessment(assessmentId, user.sub);
+    const result = await this.queueService.enqueueRecalculation({
+      assessmentId,
+      teacherUserId: user.sub,
+    });
+    return {
+      bullJobId: result.bullJobId,
+      assessmentId,
+      status: "QUEUED",
+      message: "El recalculo se esta procesando en segundo plano. Consulta el estado en GET /jobs/background/:id",
+    };
   }
 
   @Post("void-question/:assessmentId/:questionId")
