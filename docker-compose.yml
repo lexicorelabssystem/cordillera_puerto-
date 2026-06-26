@@ -62,6 +62,29 @@ services:
     networks:
       - cordillera-net
 
+  worker:
+    build:
+      context: .
+      dockerfile: Dockerfile.worker
+    container_name: cordillera-worker
+    restart: unless-stopped
+    environment:
+      NODE_ENV: production
+      DATABASE_URL: postgresql://${POSTGRES_USER:-cordillera}:${POSTGRES_PASSWORD:-cordillera_dev_2026}@postgres:5432/${POSTGRES_DB:-cordillera_dev}
+      JWT_SECRET: ${JWT_SECRET:?JWT_SECRET es requerido en produccion}
+      JWT_ISSUER: cordillera-saas
+      JWT_AUDIENCE: cordillera-app
+      REDIS_URL: ${REDIS_URL:-redis://redis:6379}
+    volumes:
+      - uploads:/app/uploads
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    networks:
+      - cordillera-net
+
   redis:
     image: redis:7-alpine
     container_name: cordillera-redis
