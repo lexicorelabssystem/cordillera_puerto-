@@ -5,7 +5,7 @@ import { QueueService } from "./queue.service.js";
 import { PrismaModule } from "../prisma/prisma.module.js";
 
 function createQueue(name: string, redisUrl: string): Queue {
-  return new Queue(name, { connection: { url: redisUrl } });
+  return new Queue(name, { connection: redisUrl });
 }
 
 @Global()

@@ -30,8 +30,11 @@ export class WorkersService {
   ) {}
 
   async startAll() {
-    const connection = { url: this.config.redisUrl };
-    this.logger.log(`Starting workers with Redis: ${this.config.redisUrl}`);
+    if (!this.config.redisUrl) {
+      throw new Error("REDIS_URL is required for BullMQ Workers");
+    }
+    const connection = this.config.redisUrl;
+    this.logger.log(`Starting workers with Redis: ${this.config.redisUrl.replace(/\/\/.*@/, "//****@")}`);
 
     const exportsWorker = new Worker(
       QUEUE_NAMES.EXPORTS,
