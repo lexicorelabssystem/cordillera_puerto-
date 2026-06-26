@@ -24,3 +24,15 @@ export const DEFAULT_JOB_OPTS = {
 export const EXPORT_CONCURRENCY = 1;
 export const RECALCULATION_CONCURRENCY = 1;
 export const SIMCE_PDF_CONCURRENCY = 1;
+
+export function createRedisConnection(redisUrl: string) {
+  const url = new URL(redisUrl);
+
+  return {
+    host: url.hostname,
+    port: Number(url.port || 6379),
+    username: url.username || undefined,
+    password: url.password ? decodeURIComponent(url.password) : undefined,
+    db: url.pathname ? Number(url.pathname.replace("/", "") || 0) : 0,
+  };
+}

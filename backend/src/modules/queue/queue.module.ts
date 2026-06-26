@@ -1,11 +1,11 @@
 import { Global, Module, Inject, Optional, type OnModuleDestroy } from "@nestjs/common";
 import { Queue } from "bullmq";
-import { QUEUE_NAMES } from "./queue.constants.js";
+import { QUEUE_NAMES, createRedisConnection } from "./queue.constants.js";
 import { QueueService } from "./queue.service.js";
 import { PrismaModule } from "../prisma/prisma.module.js";
 
 function createQueue(name: string, redisUrl: string): Queue {
-  return new Queue(name, { connection: redisUrl });
+  return new Queue(name, { connection: createRedisConnection(redisUrl) });
 }
 
 @Global()

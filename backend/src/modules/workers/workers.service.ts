@@ -6,6 +6,7 @@ import {
   EXPORT_CONCURRENCY,
   RECALCULATION_CONCURRENCY,
   SIMCE_PDF_CONCURRENCY,
+  createRedisConnection,
 } from "../queue/queue.constants.js";
 import { ExportsProcessor } from "./processors/exports.processor.js";
 import { RecalculationsProcessor } from "./processors/recalculations.processor.js";
@@ -33,7 +34,7 @@ export class WorkersService {
     if (!this.config.redisUrl) {
       throw new Error("REDIS_URL is required for BullMQ Workers");
     }
-    const connection = this.config.redisUrl;
+    const connection = createRedisConnection(this.config.redisUrl);
     this.logger.log(`Starting workers with Redis: ${this.config.redisUrl.replace(/\/\/.*@/, "//****@")}`);
 
     const exportsWorker = new Worker(
