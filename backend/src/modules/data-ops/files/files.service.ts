@@ -1,4 +1,4 @@
-import { ForbiddenException, Injectable, NotFoundException } from "@nestjs/common";
+import { BadRequestException, ForbiddenException, Injectable, Logger, NotFoundException } from "@nestjs/common";
 import { PrismaService } from "../../prisma/prisma.service.js";
 import * as path from "node:path";
 import * as fs from "node:fs";
@@ -14,10 +14,15 @@ import {
 
 @Injectable()
 export class FilesService {
+  private readonly logger = new Logger(FilesService.name);
+  private readonly uploadRoot: string;
   private readonly filesDir: string;
+  private readonly exportsDir: string;
 
   constructor(private readonly prisma: PrismaService) {
-    this.filesDir = path.resolve("uploads", "files");
+    this.uploadRoot = path.resolve("uploads");
+    this.filesDir = path.join(this.uploadRoot, "files");
+    this.exportsDir = path.join(this.uploadRoot, "exports");
     fs.mkdirSync(this.filesDir, { recursive: true });
   }
 
@@ -51,11 +56,20 @@ export class FilesService {
   }
 
   async getDownloadInfo(fileName: string, user?: JwtPayload | string) {
-    // Clean the filename for security
-    const safeName = path.basename(fileName);
-    const filePath = path.join(this.filesDir, safeName);
+    const safeName = this.resolveSafeFileName(fileName);
+    const candidates = [
+      path.join(this.filesDir, safeName),
+      path.join(this.uploadRoot, safeName),
+      path.join(this.exportsDir, safeName),
+    ].filter((candidate) => this.isInsideAllowedUploadDir(candidate));
+    const filePath = candidates.find((candidate) => fs.existsSync(candidate));
 
-    if (!fs.existsSync(filePath)) {
+    if (!filePath) {
+      this.logger.warn({
+        message: "Download file not found",
+        fileName: safeName,
+        candidates,
+      });
       throw new NotFoundException("Archivo no encontrado");
     }
 
@@ -64,8 +78,7 @@ export class FilesService {
     });
     if (user) {
       if (!asset) {
-        const scope = await resolveUserScope(this.prisma, user);
-        if (!scope.isSuperAdmin && !scope.isGlobalAdmin) {
+        if (!(await this.canDownloadGeneratedExport(filePath, user))) {
           throw new ForbiddenException("No tienes acceso a este archivo");
         }
       } else {
@@ -75,10 +88,57 @@ export class FilesService {
 
     return {
       filePath,
-      mimeType: asset?.mimeType ?? "application/octet-stream",
+      mimeType: asset?.mimeType ?? this.getMimeTypeForFile(safeName),
       originalName: asset?.originalName ?? safeName,
       size: asset?.size ?? fs.statSync(filePath).size,
     };
+  }
+
+  private resolveSafeFileName(fileName: string) {
+    const safeName = path.basename(fileName);
+    if (
+      !fileName ||
+      fileName !== safeName ||
+      path.isAbsolute(fileName) ||
+      fileName.includes("/") ||
+      fileName.includes("\\") ||
+      safeName === "." ||
+      safeName === ".."
+    ) {
+      throw new BadRequestException("Nombre de archivo invalido");
+    }
+    return safeName;
+  }
+
+  private isInsideAllowedUploadDir(filePath: string) {
+    const resolvedPath = path.resolve(filePath);
+    const allowedDirs = [this.filesDir, this.uploadRoot, this.exportsDir];
+    return allowedDirs.some((dir) => this.isPathInsideDir(resolvedPath, dir));
+  }
+
+  private async canDownloadGeneratedExport(filePath: string, user: JwtPayload | string) {
+    if (!this.isPathInsideDir(filePath, this.exportsDir)) return false;
+
+    const scope = await resolveUserScope(this.prisma, user);
+    return ["SUPER_ADMIN", "ADMIN", "DIRECTION", "UTP", "TEACHER"].includes(scope.role);
+  }
+
+  private isPathInsideDir(filePath: string, dir: string) {
+    const relative = path.relative(dir, path.resolve(filePath));
+    return relative === "" || (!!relative && !relative.startsWith("..") && !path.isAbsolute(relative));
+  }
+
+  private getMimeTypeForFile(fileName: string) {
+    switch (path.extname(fileName).toLowerCase()) {
+      case ".csv":
+        return "text/csv; charset=utf-8";
+      case ".json":
+        return "application/json; charset=utf-8";
+      case ".xlsx":
+        return "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet";
+      default:
+        return "application/octet-stream";
+    }
   }
 
   private async assertFileScope(
