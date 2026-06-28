@@ -23,6 +23,17 @@ export function mockConfig(overrides: Partial<AppConfig> = {}): AppConfig {
     },
     notificationsEnabled: false,
     redisUrl: undefined,
+    storage: {
+      driver: "local",
+      endpoint: "localhost",
+      port: 9000,
+      useSSL: false,
+      accessKey: "test",
+      secretKey: "test-secret",
+      documentsBucket: "test-documents",
+      tempBucket: "test-temp",
+      archivesBucket: "test-archives",
+    },
     ...overrides,
   };
 }

@@ -71,6 +71,8 @@ export class NotificationsService {
   }
 
   async findByUser(userId: string, params?: { status?: string; limit?: number; offset?: number }) {
+    const limit = Math.min(100, Math.max(1, Number.isFinite(params?.limit) ? Math.floor(params!.limit!) : 50));
+    const offset = Math.max(0, Number.isFinite(params?.offset) ? Math.floor(params!.offset!) : 0);
     const where: Record<string, unknown> = { userId };
     if (params?.status) {
       where.status = params.status;
@@ -80,8 +82,8 @@ export class NotificationsService {
       this.prisma.notification.findMany({
         where,
         orderBy: { createdAt: "desc" },
-        take: params?.limit ?? 50,
-        skip: params?.offset ?? 0,
+        take: limit,
+        skip: offset,
       }),
       this.prisma.notification.count({ where }),
     ]);

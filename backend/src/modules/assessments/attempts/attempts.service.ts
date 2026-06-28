@@ -2,6 +2,7 @@ import {
   Injectable, NotFoundException, BadRequestException, ForbiddenException,
 } from "@nestjs/common";
 import { PrismaService } from "../../prisma/prisma.service.js";
+import { normalizePagination } from "../../../common/dto/pagination.dto.js";
 import { AnswerStatus } from "@prisma/client";
 import {
   assertAssessmentScope,
@@ -501,44 +502,71 @@ export class AttemptsService {
   //  LIST ATTEMPTS
   // ══════════════════════════════════════════════════════
 
-  async listByAssessment(assessmentId: string, teacherUserId: string) {
+  async listByAssessment(assessmentId: string, teacherUserId: string, page = 1, limit = 100) {
     const assessment = await this.prisma.assessment.findUnique({
       where: { id: assessmentId },
       include: { teacher: true },
     });
-    if (!assessment) throw new NotFoundException("Evaluación no encontrada");
+    if (!assessment) throw new NotFoundException("Evaluacion no encontrada");
 
     await assertAssessmentScope(this.prisma, teacherUserId, assessmentId);
 
-    // Teacher must own the assessment OR be admin/direction
-    return this.prisma.assessmentAttempt.findMany({
-      where: { assessmentId },
-      orderBy: { startedAt: "desc" },
-      include: {
-        student: { select: { id: true, firstName: true, lastName: true } },
-        _count: { select: { answers: true } },
-      },
-    });
+    const pagination = normalizePagination(page, limit, 100);
+    const where = { assessmentId };
+    const [data, total] = await Promise.all([
+      this.prisma.assessmentAttempt.findMany({
+        where,
+        skip: pagination.skip,
+        take: pagination.limit,
+        orderBy: { startedAt: "desc" },
+        include: {
+          student: { select: { id: true, firstName: true, lastName: true } },
+          _count: { select: { answers: true } },
+        },
+      }),
+      this.prisma.assessmentAttempt.count({ where }),
+    ]);
+    return this.paginated(data, total, pagination.page, pagination.limit);
   }
-
-  async listByStudent(studentId: string, userId: string) {
+  async listByStudent(studentId: string, userId: string, page = 1, limit = 20) {
     await assertStudentScope(this.prisma, userId, studentId);
 
-    return this.prisma.assessmentAttempt.findMany({
-      where: { studentId },
-      orderBy: { startedAt: "desc" },
-      include: {
-        assessment: {
-          select: { id: true, title: true, subject: { select: { name: true } }, assessmentType: true },
+    const pagination = normalizePagination(page, limit);
+    const where = { studentId };
+    const [data, total] = await Promise.all([
+      this.prisma.assessmentAttempt.findMany({
+        where,
+        skip: pagination.skip,
+        take: pagination.limit,
+        orderBy: { startedAt: "desc" },
+        include: {
+          assessment: {
+            select: { id: true, title: true, subject: { select: { name: true } }, assessmentType: true },
+          },
         },
-      },
-    });
+      }),
+      this.prisma.assessmentAttempt.count({ where }),
+    ]);
+    return this.paginated(data, total, pagination.page, pagination.limit);
   }
 
   // ══════════════════════════════════════════════════════
   //  PRIVATE HELPERS
   // ══════════════════════════════════════════════════════
 
+  private paginated<T>(data: T[], total: number, page: number, limit: number) {
+    return {
+      data,
+      meta: {
+        page,
+        limit,
+        total,
+        totalPages: Math.ceil(total / limit),
+        hasNext: page * limit < total,
+        hasPrevious: page > 1,
+      },
+    };
+  }
   private checkTimeExpired(timeLimitMin: number | null, startedAt: Date): { expired: boolean; elapsedSec: number; remainingSec: number | null } {
     if (!timeLimitMin) return { expired: false, elapsedSec: 0, remainingSec: null };
 

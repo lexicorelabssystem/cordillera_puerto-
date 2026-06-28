@@ -1,5 +1,5 @@
 import {
-  Injectable, NotFoundException, ForbiddenException, BadRequestException,
+  Injectable, NotFoundException, ForbiddenException, BadRequestException, ServiceUnavailableException,
 } from "@nestjs/common";
 import { PrismaService } from "../prisma/prisma.service.js";
 import * as ExcelJS from "exceljs";
@@ -14,6 +14,7 @@ import type {
 import { resolveUserScope } from "../../common/authz/access-scope.js";
 import type { JwtPayload } from "../../common/decorators/current-user.decorator.js";
 import { DocumentAssessmentParserService } from "../assessments/import/document-assessment-parser.service.js";
+import { CacheService } from "../cache/cache.service.js";
 import type { ParsedAssessmentDocument } from "../assessments/import/document-assessment-parser.service.js";
 
 
@@ -91,6 +92,7 @@ export class SimceService {
   constructor(
     private readonly prisma: PrismaService,
     private readonly documentParser: DocumentAssessmentParserService,
+    private readonly cache: CacheService,
   ) {}
 
   // ══════════════════════════════════════════════════════
@@ -155,6 +157,8 @@ export class SimceService {
     limit: number,
     user: JwtPayload,
   ) {
+    page = Number.isFinite(page) ? Math.max(1, Math.floor(page)) : 1;
+    limit = Number.isFinite(limit) ? Math.min(100, Math.max(1, Math.floor(limit))) : 20;
     const scope = await resolveUserScope(this.prisma, user);
     const where: Record<string, unknown> = {};
 
@@ -945,39 +949,37 @@ export class SimceService {
 
 
   // Método público para pre-procesar PDF desde el worker (evita parseo en vivo para el alumno)
-  async preParsePdfDocument(file: { id: string; originalName: string; storagePath: string; mimeType: string }): Promise<void> {
+  async preParsePdfDocument(file: { id: string; originalName: string; storagePath: string; mimeType: string; buffer?: Buffer }): Promise<void> {
     await this.getParsedSimceDocument(file);
   }
 
-  private async getParsedSimceDocument(file: { id: string; originalName: string; storagePath: string; mimeType: string }): Promise<ParsedSimceCacheEntry> {
-    let stats: fs.Stats;
+  private parsedDocumentCacheKey(fileId: string) {
+    return `simce:pdf:${fileId}:parsed`;
+  }
+  private async getParsedSimceDocument(file: { id: string; originalName: string; storagePath: string; mimeType: string; buffer?: Buffer }): Promise<ParsedSimceCacheEntry> {
+    const redisKey = this.parsedDocumentCacheKey(file.id);
+    const shared = await this.cache.get<ParsedSimceCacheEntry>(redisKey);
+    if (shared) return shared;
+
+    let buffer: Buffer;
     try {
-      stats = await fs.promises.stat(file.storagePath);
+      buffer = file.buffer ?? await fs.promises.readFile(file.storagePath);
     } catch {
       throw new NotFoundException("PDF SIMCE no encontrado");
     }
 
-    const cacheKey = `${file.id}:${stats.mtimeMs}:${stats.size}`;
+    const cacheKey = `${file.id}:${crypto.createHash("sha256").update(buffer).digest("hex")}`;
     const cached = this.parsedSimceDocuments.get(file.id);
     if (cached?.cacheKey === cacheKey) return cached;
 
-    const parsed = await this.documentParser.parse({
-      buffer: await fs.promises.readFile(file.storagePath),
-      fileName: file.originalName,
-      mimeType: file.mimeType,
-    });
-    const entry: ParsedSimceCacheEntry = {
-      cacheKey,
-      instructions: parsed.instructions,
-      questions: parsed.questions,
-    };
-
+    const parsed = await this.documentParser.parse({ buffer, fileName: file.originalName, mimeType: file.mimeType });
+    const entry: ParsedSimceCacheEntry = { cacheKey, instructions: parsed.instructions, questions: parsed.questions };
+    await this.cache.set(redisKey, entry);
     this.parsedSimceDocuments.set(file.id, entry);
     if (this.parsedSimceDocuments.size > 100) {
       const oldestKey = this.parsedSimceDocuments.keys().next().value;
       if (oldestKey) this.parsedSimceDocuments.delete(oldestKey);
     }
-
     return entry;
   }
   async getStudentSimceEssay(assessmentId: string, user: JwtPayload) {
@@ -1006,7 +1008,12 @@ export class SimceService {
     if (!enrollment) throw new ForbiddenException("No estas matriculado en el curso de esta prueba");
     if (!assessment.pdfFile) throw new BadRequestException("Esta prueba no tiene PDF asociado");
 
-    const parsed = await this.getParsedSimceDocument(assessment.pdfFile);
+    const parsed = await this.cache.get<ParsedSimceCacheEntry>(
+      this.parsedDocumentCacheKey(assessment.pdfFile.id),
+    );
+    if (!parsed) {
+      throw new ServiceUnavailableException("El ensayo SIMCE aun se esta preparando. Intenta nuevamente en unos segundos");
+    }
 
     const existingResponses = await this.prisma.simceStudentResponse.findMany({
       where: { assessmentId, studentId: scope.studentId },

@@ -2,7 +2,7 @@ import {
   Injectable, NotFoundException, ConflictException,
   BadRequestException, Inject,
 } from "@nestjs/common";
-import bcrypt from "bcryptjs";
+import bcrypt from "bcrypt";
 import { PrismaService } from "../../prisma/prisma.service.js";
 import type { AppConfig } from "../../../config/config.module.js";
 import type { CreateTeacherDto, UpdateTeacherDto, AssignTeacherDto } from "./dto/create-teacher.dto.js";

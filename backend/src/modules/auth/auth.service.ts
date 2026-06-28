@@ -7,7 +7,7 @@ import {
   Logger,
 } from "@nestjs/common";
 import { JwtService } from "@nestjs/jwt";
-import bcrypt from "bcryptjs";
+import bcrypt from "bcrypt";
 import * as crypto from "node:crypto";
 import { PrismaService } from "../prisma/prisma.service.js";
 import { AuditLogsService } from "../audit-logs/audit-logs.service.js";

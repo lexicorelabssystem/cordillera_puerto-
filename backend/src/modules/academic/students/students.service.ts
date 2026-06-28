@@ -1,5 +1,5 @@
-﻿import { Injectable, NotFoundException, ConflictException, Inject } from "@nestjs/common";
-import bcrypt from "bcryptjs";
+import { Injectable, NotFoundException, ConflictException, Inject } from "@nestjs/common";
+import bcrypt from "bcrypt";
 import { BadRequestException } from "@nestjs/common";
 import { ResourceStatus } from "@prisma/client";
 import { PrismaService } from "../../prisma/prisma.service.js";
@@ -104,6 +104,8 @@ export class StudentsService {
   }
 
   async findAll(search?: string, courseId?: string, page = 1, limit = 20, user?: JwtPayload, includeInactive = false) {
+    page = Number.isFinite(page) ? Math.max(1, Math.floor(page)) : 1;
+    limit = Number.isFinite(limit) ? Math.min(100, Math.max(1, Math.floor(limit))) : 20;
     const where: Record<string, unknown> = {};
     const andFilters: Record<string, unknown>[] = [];
     let canIncludeInactive = !user;

@@ -1,0 +1,22 @@
+{
+  "annotations": { "list": [] },
+  "editable": true,
+  "panels": [
+    { "type": "stat", "title": "CPU del servidor", "targets": [{ "expr": "100 * (1 - avg(rate(node_cpu_seconds_total{job=\"cordillera-host\",mode=\"idle\"}[5m])))", "legendFormat": "CPU" }], "fieldConfig": { "defaults": { "unit": "percent", "min": 0, "max": 100, "thresholds": { "mode": "absolute", "steps": [{ "color": "green", "value": null }, { "color": "yellow", "value": 70 }, { "color": "red", "value": 80 }] } }, "overrides": [] }, "gridPos": { "h": 5, "w": 6, "x": 0, "y": 0 } },
+    { "type": "stat", "title": "RAM utilizada", "targets": [{ "expr": "100 * (1 - node_memory_MemAvailable_bytes{job=\"cordillera-host\"} / node_memory_MemTotal_bytes{job=\"cordillera-host\"})", "legendFormat": "RAM" }], "fieldConfig": { "defaults": { "unit": "percent", "min": 0, "max": 100, "thresholds": { "mode": "absolute", "steps": [{ "color": "green", "value": null }, { "color": "yellow", "value": 80 }, { "color": "red", "value": 90 }] } }, "overrides": [] }, "gridPos": { "h": 5, "w": 6, "x": 6, "y": 0 } },
+    { "type": "stat", "title": "RAM disponible", "targets": [{ "expr": "node_memory_MemAvailable_bytes{job=\"cordillera-host\"}", "legendFormat": "Disponible" }], "fieldConfig": { "defaults": { "unit": "bytes", "thresholds": { "mode": "absolute", "steps": [{ "color": "red", "value": null }, { "color": "green", "value": 1073741824 }] } }, "overrides": [] }, "gridPos": { "h": 5, "w": 6, "x": 12, "y": 0 } },
+    { "type": "stat", "title": "Disco utilizado", "targets": [{ "expr": "100 * (1 - node_filesystem_avail_bytes{job=\"cordillera-host\",fstype!~\"tmpfs|overlay|squashfs|nsfs\",mountpoint=\"/\"} / node_filesystem_size_bytes{job=\"cordillera-host\",fstype!~\"tmpfs|overlay|squashfs|nsfs\",mountpoint=\"/\"})", "legendFormat": "Disco" }], "fieldConfig": { "defaults": { "unit": "percent", "min": 0, "max": 100, "thresholds": { "mode": "absolute", "steps": [{ "color": "green", "value": null }, { "color": "yellow", "value": 70 }, { "color": "red", "value": 90 }] } }, "overrides": [] }, "gridPos": { "h": 5, "w": 6, "x": 18, "y": 0 } },
+    { "type": "timeseries", "title": "Recursos del servidor", "targets": [{ "expr": "100 * (1 - avg(rate(node_cpu_seconds_total{job=\"cordillera-host\",mode=\"idle\"}[5m])))", "legendFormat": "CPU" }, { "expr": "100 * (1 - node_memory_MemAvailable_bytes{job=\"cordillera-host\"} / node_memory_MemTotal_bytes{job=\"cordillera-host\"})", "legendFormat": "RAM" }, { "expr": "100 * (1 - node_filesystem_avail_bytes{job=\"cordillera-host\",fstype!~\"tmpfs|overlay|squashfs|nsfs\",mountpoint=\"/\"} / node_filesystem_size_bytes{job=\"cordillera-host\",fstype!~\"tmpfs|overlay|squashfs|nsfs\",mountpoint=\"/\"})", "legendFormat": "Disco" }], "fieldConfig": { "defaults": { "unit": "percent", "min": 0, "max": 100 }, "overrides": [] }, "gridPos": { "h": 8, "w": 12, "x": 0, "y": 5 } },
+    { "type": "timeseries", "title": "Latencia API p95", "targets": [{ "expr": "histogram_quantile(0.95, sum by (le) (rate(cordillera_http_request_duration_seconds_bucket[5m])))", "legendFormat": "p95" }], "fieldConfig": { "defaults": { "unit": "s" }, "overrides": [] }, "gridPos": { "h": 8, "w": 12, "x": 12, "y": 5 } },
+    { "type": "table", "title": "Alertas activas y pendientes", "targets": [{ "expr": "ALERTS{alertstate=~\"firing|pending\"}", "format": "table", "instant": true, "legendFormat": "{{alertname}}" }], "options": { "showHeader": true }, "gridPos": { "h": 8, "w": 24, "x": 0, "y": 13 } }
+  ],
+  "refresh": "15s",
+  "schemaVersion": 39,
+  "tags": ["cordillera", "alertas", "rendimiento"],
+  "templating": { "list": [] },
+  "time": { "from": "now-6h", "to": "now" },
+  "timezone": "browser",
+  "title": "Cordillera - Rendimiento y Alertas",
+  "uid": "cordillera-performance-alerts",
+  "version": 1
+}

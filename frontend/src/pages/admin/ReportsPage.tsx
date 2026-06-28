@@ -571,8 +571,8 @@ export function ReportsPage() {
   const [studentId, setStudentId] = useState("");
   const [learningObjectiveId, setLearningObjectiveId] = useState("");
   const [threshold, setThreshold] = useState("4.0");
-  const [lastResult, setLastResult] = useState<ReportResult | null>(null);
   const [selectedReport, setSelectedReport] = useState<ReportResult | null>(null);
+  const [loadingReportId, setLoadingReportId] = useState("");
 
   const coursesQuery = useQuery({
     queryKey: ["reports-courses", selectedInstitution?.id, academicYearId],
@@ -614,6 +614,7 @@ export function ReportsPage() {
   const reportsQuery = useQuery({
     queryKey: ["reports-list", type],
     queryFn: () => api.listReports({ limit: 20, type }) as Promise<GeneratedReport[]>,
+    refetchInterval: (query) => ((query.state.data ?? []).some((report) => ["PENDING", "PROCESSING"].includes(report.status)) ? 3000 : false),
   });
 
   const selectedConfig = REPORT_TYPES.find((item) => item.type === type) ?? REPORT_TYPES[0];
@@ -642,17 +643,31 @@ export function ReportsPage() {
       learningObjectiveId: learningObjectiveId || undefined,
       threshold: canUseThreshold ? Number(threshold.replace(",", ".")) : undefined,
       format: "JSON",
-    }) as Promise<ReportResult>,
-    onSuccess: (result) => {
-      setLastResult(result);
-      setSelectedReport(result);
-      toast("Reporte generado correctamente.", "success");
+    }),
+    onSuccess: () => {
+      toast("Reporte encolado. Se actualizara al finalizar.", "success");
       queryClient.invalidateQueries({ queryKey: ["reports-list"] });
     },
     onError: (err) => toast(err instanceof Error ? err.message : "Error al generar reporte.", "error"),
   });
 
   const reports = reportsQuery.data || [];
+  const loadReport = async (report: GeneratedReport, action: "view" | "pdf" | "csv" | "json") => {
+    setLoadingReportId(report.id);
+    try {
+      const detail = await api.getReport(report.id);
+      const summary = reportSummary(detail);
+      if (!summary) throw new Error("El reporte no contiene resultados.");
+      if (action === "view") setSelectedReport(summary);
+      if (action === "pdf") downloadPdf(summary);
+      if (action === "csv") downloadCsv(summary);
+      if (action === "json") downloadJson(summary);
+    } catch (error) {
+      toast(error instanceof Error ? error.message : "No se pudo cargar el reporte.", "error");
+    } finally {
+      setLoadingReportId("");
+    }
+  };
   const formatFilters = (filters: Record<string, unknown> | null) => {
     const raw = asRecord(filters);
     const parts: string[] = [];
@@ -699,7 +714,6 @@ export function ReportsPage() {
               className={`module-card ${type === report.type ? "module-card--selected" : ""}`}
               onClick={() => {
                 setType(report.type);
-                setLastResult(null);
                 setSelectedReport(null);
                 if (report.type === "INSTITUTIONAL") {
                   setCourseId("");
@@ -818,17 +832,6 @@ export function ReportsPage() {
         {validationMessage ? <p className="panel-error" style={{ marginTop: 12 }}>{validationMessage}</p> : null}
       </section>
 
-      {lastResult ? (
-        <section className="panel">
-          <h3>Resultado generado</h3>
-          <div className="kpi-grid">
-            <div className="kpi-card"><span>Promedio</span><strong>{lastResult.courseAverage ?? lastResult.institutionalAverage ?? lastResult.overallAverage ?? "-"}</strong></div>
-            <div className="kpi-card"><span>Alumnos</span><strong>{lastResult.totalStudents ?? lastResult.students?.length ?? "-"}</strong></div>
-            <div className="kpi-card"><span>Riesgo</span><strong>{lastResult.totalAtRisk ?? lastResult.atRiskCount ?? lastResult.lowAchievementCount ?? "-"}</strong></div>
-            <div className="kpi-card"><span>Evaluaciones</span><strong>{lastResult.assessmentCount ?? "-"}</strong></div>
-          </div>
-        </section>
-      ) : null}
 
       {selectedReport ? (
         <ReportDetail
@@ -848,7 +851,8 @@ export function ReportsPage() {
             </thead>
             <tbody>
               {reports.map((report) => {
-                const summary = reportSummary(report);
+                const isLoading = loadingReportId === report.id;
+                const canOpen = report.status === "GENERATED" && !isLoading;
                 return (
                   <tr key={report.id}>
                     <td><strong>{REPORT_TYPES.find((item) => item.type === report.type)?.label || report.type}</strong></td>
@@ -858,16 +862,16 @@ export function ReportsPage() {
                     <td style={{ whiteSpace: "nowrap" }}>{report.generatedAt ? new Date(report.generatedAt).toLocaleDateString("es-CL") : "-"}</td>
                     <td>
                       <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
-                        <button type="button" className="btn-small" disabled={!summary} onClick={() => summary && setSelectedReport(summary)}>
-                          Ver
+                        <button type="button" className="btn-small" disabled={!canOpen} onClick={() => void loadReport(report, "view")}>
+                          {isLoading ? "Cargando" : "Ver"}
                         </button>
-                        <button type="button" className="btn-small" disabled={!summary} onClick={() => summary && downloadPdf(summary)}>
+                        <button type="button" className="btn-small" disabled={!canOpen} onClick={() => void loadReport(report, "pdf")}>
                           PDF
                         </button>
-                        <button type="button" className="btn-small btn-secondary" disabled={!summary} onClick={() => summary && downloadCsv(summary)}>
+                        <button type="button" className="btn-small btn-secondary" disabled={!canOpen} onClick={() => void loadReport(report, "csv")}>
                           CSV
                         </button>
-                        <button type="button" className="btn-small btn-secondary" disabled={!summary} onClick={() => summary && downloadJson(summary)}>
+                        <button type="button" className="btn-small btn-secondary" disabled={!canOpen} onClick={() => void loadReport(report, "json")}>
                           JSON
                         </button>
                       </div>

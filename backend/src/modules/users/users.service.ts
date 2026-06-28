@@ -7,7 +7,7 @@ import {
   Inject,
   Logger,
 } from "@nestjs/common";
-import bcrypt from "bcryptjs";
+import bcrypt from "bcrypt";
 import { PrismaService } from "../prisma/prisma.service.js";
 import { AuditLogsService } from "../audit-logs/audit-logs.service.js";
 import type { AppConfig } from "../../config/config.module.js";
@@ -103,6 +103,8 @@ export class UsersService {
     institutionId?: string,
     actor?: JwtPayload,
   ): Promise<PaginatedResult<unknown>> {
+    page = Number.isFinite(page) ? Math.max(1, Math.floor(page)) : 1;
+    limit = Number.isFinite(limit) ? Math.min(100, Math.max(1, Math.floor(limit))) : 20;
     const scope = actor ? await resolveUserScope(this.prisma, actor) : null;
     const scopedInstitutionId = this.resolveReadableInstitutionId(institutionId, scope);
     if (role) this.assertReadableRole(role, scope);

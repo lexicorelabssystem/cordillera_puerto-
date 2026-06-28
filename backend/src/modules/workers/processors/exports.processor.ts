@@ -1,6 +1,9 @@
 import { Injectable, Logger } from "@nestjs/common";
 import { PrismaService } from "../../prisma/prisma.service.js";
 import { ExportsService } from "../../data-ops/exports/exports.service.js";
+import { StorageService } from "../../storage/storage.service.js";
+import * as fs from "node:fs/promises";
+import * as path from "node:path";
 import type { ExportJobPayload } from "../../queue/queue.service.js";
 
 @Injectable()
@@ -10,6 +13,7 @@ export class ExportsProcessor {
   constructor(
     private readonly prisma: PrismaService,
     private readonly exportsService: ExportsService,
+    private readonly storage: StorageService,
   ) {}
 
   async processExport(job: { data: ExportJobPayload; id?: string }) {
@@ -40,6 +44,15 @@ export class ExportsProcessor {
         result = await this.exportsService.exportStudents(courseId, institutionId, format, userId);
     }
 
+    if (this.storage.isMinio) {
+      const localPath = path.resolve("uploads", "exports", result.fileName);
+      const buffer = await fs.readFile(localPath);
+      const mimeType = result.format === "xlsx"
+        ? "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+        : result.format === "csv" ? "text/csv; charset=utf-8" : "application/json; charset=utf-8";
+      await this.storage.put(this.storage.tempBucket, `exports/${result.fileName}`, buffer, mimeType);
+      await fs.rm(localPath, { force: true });
+    }
     await this.prisma.exportJob.update({
       where: { id: exportJobId },
       data: {

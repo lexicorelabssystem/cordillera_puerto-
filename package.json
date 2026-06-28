@@ -33,7 +33,9 @@
     "typecheck:frontend": "npm --workspace frontend run typecheck",
     "security:audit": "npm audit --omit=dev",
     "load:students": "k6 run scripts/load/student-assessment-50.js",
-    "prerelease:check": "npm run lint && npm run typecheck && npm run build && npm run security:audit"
+    "prerelease:check": "npm run audit:pagination && npm run lint && npm run typecheck && npm run build && npm run security:audit",
+    "audit:pagination": "node scripts/audit-pagination.mjs",
+    "audit:pagination:baseline": "node scripts/audit-pagination.mjs --update-baseline"
   },
   "devDependencies": {
     "@eslint/js": "^9.39.4",

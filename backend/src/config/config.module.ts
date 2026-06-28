@@ -27,6 +27,17 @@ function buildConfig(env: EnvConfig) {
     },
     notificationsEnabled: env.NOTIFICATION_EMAILS_ENABLED,
     redisUrl: env.REDIS_URL,
+    storage: {
+      driver: env.STORAGE_DRIVER,
+      endpoint: env.MINIO_ENDPOINT,
+      port: env.MINIO_PORT,
+      useSSL: env.MINIO_USE_SSL,
+      accessKey: env.MINIO_ACCESS_KEY,
+      secretKey: env.MINIO_SECRET_KEY,
+      documentsBucket: env.MINIO_DOCUMENTS_BUCKET,
+      tempBucket: env.MINIO_TEMP_BUCKET,
+      archivesBucket: env.MINIO_ARCHIVES_BUCKET,
+    },
   };
 }
 

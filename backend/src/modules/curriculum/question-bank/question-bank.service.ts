@@ -1,4 +1,4 @@
-﻿import {
+import {
   Injectable, NotFoundException, ConflictException, BadRequestException,
 } from "@nestjs/common";
 import { PrismaService } from "../../prisma/prisma.service.js";
@@ -38,6 +38,8 @@ export class QuestionBankService {
   // ─── READ ────────────────────────────────────────────
 
   async findAll(filters: QuestionFilterDto, page = 1, limit = 20) {
+    page = Number.isFinite(page) ? Math.max(1, Math.floor(page)) : 1;
+    limit = Number.isFinite(limit) ? Math.min(100, Math.max(1, Math.floor(limit))) : 20;
     const where: Record<string, unknown> = {};
     if (filters.subjectId) where.subjectId = filters.subjectId;
     if (filters.learningObjectiveId) where.learningObjectiveId = filters.learningObjectiveId;

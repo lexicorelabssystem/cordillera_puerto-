@@ -30,3 +30,14 @@ export interface PaginatedResult<T> {
     hasPrevious: boolean;
   };
 }
+export function normalizePagination(
+  page: number | undefined,
+  limit: number | undefined,
+  defaultLimit = 20,
+  maxLimit = 100,
+) {
+  const safePage = Number.isFinite(page) ? Math.max(1, Math.floor(page!)) : 1;
+  const requestedLimit = Number.isFinite(limit) ? Math.floor(limit!) : defaultLimit;
+  const safeLimit = Math.min(maxLimit, Math.max(1, requestedLimit));
+  return { page: safePage, limit: safeLimit, skip: (safePage - 1) * safeLimit };
+}

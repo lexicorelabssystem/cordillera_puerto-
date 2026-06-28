@@ -2,7 +2,7 @@ import { Injectable, Logger } from "@nestjs/common";
 import { PrismaService } from "../../prisma/prisma.service.js";
 import { SimceService } from "../../simce/simce.service.js";
 import type { SimcePdfJobPayload } from "../../queue/queue.service.js";
-import * as fs from "node:fs/promises";
+import { StorageService } from "../../storage/storage.service.js";
 
 @Injectable()
 export class SimcePdfProcessor {
@@ -11,6 +11,7 @@ export class SimcePdfProcessor {
   constructor(
     private readonly prisma: PrismaService,
     private readonly simceService: SimceService,
+    private readonly storage: StorageService,
   ) {}
 
   async processSimcePdf(job: { data: SimcePdfJobPayload; id?: string }) {
@@ -26,18 +27,17 @@ export class SimcePdfProcessor {
       throw new Error(`FileAsset ${pdfFileId} not found`);
     }
 
-    try {
-      await fs.access(file.storagePath);
-    } catch {
-      throw new Error(`PDF file not found on disk: ${file.storagePath}`);
+    if (!(await this.storage.exists(file.storagePath))) {
+      throw new Error(`PDF file not found: ${file.storagePath}`);
     }
+    const buffer = await this.storage.getBuffer(file.storagePath);
 
     await this.prisma.backgroundJob.updateMany({
       where: { bullJobId: job.id ?? undefined },
       data: { status: "PROCESSING" },
     });
 
-    await this.simceService.preParsePdfDocument(file);
+    await this.simceService.preParsePdfDocument({ ...file, buffer });
 
     await this.prisma.backgroundJob.updateMany({
       where: { bullJobId: job.id ?? undefined },

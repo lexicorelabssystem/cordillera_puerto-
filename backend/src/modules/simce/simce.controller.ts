@@ -165,11 +165,11 @@ export class SimceController {
     });
 
     if (assessment?.pdfFile) {
-      this.queueService.enqueueSimcePdfProcessing({
+      await this.queueService.enqueueSimcePdfProcessing({
         assessmentId: id,
         pdfFileId: assessment.pdfFile.id,
         userId: user.sub,
-      }).catch(() => {});
+      });
     }
 
     return result;
@@ -267,7 +267,7 @@ export class SimceController {
     const result = await this.service.exportResultsExcel(id, exportType, studentId, user);
 
     const filePath = `uploads/exports/${result.fileName}`;
-    // eslint-disable-next-line @typescript-eslint/no-require-imports
+
     const fs = await import("node:fs");
 
     reply.header("Content-Type", "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet");

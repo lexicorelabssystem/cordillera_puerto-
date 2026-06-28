@@ -46,6 +46,7 @@ export class JobsService {
   }
 
   async listMyExportJobs(userId: string, limit = 20) {
+    limit = Number.isFinite(limit) ? Math.min(100, Math.max(1, Math.floor(limit))) : 20;
     const jobs = await this.prisma.exportJob.findMany({
       where: { actorId: userId },
       orderBy: { createdAt: "desc" },
@@ -56,6 +57,7 @@ export class JobsService {
   }
 
   async listMyBackgroundJobs(userId: string, limit = 20) {
+    limit = Number.isFinite(limit) ? Math.min(100, Math.max(1, Math.floor(limit))) : 20;
     const jobs = await this.prisma.backgroundJob.findMany({
       where: { requestedById: userId },
       orderBy: { createdAt: "desc" },

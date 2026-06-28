@@ -77,6 +77,7 @@ export class GradingController {
       teacherUserId: user.sub,
     });
     return {
+      backgroundJobId: result.backgroundJobId,
       bullJobId: result.bullJobId,
       assessmentId,
       status: "QUEUED",

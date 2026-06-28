@@ -43,6 +43,15 @@ services:
       SMTP_FROM: ${SMTP_FROM:-noreply@cordillera.cl}
       NOTIFICATION_EMAILS_ENABLED: ${NOTIFICATION_EMAILS_ENABLED:-false}
       REDIS_URL: ${REDIS_URL:-redis://redis:6379}
+      STORAGE_DRIVER: ${STORAGE_DRIVER:-minio}
+      MINIO_ENDPOINT: ${MINIO_ENDPOINT:-minio}
+      MINIO_PORT: ${MINIO_PORT:-9000}
+      MINIO_USE_SSL: ${MINIO_USE_SSL:-false}
+      MINIO_ACCESS_KEY: ${MINIO_ACCESS_KEY:-cordillera}
+      MINIO_SECRET_KEY: ${MINIO_SECRET_KEY:-cordillera_minio_2026}
+      MINIO_DOCUMENTS_BUCKET: ${MINIO_DOCUMENTS_BUCKET:-educacore-documents}
+      MINIO_TEMP_BUCKET: ${MINIO_TEMP_BUCKET:-educacore-temp}
+      MINIO_ARCHIVES_BUCKET: ${MINIO_ARCHIVES_BUCKET:-educacore-archives}
       FRONTEND_URL: ${FRONTEND_URL:-http://localhost}
     ports:
       - "4000:4000"
@@ -52,6 +61,8 @@ services:
       postgres:
         condition: service_healthy
       redis:
+        condition: service_healthy
+      minio:
         condition: service_healthy
     healthcheck:
       test: ["CMD-SHELL", "wget -qO- http://localhost:4000/health || exit 1"]
@@ -75,12 +86,23 @@ services:
       JWT_ISSUER: cordillera-saas
       JWT_AUDIENCE: cordillera-app
       REDIS_URL: ${REDIS_URL:-redis://redis:6379}
+      STORAGE_DRIVER: ${STORAGE_DRIVER:-minio}
+      MINIO_ENDPOINT: ${MINIO_ENDPOINT:-minio}
+      MINIO_PORT: ${MINIO_PORT:-9000}
+      MINIO_USE_SSL: ${MINIO_USE_SSL:-false}
+      MINIO_ACCESS_KEY: ${MINIO_ACCESS_KEY:-cordillera}
+      MINIO_SECRET_KEY: ${MINIO_SECRET_KEY:-cordillera_minio_2026}
+      MINIO_DOCUMENTS_BUCKET: ${MINIO_DOCUMENTS_BUCKET:-educacore-documents}
+      MINIO_TEMP_BUCKET: ${MINIO_TEMP_BUCKET:-educacore-temp}
+      MINIO_ARCHIVES_BUCKET: ${MINIO_ARCHIVES_BUCKET:-educacore-archives}
     volumes:
       - uploads:/app/uploads
     depends_on:
       postgres:
         condition: service_healthy
       redis:
+        condition: service_healthy
+      minio:
         condition: service_healthy
     networks:
       - cordillera-net
@@ -102,6 +124,75 @@ services:
     networks:
       - cordillera-net
 
+  minio:
+    image: minio/minio:latest
+    container_name: cordillera-minio
+    restart: unless-stopped
+    environment:
+      MINIO_ROOT_USER: ${MINIO_ACCESS_KEY:-cordillera}
+      MINIO_ROOT_PASSWORD: ${MINIO_SECRET_KEY:-cordillera_minio_2026}
+    command: server /data --console-address ":9001"
+    ports:
+      - "9000:9000"
+      - "9001:9001"
+    volumes:
+      - miniodata:/data
+    healthcheck:
+      test: ["CMD", "mc", "ready", "local"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+    networks:
+      - cordillera-net
+  prometheus:
+    image: prom/prometheus:v3.4.1
+    container_name: cordillera-prometheus
+    restart: unless-stopped
+    command:
+      - --config.file=/etc/prometheus/prometheus.yml
+      - --storage.tsdb.path=/prometheus
+      - --storage.tsdb.retention.time=15d
+    ports:
+      - "9090:9090"
+    volumes:
+      - ./observability/prometheus.yml:/etc/prometheus/prometheus.yml:ro
+      - ./observability/alerts.yml:/etc/prometheus/alerts.yml:ro
+      - prometheusdata:/prometheus
+    depends_on:
+      backend:
+        condition: service_healthy
+    networks:
+      - cordillera-net
+
+  node-exporter:
+    image: prom/node-exporter:v1.9.1
+    container_name: cordillera-node-exporter
+    restart: unless-stopped
+    command:
+      - --path.rootfs=/host
+      - --collector.filesystem.mount-points-exclude=^/(dev|proc|sys|var/lib/docker/.+|var/lib/containers/storage/.+)($|/)
+    volumes:
+      - /:/host:ro,rslave
+    networks:
+      - cordillera-net
+  grafana:
+    image: grafana/grafana:11.6.0
+    container_name: cordillera-grafana
+    restart: unless-stopped
+    environment:
+      GF_SECURITY_ADMIN_USER: ${GRAFANA_ADMIN_USER:-admin}
+      GF_SECURITY_ADMIN_PASSWORD: ${GRAFANA_ADMIN_PASSWORD:-AdminObservability2026!}
+      GF_USERS_ALLOW_SIGN_UP: "false"
+    ports:
+      - "3001:3000"
+    volumes:
+      - grafanadata:/var/lib/grafana
+      - ./observability/grafana/provisioning:/etc/grafana/provisioning:ro
+      - ./observability/grafana/dashboards:/var/lib/grafana/dashboards:ro
+    depends_on:
+      - prometheus
+    networks:
+      - cordillera-net
   backup:
     image: postgres:16-alpine
     container_name: cordillera-backup
@@ -170,6 +261,12 @@ volumes:
   redisdata:
     driver: local
   uploads:
+    driver: local
+  miniodata:
+    driver: local
+  prometheusdata:
+    driver: local
+  grafanadata:
     driver: local
 
 networks:

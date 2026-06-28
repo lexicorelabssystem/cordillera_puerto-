@@ -3,6 +3,7 @@ import { Test, TestingModule } from "@nestjs/testing";
 import { NotFoundException, BadRequestException, ForbiddenException } from "@nestjs/common";
 import { AssessmentsService } from "./assessments.service.js";
 import { PrismaService } from "../../prisma/prisma.service.js";
+import { CacheService } from "../../cache/cache.service.js";
 
 const MOCK_ASSESSMENT_ID = "assessment-001";
 const MOCK_COURSE_ID = "course-001";
@@ -146,6 +147,13 @@ describe("AssessmentsService", () => {
             assessmentQuestion: prismaAssessmentQuestion,
             question: prismaQuestion,
             user: prismaUser,
+          },
+        },
+        {
+          provide: CacheService,
+          useValue: {
+            getOrSet: jest.fn((_key: string, factory: () => unknown) => factory()),
+            del: jest.fn<() => any>().mockResolvedValue(undefined),
           },
         },
       ],

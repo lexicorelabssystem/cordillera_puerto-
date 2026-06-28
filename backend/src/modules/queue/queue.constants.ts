@@ -4,6 +4,7 @@ export const QUEUE_NAMES = {
   SIMCE_PDF: "simce-pdf",
   REPORTS: "reports",
   CLEANUP: "cleanup",
+  ARCHIVES: "archives",
 } as const;
 
 export const JOB_NAMES = {
@@ -12,6 +13,7 @@ export const JOB_NAMES = {
   PROCESS_SIMCE_PDF: "process-simce-pdf",
   GENERATE_REPORT: "generate-report",
   CLEANUP_TEMP: "cleanup-temp",
+  ARCHIVE_SEMESTER: "archive-semester",
 } as const;
 
 export const DEFAULT_JOB_OPTS = {
@@ -24,6 +26,8 @@ export const DEFAULT_JOB_OPTS = {
 export const EXPORT_CONCURRENCY = 1;
 export const RECALCULATION_CONCURRENCY = 1;
 export const SIMCE_PDF_CONCURRENCY = 1;
+export const REPORTS_CONCURRENCY = 1;
+export const ARCHIVES_CONCURRENCY = 1;
 
 export function createRedisConnection(redisUrl: string) {
   const url = new URL(redisUrl);

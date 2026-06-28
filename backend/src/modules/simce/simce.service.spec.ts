@@ -3,6 +3,7 @@ import { Test, TestingModule } from "@nestjs/testing";
 import { SimceService, VALID_STATUS_TRANSITIONS } from "./simce.service.js";
 import { PrismaService } from "../prisma/prisma.service.js";
 import { DocumentAssessmentParserService } from "../assessments/import/document-assessment-parser.service.js";
+import { CacheService } from "../cache/cache.service.js";
 
 describe("SimceService", () => {
   let service: SimceService;
@@ -16,6 +17,7 @@ describe("SimceService", () => {
           provide: DocumentAssessmentParserService,
           useValue: { parseFromPdf: jest.fn(), parseFromFile: jest.fn() },
         },
+        { provide: CacheService, useValue: { get: jest.fn(), set: jest.fn(), del: jest.fn() } },
       ],
     }).compile();
 

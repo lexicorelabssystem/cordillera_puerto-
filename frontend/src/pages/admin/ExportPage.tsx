@@ -30,12 +30,13 @@ export function ExportPage() {
 
   const exportsQuery = useQuery({
     queryKey: ["export-jobs"],
-    queryFn: () => api.listAuditLogs({ action: "EXPORT" }) as Promise<{ data: { id: string; action: string; entityType: string; createdAt: string }[] }>,
+    queryFn: api.listExportJobs,
+    refetchInterval: (query) => ((query.state.data ?? []).some((job) => ["PENDING", "QUEUED", "waiting", "active", "PROCESSING"].includes(job.status)) ? 3000 : false),
   });
 
   const exportMutation = useMutation({
     mutationFn: api.requestExport,
-    onSuccess: (data: { exportJobId: string }) => {
+    onSuccess: () => {
       toast("Exportacion solicitada. El archivo estara disponible en breve.", "success");
       queryClient.invalidateQueries({ queryKey: ["export-jobs"] });
     },
@@ -85,7 +86,7 @@ export function ExportPage() {
       <section className="panel">
         <h3>Historial de exportaciones</h3>
         {exportsQuery.isLoading ? <LoadingSpinner size="sm" /> : null}
-        {!exportsQuery.data || ((exportsQuery.data as { data: unknown[] }).data || []).length === 0 ? (
+        {!exportsQuery.data?.length ? (
           <EmptyState title="Sin exportaciones" description="Aún no se han solicitado exportaciones." />
         ) : (
           <div className="table-wrap">
@@ -94,12 +95,15 @@ export function ExportPage() {
                 <tr><th>Fecha</th><th>Entidad</th><th>Formato</th><th>Estado</th></tr>
               </thead>
               <tbody>
-                {((exportsQuery.data as { data: { id: string; action: string; entityType: string; createdAt: string }[] }).data || []).map((job: { id: string; action: string; entityType: string; createdAt: string }) => (
+                {exportsQuery.data?.map((job) => (
                   <tr key={job.id}>
                     <td>{new Date(job.createdAt).toLocaleString("es-CL")}</td>
                     <td><span className="badge badge--role">{job.entityType}</span></td>
-                    <td>—</td>
-                    <td><span className="badge badge--active">Completado</span></td>
+                    <td>{job.format.toUpperCase()}</td>
+                    <td>
+                      <span className={`badge ${["COMPLETED", "completed"].includes(job.status) ? "badge--active" : "badge--warning"}`}>{job.status}</span>
+                      {job.fileUrl ? <a href={job.fileUrl} style={{ marginLeft: 8 }}>Descargar</a> : null}
+                    </td>
                   </tr>
                 ))}
               </tbody>

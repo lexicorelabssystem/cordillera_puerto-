@@ -1,5 +1,6 @@
 import { BadRequestException, ForbiddenException, Injectable, Logger, NotFoundException } from "@nestjs/common";
 import { PrismaService } from "../../prisma/prisma.service.js";
+import { StorageService } from "../../storage/storage.service.js";
 import * as path from "node:path";
 import * as fs from "node:fs";
 import * as crypto from "node:crypto";
@@ -19,7 +20,7 @@ export class FilesService {
   private readonly filesDir: string;
   private readonly exportsDir: string;
 
-  constructor(private readonly prisma: PrismaService) {
+  constructor(private readonly prisma: PrismaService, private readonly storage: StorageService) {
     this.uploadRoot = path.resolve("uploads");
     this.filesDir = path.join(this.uploadRoot, "files");
     this.exportsDir = path.join(this.uploadRoot, "exports");
@@ -34,9 +35,7 @@ export class FilesService {
     const fileId = crypto.randomUUID();
     const ext = path.extname(fileName);
     const storageName = `${fileId}${ext}`;
-    const filePath = path.join(this.filesDir, storageName);
-
-    fs.writeFileSync(filePath, fileBuffer);
+    const storagePath = await this.storage.put(this.storage.documentsBucket, `files/${storageName}`, fileBuffer, mimeType);
 
     const asset = await this.prisma.fileAsset.create({
       data: {
@@ -46,7 +45,7 @@ export class FilesService {
         originalName: fileName,
         mimeType,
         size: fileBuffer.length,
-        storagePath: filePath,
+        storagePath,
         url: `/api/v1/files/download/${storageName}`,
         createdBy: userId,
       },
@@ -57,43 +56,32 @@ export class FilesService {
 
   async getDownloadInfo(fileName: string, user?: JwtPayload | string) {
     const safeName = this.resolveSafeFileName(fileName);
-    const candidates = [
-      path.join(this.filesDir, safeName),
-      path.join(this.uploadRoot, safeName),
-      path.join(this.exportsDir, safeName),
-    ].filter((candidate) => this.isInsideAllowedUploadDir(candidate));
-    const filePath = candidates.find((candidate) => fs.existsSync(candidate));
+    const asset = await this.prisma.fileAsset.findFirst({ where: { fileName: safeName } });
 
-    if (!filePath) {
-      this.logger.warn({
-        message: "Download file not found",
-        fileName: safeName,
-        candidates,
-      });
-      throw new NotFoundException("Archivo no encontrado");
+    if (asset) {
+      if (user) await this.assertFileScope(asset, user);
+      if (!(await this.storage.exists(asset.storagePath))) throw new NotFoundException("Archivo no encontrado");
+      return {
+        stream: await this.storage.get(asset.storagePath),
+        mimeType: asset.mimeType,
+        originalName: asset.originalName,
+        size: asset.size,
+      };
     }
 
-    const asset = await this.prisma.fileAsset.findFirst({
-      where: { fileName: safeName },
-    });
-    if (user) {
-      if (!asset) {
-        if (!(await this.canDownloadGeneratedExport(filePath, user))) {
-          throw new ForbiddenException("No tienes acceso a este archivo");
-        }
-      } else {
-        await this.assertFileScope(asset, user);
-      }
+    const exportStoragePath = this.storage.isMinio
+      ? this.storage.uri(this.storage.tempBucket, `exports/${safeName}`)
+      : path.join(this.exportsDir, safeName);
+    if (user && !(await this.canDownloadGeneratedExport(exportStoragePath, user))) {
+      throw new ForbiddenException("No tienes acceso a este archivo");
     }
-
+    if (!(await this.storage.exists(exportStoragePath))) throw new NotFoundException("Archivo no encontrado");
     return {
-      filePath,
-      mimeType: asset?.mimeType ?? this.getMimeTypeForFile(safeName),
-      originalName: asset?.originalName ?? safeName,
-      size: asset?.size ?? fs.statSync(filePath).size,
+      stream: await this.storage.get(exportStoragePath),
+      mimeType: this.getMimeTypeForFile(safeName),
+      originalName: safeName,
     };
   }
-
   private resolveSafeFileName(fileName: string) {
     const safeName = path.basename(fileName);
     if (
@@ -117,7 +105,7 @@ export class FilesService {
   }
 
   private async canDownloadGeneratedExport(filePath: string, user: JwtPayload | string) {
-    if (!this.isPathInsideDir(filePath, this.exportsDir)) return false;
+    if (!filePath.startsWith("minio://") && !this.isPathInsideDir(filePath, this.exportsDir)) return false;
 
     const scope = await resolveUserScope(this.prisma, user);
     return ["SUPER_ADMIN", "ADMIN", "DIRECTION", "UTP", "TEACHER"].includes(scope.role);

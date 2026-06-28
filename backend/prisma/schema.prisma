@@ -1460,3 +1460,26 @@ model SimceStudentResponse {
   @@index([studentId])
   @@map("simce_student_responses")
 }
+model ArchiveRecord {
+  id             String    @id @default(uuid()) @db.Uuid
+  scopeKey       String    @unique @map("scope_key")
+  institutionId  String?   @db.Uuid @map("institution_id")
+  cutoffDate     DateTime  @db.Timestamptz() @map("cutoff_date")
+  semester       Int?
+  status         String    @default("PENDING")
+  storagePath    String?   @map("storage_path")
+  checksum       String?
+  recordCounts   Json?     @map("record_counts")
+  retentionUntil DateTime  @db.Timestamptz() @map("retention_until")
+  requestedById  String?   @db.Uuid @map("requested_by_id")
+  archivedAt     DateTime? @db.Timestamptz() @map("archived_at")
+  restoredAt     DateTime? @db.Timestamptz() @map("restored_at")
+  errorMessage   String?   @map("error_message")
+  createdAt      DateTime  @default(now()) @db.Timestamptz() @map("created_at")
+  updatedAt      DateTime  @updatedAt @db.Timestamptz() @map("updated_at")
+
+  @@index([status, cutoffDate])
+  @@index([institutionId, archivedAt])
+  @@index([retentionUntil])
+  @@map("archive_records")
+}

@@ -47,7 +47,7 @@ export class FilesController {
     const info = await this.service.getDownloadInfo(fileName, user);
     reply.header("Content-Type", info.mimeType);
     reply.header("Content-Disposition", `attachment; filename="${info.originalName}"`);
-    reply.send(fs.createReadStream(info.filePath));
+    reply.send(info.stream);
   }
 
   @Get("view/:fileName")
@@ -63,7 +63,7 @@ export class FilesController {
     const info = await this.service.getDownloadInfo(fileName, user);
     reply.header("Content-Type", info.mimeType);
     reply.header("Content-Disposition", `inline; filename="${info.originalName}"`);
-    reply.send(fs.createReadStream(info.filePath));
+    reply.send(info.stream);
   }
 
   @Get("entity/:entityType/:entityId")

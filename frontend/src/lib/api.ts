@@ -481,7 +481,7 @@ export const api = {
   getAssessment: (id: string) =>
     request<{ id: string; title: string; description?: string | null; assessmentType: string; deliveryMode?: string; status: string; courseId: string; subjectId: string; course?: { id: string; name: string; gradeLevel: number }; subject?: { id: string; name: string }; semester: number; maxScore: number; timeLimitMin?: number | null; startDate?: string; endDate?: string | null; questions: { id: string; questionId: string; sortOrder: number; points: number; question: { id: string; statement: string; type: string; subject?: { id: string; name: string }; options?: { id: string; text: string; sortOrder: number }[] } }[] }>(`/assessments/${id}`),
   getAssessmentAttempts: (assessmentId: string) =>
-    request<{ id: string; studentId: string; student: { firstName: string; lastName: string }; status: string; totalScore: number | null; percentage: number | null; answers: { questionId: string; question: { statement: string; type: string }; textAnswer: string | null; selectedOptionId: string | null; score: number | null; status: string; isCorrect: boolean | null }[] }[]>(`/attempts/assessment/${assessmentId}`),
+    request<{ data: { id: string; studentId: string; student: { firstName: string; lastName: string }; status: string; totalScore: number | null; percentage: number | null; answers: { questionId: string; question: { statement: string; type: string }; textAnswer: string | null; selectedOptionId: string | null; score: number | null; status: string; isCorrect: boolean | null }[] }[] }>(`/attempts/assessment/${assessmentId}?limit=100`).then((r) => r.data),
 
   // ─── Enrollments ────────────────────────────────
   closeAssessment: (id: string) =>
@@ -555,14 +555,14 @@ export const api = {
     threshold?: number;
     format?: string;
   }) =>
-    request<{ reportId: string; type?: string }>("/reports/generate", {
+    request<{ reportId: string; backgroundJobId: string; bullJobId: string; status: string }>("/reports/generate", {
       method: "POST",
       body: JSON.stringify(payload)
     }),
   listReports: (params?: Record<string, string | number | boolean | undefined>) =>
     request<{ data: unknown[] }>(`/reports${buildQuery(params ?? {})}`).then((r) => r.data),
   getReport: (id: string) =>
-    request<{ id: string; type: string; status: string; data: unknown; filters: unknown; generatedAt: string | null }>(`/reports/${id}`),
+    request<{ id: string; type: string; status: string; format: string; filters: Record<string, unknown> | null; generatedAt: string | null }>(`/reports/${id}`),
 
   // ─── Dashboard ──────────────────────────────────
   adminOverview: (institutionId?: string) =>
@@ -648,12 +648,14 @@ export const api = {
     }),
 
   requestExport: (payload: { entityType: string; format: string; courseId?: string; institutionId?: string; academicYearId?: string; subjectId?: string }) =>
-    request<{ exportJobId: string }>("/exports", {
+    request<{ exportJobId: string; bullJobId: string; status: string }>("/exports/async", {
       method: "POST",
       body: JSON.stringify(payload)
     }),
 
   // ─── Audit ───────────────────────────────────────
+  listExportJobs: () =>
+    request<{ id: string; entityType: string; format: string; status: string; fileUrl: string | null; errorMessage: string | null; rowCount: number | null; createdAt: string; completedAt: string | null }[]>("/jobs"),
   listAuditLogs: (params?: Record<string, string | number | boolean | undefined>) =>
     request<PaginatedResponse<unknown>>(`/audit-logs${buildQuery(params ?? {})}`),
   auditSummary: (days?: number) =>
@@ -1056,8 +1058,8 @@ export const api = {
   // ─── Observations ────────────────────────────────
   createObservation: (payload: { studentId: string; courseId: string; type?: string; title: string; content: string }) =>
     request<unknown>("/observations", { method: "POST", body: JSON.stringify(payload) }),
-  listObservations: (params?: { studentId?: string; courseId?: string; type?: string }) =>
-    request<unknown[]>(`/observations${buildQuery(params ?? {})}`),
+  listObservations: (params?: { studentId?: string; courseId?: string; type?: string; page?: number; limit?: number }) =>
+    request<{ data: unknown[] }>(`/observations${buildQuery(params ?? {})}`).then((r) => r.data),
   getObservation: (id: string) =>
     request<unknown>(`/observations/${id}`),
   updateObservation: (id: string, payload: Record<string, unknown>) =>

@@ -46,6 +46,15 @@ const envSchema = z.object({
     .transform((v) => v === "true"),
 
   REDIS_URL: optionalUrl,
+  STORAGE_DRIVER: z.enum(["local", "minio"]).default("local"),
+  MINIO_ENDPOINT: z.string().default("minio"),
+  MINIO_PORT: z.coerce.number().int().positive().default(9000),
+  MINIO_USE_SSL: z.enum(["true", "false"]).default("false").transform((v) => v === "true"),
+  MINIO_ACCESS_KEY: z.string().default("cordillera"),
+  MINIO_SECRET_KEY: z.string().default("cordillera_minio_2026"),
+  MINIO_DOCUMENTS_BUCKET: z.string().default("educacore-documents"),
+  MINIO_TEMP_BUCKET: z.string().default("educacore-temp"),
+  MINIO_ARCHIVES_BUCKET: z.string().default("educacore-archives"),
 });
 
 export type EnvConfig = z.infer<typeof envSchema>;

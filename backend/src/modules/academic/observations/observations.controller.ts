@@ -30,13 +30,17 @@ export class ObservationsController {
   @ApiQuery({ name: "studentId", required: false })
   @ApiQuery({ name: "courseId", required: false })
   @ApiQuery({ name: "type", required: false })
+  @ApiQuery({ name: "page", required: false, type: Number })
+  @ApiQuery({ name: "limit", required: false, type: Number, schema: { minimum: 1, maximum: 100 } })
   findAll(
     @CurrentUser() user: JwtPayload,
     @Query("studentId") studentId?: string,
     @Query("courseId") courseId?: string,
     @Query("type") type?: string,
+    @Query("page") page?: string,
+    @Query("limit") limit?: string,
   ) {
-    return this.service.findAll({ studentId, courseId, type }, user);
+    return this.service.findAll({ studentId, courseId, type }, user, Number(page ?? 1), Number(limit ?? 20));
   }
 
   @Get(":id")

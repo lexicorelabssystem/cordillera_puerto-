@@ -11,6 +11,8 @@ export class AuditLogsService {
     action?: string; entityType?: string; entityId?: string;
     actorId?: string; dateFrom?: string; dateTo?: string; search?: string;
   }, page = 1, limit = 50, user?: JwtPayload) {
+    page = Number.isFinite(page) ? Math.max(1, Math.floor(page)) : 1;
+    limit = Number.isFinite(limit) ? Math.min(100, Math.max(1, Math.floor(limit))) : 20;
     const where: Record<string, unknown> = {};
     const scope = user ? await resolveUserScope(this.prisma, user) : null;
 

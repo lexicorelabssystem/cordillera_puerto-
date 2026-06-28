@@ -7,6 +7,7 @@ import {
   assertStudentScope,
   resolveUserScope,
 } from "../../../common/authz/access-scope.js";
+import { normalizePagination } from "../../../common/dto/pagination.dto.js";
 
 @Injectable()
 export class ObservationsService {
@@ -42,7 +43,12 @@ export class ObservationsService {
     });
   }
 
-  async findAll(filters: { studentId?: string; courseId?: string; type?: string }, user?: JwtPayload | string) {
+  async findAll(
+    filters: { studentId?: string; courseId?: string; type?: string },
+    user?: JwtPayload | string,
+    page = 1,
+    limit = 20,
+  ) {
     const where: Record<string, unknown> = {};
 
     if (user) {
@@ -66,15 +72,32 @@ export class ObservationsService {
 
     if (filters.type) where.type = filters.type;
 
-    return this.prisma.observation.findMany({
-      where,
-      include: {
-        student: { select: { id: true, firstName: true, lastName: true, rut: true } },
-        course: { select: { id: true, name: true, gradeLevel: true } },
-        teacher: { select: { id: true, user: { select: { firstName: true, lastName: true } } } },
+    const pagination = normalizePagination(page, limit);
+    const [data, total] = await Promise.all([
+      this.prisma.observation.findMany({
+        where,
+        skip: pagination.skip,
+        take: pagination.limit,
+        include: {
+          student: { select: { id: true, firstName: true, lastName: true, rut: true } },
+          course: { select: { id: true, name: true, gradeLevel: true } },
+          teacher: { select: { id: true, user: { select: { firstName: true, lastName: true } } } },
+        },
+        orderBy: { createdAt: "desc" },
+      }),
+      this.prisma.observation.count({ where }),
+    ]);
+    return {
+      data,
+      meta: {
+        page: pagination.page,
+        limit: pagination.limit,
+        total,
+        totalPages: Math.ceil(total / pagination.limit),
+        hasNext: pagination.page * pagination.limit < total,
+        hasPrevious: pagination.page > 1,
       },
-      orderBy: { createdAt: "desc" },
-    });
+    };
   }
 
   async findById(id: string, user?: JwtPayload | string) {
