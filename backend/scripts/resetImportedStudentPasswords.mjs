@@ -3,7 +3,7 @@ import { PrismaClient } from "@prisma/client";
 import bcrypt from "bcryptjs";
 
 const prisma = new PrismaClient();
-const password = process.env.STUDENT_TEMP_PASSWORD || "Temp2026**";
+const password = process.env.STUDENT_TEMP_PASSWORD || "";
 const rounds = Number(process.env.BCRYPT_ROUNDS || 10);
 const shouldApply = process.argv.includes("--apply");
 const includeAllStudents = process.argv.includes("--all-students");
@@ -53,6 +53,12 @@ async function main() {
     return;
   }
 
+  if (!password || password.length < 12) {
+    throw new Error(
+      "STUDENT_TEMP_PASSWORD es requerido y debe tener al menos 12 caracteres al usar --apply.",
+    );
+  }
+
   const passwordHash = await bcrypt.hash(password, rounds);
   const result = await prisma.user.updateMany({
     where: { id: { in: users.map((user) => user.id) } },
@@ -65,7 +71,7 @@ async function main() {
 
   console.log("");
   console.log(`Claves reseteadas: ${result.count}`);
-  console.log(`Clave temporal: ${password}`);
+  console.log("Clave temporal configurada por STUDENT_TEMP_PASSWORD (valor no impreso).");
 }
 
 async function findImportedStudentUserIds() {

@@ -92,7 +92,7 @@ export class DemoSeedService implements OnApplicationBootstrap {
           institutionId: demoUser.needsInstitution ? institution.id : null,
           isActive: true,
           deletedAt: null,
-          mustChangePassword: false,
+          mustChangePassword: true,
         },
         create: {
           email: demoUser.email,
@@ -102,7 +102,7 @@ export class DemoSeedService implements OnApplicationBootstrap {
           role: demoUser.role,
           institutionId: demoUser.needsInstitution ? institution.id : null,
           isActive: true,
-          mustChangePassword: false,
+          mustChangePassword: true,
         },
       });
 

@@ -16,6 +16,12 @@ import * as simceBankSeed from "./modules/12-simce-bank.js";
 const prisma = new PrismaClient();
 
 async function main() {
+  if (process.env.NODE_ENV === "production" && process.env.ALLOW_DEMO_SEED !== "true") {
+    throw new Error(
+      "Demo seed bloqueado en produccion. Usa ALLOW_DEMO_SEED=true solo en staging controlado.",
+    );
+  }
+
   console.log("Seeding Cordillera database v3.0...");
 
   const { institutionId } = await institutionSeed.seed(prisma);
@@ -28,9 +34,25 @@ async function main() {
   await teacherAssignmentsSeed.seed(prisma, teacherIds, courses, subjects);
   await assessmentsSeed.seed(prisma, teacherIds, courses, subjects, periodS1Id, adminUserId);
   const totalStudents = await studentsSeed.seed(prisma, courses, institutionId);
-  await resourcesSeed.seed(prisma, institutionId, academicYearId, subjects, courses, axes, teacherIds, adminUserId);
+  await resourcesSeed.seed(
+    prisma,
+    institutionId,
+    academicYearId,
+    subjects,
+    courses,
+    axes,
+    teacherIds,
+    adminUserId,
+  );
   await permissionsSeed.seed(prisma);
-  const { total: simceTotal } = await simceBankSeed.seed(prisma, teacherIds, courses, subjects, periodS2Id, adminUserId);
+  const { total: simceTotal } = await simceBankSeed.seed(
+    prisma,
+    teacherIds,
+    courses,
+    subjects,
+    periodS2Id,
+    adminUserId,
+  );
 
   console.log(`\n━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━`);
   console.log(`  Seed completed successfully!`);
@@ -39,19 +61,13 @@ async function main() {
   console.log(`  Periods: Semestre 1 (50%), Semestre 2 (50%)`);
   console.log(`  Courses: 24 (1° básico a 4° medio, A/B)`);
   console.log(`  Students: ${totalStudents} (Alexis x24)`);
-  console.log(`  SIMCE Essays: ${simceTotal} (48 target: 10+10 Mat/Len 4°, 10+10 Mat/Len 6°, 8 Cie 6°)`);
+  console.log(
+    `  SIMCE Essays: ${simceTotal} (48 target: 10+10 Mat/Len 4°, 10+10 Mat/Len 6°, 8 Cie 6°)`,
+  );
+  console.log(
+    `  Demo credentials: creadas para entorno demo/staging; claves no impresas por seguridad.`,
+  );
   console.log(`━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━`);
-  console.log(`  Demo credentials:`);
-  console.log(`    superadmin@cordillera.cl / Demo2026*`);
-  console.log(`    admin@cordillera.cl / Admin2026*`);
-  console.log(`    utp@cordillera.cl / Profesor2026*`);
-  console.log(`    director@cordillera.cl / Profesor2026*`);
-  console.log(`    profesor@cordillera.cl / Profesor2026*`);
-  console.log(`    profe.mate@cordillera.cl / Profesor2026*`);
-  console.log(`    profe.ciencias@cordillera.cl / Profesor2026*`);
-  console.log(`    alexis.1a@cordillera.cl / Alexis2026*`);
-  console.log(`    alexis.2a@cordillera.cl / Alexis2026*`);
-  console.log(`    ... (24 cursos, misma clave)`);
   console.log(`━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n`);
 }
 

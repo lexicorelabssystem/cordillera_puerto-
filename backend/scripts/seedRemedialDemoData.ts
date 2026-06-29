@@ -42,10 +42,7 @@ async function main() {
 
   await prisma.remedialPlan.deleteMany({
     where: {
-      OR: [
-        { title: { contains: DEMO_MARKER } },
-        { description: { contains: DEMO_MARKER } },
-      ],
+      OR: [{ title: { contains: DEMO_MARKER } }, { description: { contains: DEMO_MARKER } }],
     },
   });
 
@@ -54,7 +51,8 @@ async function main() {
 
   for (let courseIndex = 0; courseIndex < courses.length; courseIndex++) {
     const course = courses[courseIndex]!;
-    const assignment = course.teacherAssignments[courseIndex % Math.max(1, course.teacherAssignments.length)];
+    const assignment =
+      course.teacherAssignments[courseIndex % Math.max(1, course.teacherAssignments.length)];
     const subjectId = assignment?.subjectId;
     if (!subjectId || course.enrollments.length === 0) continue;
 
@@ -75,9 +73,10 @@ async function main() {
       const objective = objectives[i % objectives.length]!;
       const status = statuses[(courseIndex + i) % statuses.length]!;
       const preScore = Number((2.8 + ((courseIndex + i) % 11) / 10).toFixed(1));
-      const postScore = status === "COMPLETED" || status === "EFFECTIVE"
-        ? Number(Math.min(7, preScore + 1.2).toFixed(1))
-        : null;
+      const postScore =
+        status === "COMPLETED" || status === "EFFECTIVE"
+          ? Number(Math.min(7, preScore + 1.2).toFixed(1))
+          : null;
 
       await prisma.remedialPlan.create({
         data: {

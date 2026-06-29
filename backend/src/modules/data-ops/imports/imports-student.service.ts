@@ -3,12 +3,8 @@ import bcrypt from "bcrypt";
 import type { AppConfig } from "../../../config/config.module.js";
 import { PrismaService } from "../../prisma/prisma.service.js";
 import { ImportsParserService } from "./imports-parser.service.js";
-import type {
-  ImportRow,
-  ImportCourseMatch,
-  StudentImportRecord,
-} from "./imports.types.js";
-import { IMPORTED_STUDENT_TEMP_PASSWORD } from "./imports.types.js";
+import type { ImportRow, ImportCourseMatch, StudentImportRecord } from "./imports.types.js";
+import { getImportedStudentTempPassword } from "./imports.types.js";
 
 @Injectable()
 export class ImportsStudentService {
@@ -36,7 +32,8 @@ export class ImportsStudentService {
       const rut = this.getRut(data);
       const email = this.getEmail(data).toLowerCase().trim();
 
-      if (!this.getFullName(data) && !this.getFirstName(data)) errors.push("Falta nombre del estudiante");
+      if (!this.getFullName(data) && !this.getFirstName(data))
+        errors.push("Falta nombre del estudiante");
       if (!rut) errors.push("Falta RUT");
       if (!courseName) {
         errors.push("Falta curso");
@@ -115,7 +112,8 @@ export class ImportsStudentService {
         }
 
         if (!course) {
-          if (!skipErrors) throw new Error(courseMatch.error ?? `Curso no encontrado: ${courseName}`);
+          if (!skipErrors)
+            throw new Error(courseMatch.error ?? `Curso no encontrado: ${courseName}`);
           failed++;
           continue;
         }
@@ -130,7 +128,10 @@ export class ImportsStudentService {
           let userId: string | undefined;
           const existingUser = await tx.user.findUnique({ where: { email } });
           if (!existingUser) {
-            const hash = await bcrypt.hash(IMPORTED_STUDENT_TEMP_PASSWORD, this.config.bcryptRounds);
+            const hash = await bcrypt.hash(
+              getImportedStudentTempPassword(this.config.isProduction),
+              this.config.bcryptRounds,
+            );
             const user = await tx.user.create({
               data: {
                 email,
@@ -164,9 +165,19 @@ export class ImportsStudentService {
   // ══════════════════════════════════════════════════════
 
   private getFullName(data: Record<string, string>): string {
-    return data["nombre completo"] || data["nombre_completo"] || data["nombre y apellido"]
-      || data["nombres y apellidos"] || data["estudiante"] || data["alumno"]
-      || data["fullname"] || data["fullName"] || data["nombre"] || data["__col1"] || "";
+    return (
+      data["nombre completo"] ||
+      data["nombre_completo"] ||
+      data["nombre y apellido"] ||
+      data["nombres y apellidos"] ||
+      data["estudiante"] ||
+      data["alumno"] ||
+      data["fullname"] ||
+      data["fullName"] ||
+      data["nombre"] ||
+      data["__col1"] ||
+      ""
+    );
   }
 
   private getFirstName(data: Record<string, string>): string {
@@ -178,7 +189,14 @@ export class ImportsStudentService {
   }
 
   private getCourseName(data: Record<string, string>): string {
-    return data["curso"] || data["course"] || data["coursename"] || data["courseName"] || data["__col3"] || "";
+    return (
+      data["curso"] ||
+      data["course"] ||
+      data["coursename"] ||
+      data["courseName"] ||
+      data["__col3"] ||
+      ""
+    );
   }
 
   private getRut(data: Record<string, string>): string {
@@ -186,9 +204,17 @@ export class ImportsStudentService {
   }
 
   private getEmail(data: Record<string, string>): string {
-    return (data["correo"] || data["email"] || data["mail"]
-      || data["correo electronico"] || data["correo electrónico"] || data["__col4"] || "")
-      .toLowerCase().trim();
+    return (
+      data["correo"] ||
+      data["email"] ||
+      data["mail"] ||
+      data["correo electronico"] ||
+      data["correo electrónico"] ||
+      data["__col4"] ||
+      ""
+    )
+      .toLowerCase()
+      .trim();
   }
 
   private splitName(fullName: string): { firstName: string; lastName: string } {
@@ -251,8 +277,8 @@ export class ImportsStudentService {
     }
 
     const sectioned =
-      courses.find((c) => c.section?.trim().toUpperCase() === requestedSection)
-      ?? courses.find((c) => this.getCourseSection(c.name) === requestedSection);
+      courses.find((c) => c.section?.trim().toUpperCase() === requestedSection) ??
+      courses.find((c) => this.getCourseSection(c.name) === requestedSection);
 
     if (sectioned) return { course: sectioned };
 
@@ -281,8 +307,14 @@ export class ImportsStudentService {
       return /\bmedio\b/.test(normalized) && level <= 4 ? level + 8 : level;
     }
     const words: Record<string, number> = {
-      primero: 1, segundo: 2, tercero: 3, cuarto: 4,
-      quinto: 5, sexto: 6, septimo: 7, octavo: 8,
+      primero: 1,
+      segundo: 2,
+      tercero: 3,
+      cuarto: 4,
+      quinto: 5,
+      sexto: 6,
+      septimo: 7,
+      octavo: 8,
     };
     return Object.entries(words).find(([w]) => normalized.includes(w))?.[1] ?? null;
   }

@@ -12,6 +12,7 @@ export function mockConfig(overrides: Partial<AppConfig> = {}): AppConfig {
     jwtAccessExpiresIn: "15m",
     jwtRefreshExpiresIn: "7d",
     corsOrigins: ["http://localhost:5173"],
+    frontendUrl: "http://localhost:5173",
     bcryptRounds: 4,
     enableDemoSeed: false,
     smtp: {

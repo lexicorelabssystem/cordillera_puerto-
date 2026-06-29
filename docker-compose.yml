@@ -4,15 +4,15 @@ services:
     container_name: cordillera-postgres
     restart: unless-stopped
     environment:
-      POSTGRES_USER: ${POSTGRES_USER:-cordillera}
-      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-cordillera_dev_2026}
-      POSTGRES_DB: ${POSTGRES_DB:-cordillera_dev}
+      POSTGRES_USER: ${POSTGRES_USER:?POSTGRES_USER requerido}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?POSTGRES_PASSWORD requerido}
+      POSTGRES_DB: ${POSTGRES_DB:?POSTGRES_DB requerido}
     ports:
       - "5433:5432"
     volumes:
       - pgdata:/var/lib/postgresql/data
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U cordillera -d cordillera_dev"]
+      test: ["CMD-SHELL", "pg_isready -U $$POSTGRES_USER -d $$POSTGRES_DB"]
       interval: 5s
       timeout: 5s
       retries: 5
@@ -29,30 +29,33 @@ services:
       NODE_ENV: production
       PORT: 4000
       HOST: 0.0.0.0
-      DATABASE_URL: postgresql://${POSTGRES_USER:-cordillera}:${POSTGRES_PASSWORD:-cordillera_dev_2026}@postgres:5432/${POSTGRES_DB:-cordillera_dev}
+      DATABASE_URL: postgresql://${POSTGRES_USER:?POSTGRES_USER requerido}:${POSTGRES_PASSWORD:?POSTGRES_PASSWORD requerido}@postgres:5432/${POSTGRES_DB:?POSTGRES_DB requerido}
       JWT_SECRET: ${JWT_SECRET:?JWT_SECRET es requerido en produccion}
+      COOKIE_SECRET: ${COOKIE_SECRET:?COOKIE_SECRET requerido}
       JWT_ISSUER: cordillera-saas
       JWT_AUDIENCE: cordillera-app
       JWT_ACCESS_EXPIRES_IN: 15m
       JWT_REFRESH_EXPIRES_IN: 7d
-      CORS_ORIGINS: ${CORS_ORIGINS:-http://localhost:80,http://localhost:5173}
+      BCRYPT_ROUNDS: ${BCRYPT_ROUNDS:-12}
+      ENABLE_DEMO_SEED: false
+      CORS_ORIGINS: ${CORS_ORIGINS:?CORS_ORIGINS requerido}
       SMTP_HOST: ${SMTP_HOST:-}
       SMTP_PORT: ${SMTP_PORT:-587}
       SMTP_USER: ${SMTP_USER:-}
       SMTP_PASS: ${SMTP_PASS:-}
-      SMTP_FROM: ${SMTP_FROM:-noreply@cordillera.cl}
+      SMTP_FROM: ${SMTP_FROM:-noreply@educacor.cl}
       NOTIFICATION_EMAILS_ENABLED: ${NOTIFICATION_EMAILS_ENABLED:-false}
       REDIS_URL: ${REDIS_URL:-redis://redis:6379}
       STORAGE_DRIVER: ${STORAGE_DRIVER:-minio}
       MINIO_ENDPOINT: ${MINIO_ENDPOINT:-minio}
       MINIO_PORT: ${MINIO_PORT:-9000}
       MINIO_USE_SSL: ${MINIO_USE_SSL:-false}
-      MINIO_ACCESS_KEY: ${MINIO_ACCESS_KEY:-cordillera}
-      MINIO_SECRET_KEY: ${MINIO_SECRET_KEY:-cordillera_minio_2026}
+      MINIO_ACCESS_KEY: ${MINIO_ACCESS_KEY:?MINIO_ACCESS_KEY requerido}
+      MINIO_SECRET_KEY: ${MINIO_SECRET_KEY:?MINIO_SECRET_KEY requerido}
       MINIO_DOCUMENTS_BUCKET: ${MINIO_DOCUMENTS_BUCKET:-educacore-documents}
       MINIO_TEMP_BUCKET: ${MINIO_TEMP_BUCKET:-educacore-temp}
       MINIO_ARCHIVES_BUCKET: ${MINIO_ARCHIVES_BUCKET:-educacore-archives}
-      FRONTEND_URL: ${FRONTEND_URL:-http://localhost}
+      FRONTEND_URL: ${FRONTEND_URL:?FRONTEND_URL requerido}
     ports:
       - "4000:4000"
     volumes:
@@ -81,17 +84,22 @@ services:
     restart: unless-stopped
     environment:
       NODE_ENV: production
-      DATABASE_URL: postgresql://${POSTGRES_USER:-cordillera}:${POSTGRES_PASSWORD:-cordillera_dev_2026}@postgres:5432/${POSTGRES_DB:-cordillera_dev}
+      DATABASE_URL: postgresql://${POSTGRES_USER:?POSTGRES_USER requerido}:${POSTGRES_PASSWORD:?POSTGRES_PASSWORD requerido}@postgres:5432/${POSTGRES_DB:?POSTGRES_DB requerido}
       JWT_SECRET: ${JWT_SECRET:?JWT_SECRET es requerido en produccion}
+      COOKIE_SECRET: ${COOKIE_SECRET:?COOKIE_SECRET requerido}
       JWT_ISSUER: cordillera-saas
       JWT_AUDIENCE: cordillera-app
+      BCRYPT_ROUNDS: ${BCRYPT_ROUNDS:-12}
+      ENABLE_DEMO_SEED: false
+      CORS_ORIGINS: ${CORS_ORIGINS:?CORS_ORIGINS requerido}
+      FRONTEND_URL: ${FRONTEND_URL:?FRONTEND_URL requerido}
       REDIS_URL: ${REDIS_URL:-redis://redis:6379}
       STORAGE_DRIVER: ${STORAGE_DRIVER:-minio}
       MINIO_ENDPOINT: ${MINIO_ENDPOINT:-minio}
       MINIO_PORT: ${MINIO_PORT:-9000}
       MINIO_USE_SSL: ${MINIO_USE_SSL:-false}
-      MINIO_ACCESS_KEY: ${MINIO_ACCESS_KEY:-cordillera}
-      MINIO_SECRET_KEY: ${MINIO_SECRET_KEY:-cordillera_minio_2026}
+      MINIO_ACCESS_KEY: ${MINIO_ACCESS_KEY:?MINIO_ACCESS_KEY requerido}
+      MINIO_SECRET_KEY: ${MINIO_SECRET_KEY:?MINIO_SECRET_KEY requerido}
       MINIO_DOCUMENTS_BUCKET: ${MINIO_DOCUMENTS_BUCKET:-educacore-documents}
       MINIO_TEMP_BUCKET: ${MINIO_TEMP_BUCKET:-educacore-temp}
       MINIO_ARCHIVES_BUCKET: ${MINIO_ARCHIVES_BUCKET:-educacore-archives}
@@ -129,8 +137,8 @@ services:
     container_name: cordillera-minio
     restart: unless-stopped
     environment:
-      MINIO_ROOT_USER: ${MINIO_ACCESS_KEY:-cordillera}
-      MINIO_ROOT_PASSWORD: ${MINIO_SECRET_KEY:-cordillera_minio_2026}
+      MINIO_ROOT_USER: ${MINIO_ACCESS_KEY:?MINIO_ACCESS_KEY requerido}
+      MINIO_ROOT_PASSWORD: ${MINIO_SECRET_KEY:?MINIO_SECRET_KEY requerido}
     command: server /data --console-address ":9001"
     ports:
       - "9000:9000"
@@ -180,8 +188,8 @@ services:
     container_name: cordillera-grafana
     restart: unless-stopped
     environment:
-      GF_SECURITY_ADMIN_USER: ${GRAFANA_ADMIN_USER:-admin}
-      GF_SECURITY_ADMIN_PASSWORD: ${GRAFANA_ADMIN_PASSWORD:-AdminObservability2026!}
+      GF_SECURITY_ADMIN_USER: ${GRAFANA_ADMIN_USER:?GRAFANA_ADMIN_USER requerido}
+      GF_SECURITY_ADMIN_PASSWORD: ${GRAFANA_ADMIN_PASSWORD:?GRAFANA_ADMIN_PASSWORD requerido}
       GF_USERS_ALLOW_SIGN_UP: "false"
     ports:
       - "3001:3000"
@@ -202,9 +210,9 @@ services:
         condition: service_healthy
     environment:
       PGHOST: postgres
-      PGUSER: ${POSTGRES_USER:-cordillera}
-      PGPASSWORD: ${POSTGRES_PASSWORD:-cordillera_dev_2026}
-      PGDATABASE: ${POSTGRES_DB:-cordillera_dev}
+      PGUSER: ${POSTGRES_USER:?POSTGRES_USER requerido}
+      PGPASSWORD: ${POSTGRES_PASSWORD:?POSTGRES_PASSWORD requerido}
+      PGDATABASE: ${POSTGRES_DB:?POSTGRES_DB requerido}
       BACKUP_DIR: /backups
       BACKUP_RETENTION_DAYS: 30
       BACKUP_CRON_SCHEDULE: "0 3 * * *"
@@ -222,7 +230,7 @@ services:
     restart: unless-stopped
     environment:
       PGADMIN_DEFAULT_EMAIL: admin@cordillera.cl
-      PGADMIN_DEFAULT_PASSWORD: AdminDev2026*
+      PGADMIN_DEFAULT_PASSWORD: ${PGADMIN_DEFAULT_PASSWORD:?PGADMIN_DEFAULT_PASSWORD requerido}
     ports:
       - "5050:80"
     depends_on:

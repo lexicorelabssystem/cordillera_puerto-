@@ -1,7 +1,7 @@
 import { PrismaClient } from "@prisma/client";
 import bcrypt from "bcrypt";
 
-const BCRYPT_ROUNDS = 10;
+const BCRYPT_ROUNDS = Number(process.env.BCRYPT_ROUNDS || 10);
 
 export interface UserSeedResult {
   teacherIds: Record<string, string>;
@@ -21,7 +21,7 @@ export async function seed(prisma: PrismaClient, institutionId: string): Promise
       passwordHash: superAdminHash,
       isActive: true,
       deletedAt: null,
-      mustChangePassword: false,
+      mustChangePassword: true,
       role: "SUPER_ADMIN",
       institutionId: null,
     },
@@ -33,7 +33,6 @@ export async function seed(prisma: PrismaClient, institutionId: string): Promise
       role: "SUPER_ADMIN",
     },
   });
-  console.log("  [✓] Super Admin: superadmin@cordillera.cl / Demo2026*");
 
   const admin = await prisma.user.upsert({
     where: { email: "admin@cordillera.cl" },
@@ -41,7 +40,7 @@ export async function seed(prisma: PrismaClient, institutionId: string): Promise
       passwordHash: defaultHash,
       isActive: true,
       deletedAt: null,
-      mustChangePassword: false,
+      mustChangePassword: true,
       role: "ADMIN",
       institutionId,
     },
@@ -54,15 +53,39 @@ export async function seed(prisma: PrismaClient, institutionId: string): Promise
       institutionId,
     },
   });
-  console.log("  [✓] Admin: admin@cordillera.cl / Admin2026*");
 
   const teacherDefs = [
-    { email: "profesor@cordillera.cl", firstName: "Carlos", lastName: "Lenguaje", role: "TEACHER" as const },
-    { email: "profe.mate@cordillera.cl", firstName: "Maria", lastName: "Matematica", role: "TEACHER" as const },
-    { email: "profe.ciencias@cordillera.cl", firstName: "Pedro", lastName: "Ciencias", role: "TEACHER" as const },
-    { email: "profe.historia@cordillera.cl", firstName: "Ana", lastName: "Historia", role: "TEACHER" as const },
+    {
+      email: "profesor@cordillera.cl",
+      firstName: "Carlos",
+      lastName: "Lenguaje",
+      role: "TEACHER" as const,
+    },
+    {
+      email: "profe.mate@cordillera.cl",
+      firstName: "Maria",
+      lastName: "Matematica",
+      role: "TEACHER" as const,
+    },
+    {
+      email: "profe.ciencias@cordillera.cl",
+      firstName: "Pedro",
+      lastName: "Ciencias",
+      role: "TEACHER" as const,
+    },
+    {
+      email: "profe.historia@cordillera.cl",
+      firstName: "Ana",
+      lastName: "Historia",
+      role: "TEACHER" as const,
+    },
     { email: "utp@cordillera.cl", firstName: "Jefa", lastName: "UTP", role: "UTP" as const },
-    { email: "director@cordillera.cl", firstName: "Director", lastName: "Escuela", role: "DIRECTION" as const },
+    {
+      email: "director@cordillera.cl",
+      firstName: "Director",
+      lastName: "Escuela",
+      role: "DIRECTION" as const,
+    },
   ];
 
   const teacherIds: Record<string, string> = {};
@@ -74,7 +97,7 @@ export async function seed(prisma: PrismaClient, institutionId: string): Promise
         passwordHash: teacherHash,
         isActive: true,
         deletedAt: null,
-        mustChangePassword: false,
+        mustChangePassword: true,
       },
       create: {
         email: def.email,
@@ -96,9 +119,11 @@ export async function seed(prisma: PrismaClient, institutionId: string): Promise
     }
   }
 
-  console.log(`  [✓] Teachers: ${Object.keys(teacherIds).length} (profesor / profe.mate / profe.ciencias / profe.historia)`);
+  console.log(
+    `  [✓] Teachers: ${Object.keys(teacherIds).length} (profesor / profe.mate / profe.ciencias / profe.historia)`,
+  );
   console.log("  [✓] Staff: utp@cordillera.cl / director@cordillera.cl");
-  console.log("  [✓] All staff passwords: Profesor2026*");
 
+  console.log("  [ok] Usuarios demo creados; claves no impresas y cambio de clave obligatorio.");
   return { teacherIds, adminUserId: admin.id };
 }

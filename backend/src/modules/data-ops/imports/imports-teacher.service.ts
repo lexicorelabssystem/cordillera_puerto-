@@ -4,7 +4,7 @@ import type { AppConfig } from "../../../config/config.module.js";
 import { PrismaService } from "../../prisma/prisma.service.js";
 import { ImportsParserService } from "./imports-parser.service.js";
 import type { ImportRow, TeacherImportRecord } from "./imports.types.js";
-import { IMPORTED_TEACHER_TEMP_PASSWORD } from "./imports.types.js";
+import { getImportedTeacherTempPassword } from "./imports.types.js";
 
 @Injectable()
 export class ImportsTeacherService {
@@ -18,7 +18,9 @@ export class ImportsTeacherService {
   //  VALIDATION
   // ══════════════════════════════════════════════════════
 
-  async validateTeachers(job: { fileName: string }): Promise<{ data: ImportRow[]; errors: string[] }> {
+  async validateTeachers(job: {
+    fileName: string;
+  }): Promise<{ data: ImportRow[]; errors: string[] }> {
     const rows = await this.parser.parseFile(job.fileName);
     const result: ImportRow[] = [];
     const seenEmails = new Set<string>();
@@ -68,7 +70,8 @@ export class ImportsTeacherService {
     skipErrors: boolean,
     institutionId?: string,
   ): Promise<{ success: number; failed: number; importedTeacherRecords: TeacherImportRecord[] }> {
-    if (!institutionId) throw new BadRequestException("La importacion no tiene una institucion asociada");
+    if (!institutionId)
+      throw new BadRequestException("La importacion no tiene una institucion asociada");
 
     const rows = await this.parser.parseFile(job.fileName);
     let success = 0;
@@ -96,7 +99,10 @@ export class ImportsTeacherService {
           if (await tx.teacher.findFirst({ where: { rut } })) {
             throw new Error(`Ya existe un profesor con el RUT: ${rut}`);
           }
-          const passwordHash = await bcrypt.hash(IMPORTED_TEACHER_TEMP_PASSWORD, this.config.bcryptRounds);
+          const passwordHash = await bcrypt.hash(
+            getImportedTeacherTempPassword(this.config.isProduction),
+            this.config.bcryptRounds,
+          );
           const createdUser = await tx.user.create({
             data: {
               email,
@@ -128,8 +134,14 @@ export class ImportsTeacherService {
   // ══════════════════════════════════════════════════════
 
   private getFullName(data: Record<string, string>): string {
-    return data["nombre"] || data["nombre completo"] || data["profesor"]
-      || data["docente"] || data["__col1"] || "";
+    return (
+      data["nombre"] ||
+      data["nombre completo"] ||
+      data["profesor"] ||
+      data["docente"] ||
+      data["__col1"] ||
+      ""
+    );
   }
 
   private getRut(data: Record<string, string>): string {
@@ -137,14 +149,29 @@ export class ImportsTeacherService {
   }
 
   private getTitle(data: Record<string, string>): string {
-    return data["asignatura"] || data["especialidad"] || data["titulo"]
-      || data["título"] || data["subject"] || data["__col3"] || "";
+    return (
+      data["asignatura"] ||
+      data["especialidad"] ||
+      data["titulo"] ||
+      data["título"] ||
+      data["subject"] ||
+      data["__col3"] ||
+      ""
+    );
   }
 
   private getEmail(data: Record<string, string>): string {
-    return (data["correo"] || data["email"] || data["mail"]
-      || data["correo electronico"] || data["correo electrónico"] || data["__col4"] || "")
-      .toLowerCase().trim();
+    return (
+      data["correo"] ||
+      data["email"] ||
+      data["mail"] ||
+      data["correo electronico"] ||
+      data["correo electrónico"] ||
+      data["__col4"] ||
+      ""
+    )
+      .toLowerCase()
+      .trim();
   }
 
   private splitName(fullName: string): { firstName: string; lastName: string } {

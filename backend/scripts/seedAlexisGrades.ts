@@ -89,7 +89,9 @@ async function main() {
     }
 
     const grades = gradeSets[courseIndex % gradeSets.length]!;
-    console.log(`- ${enrollment.course.name}: ${enrollment.student.firstName} ${enrollment.student.lastName}`);
+    console.log(
+      `- ${enrollment.course.name}: ${enrollment.student.firstName} ${enrollment.student.lastName}`,
+    );
 
     for (let i = 0; i < assignments.length; i++) {
       const assignment = assignments[i]!;

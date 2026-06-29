@@ -51,5 +51,19 @@ export interface ImportCourseMatch {
   error?: string;
 }
 
-export const IMPORTED_STUDENT_TEMP_PASSWORD = "Temp2026**";
-export const IMPORTED_TEACHER_TEMP_PASSWORD = "Temp2026**";
+function resolveTemporaryPassword(envName: string, fallback: string, isProduction: boolean) {
+  const value = process.env[envName];
+  if (value) return value;
+  if (isProduction) {
+    throw new Error(`${envName} es requerido en produccion para importar usuarios.`);
+  }
+  return fallback;
+}
+
+export function getImportedStudentTempPassword(isProduction: boolean) {
+  return resolveTemporaryPassword("IMPORTED_STUDENT_TEMP_PASSWORD", "Temp2026**", isProduction);
+}
+
+export function getImportedTeacherTempPassword(isProduction: boolean) {
+  return resolveTemporaryPassword("IMPORTED_TEACHER_TEMP_PASSWORD", "Temp2026**", isProduction);
+}

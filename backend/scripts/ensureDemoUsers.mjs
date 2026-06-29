@@ -3,6 +3,7 @@ import bcrypt from "bcryptjs";
 
 const prisma = new PrismaClient();
 const rounds = Number(process.env.BCRYPT_ROUNDS || 10);
+const allowDemoSeed = process.env.ALLOW_DEMO_SEED === "true";
 
 const users = [
   {
@@ -76,6 +77,12 @@ const users = [
 ];
 
 async function main() {
+  if (process.env.NODE_ENV === "production" && !allowDemoSeed) {
+    throw new Error(
+      "ensureDemoUsers bloqueado en produccion. Usa ALLOW_DEMO_SEED=true solo en staging controlado.",
+    );
+  }
+
   const institution = await prisma.institution.findFirst({
     where: { deletedAt: null },
     orderBy: { createdAt: "asc" },
@@ -96,7 +103,7 @@ async function main() {
         role: user.role,
         isActive: true,
         deletedAt: null,
-        mustChangePassword: false,
+        mustChangePassword: true,
         institutionId: user.institution ? institution.id : null,
       },
       create: {
@@ -106,7 +113,7 @@ async function main() {
         lastName: user.lastName,
         role: user.role,
         isActive: true,
-        mustChangePassword: false,
+        mustChangePassword: true,
         institutionId: user.institution ? institution.id : null,
       },
     });

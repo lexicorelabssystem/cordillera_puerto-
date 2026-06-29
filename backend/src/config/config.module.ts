@@ -16,6 +16,7 @@ function buildConfig(env: EnvConfig) {
     jwtAccessExpiresIn: env.JWT_ACCESS_EXPIRES_IN,
     jwtRefreshExpiresIn: env.JWT_REFRESH_EXPIRES_IN,
     corsOrigins: env.CORS_ORIGINS.split(",").map((s) => s.trim()),
+    frontendUrl: env.FRONTEND_URL ?? "",
     bcryptRounds: env.BCRYPT_ROUNDS,
     enableDemoSeed: env.ENABLE_DEMO_SEED,
     smtp: {
