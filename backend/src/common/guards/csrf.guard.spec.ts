@@ -4,7 +4,12 @@ import { CsrfGuard } from "./csrf.guard.js";
 describe("CsrfGuard", () => {
   let guard: CsrfGuard;
 
-  function mockContext(method: string, origin?: string, referer?: string, host = "localhost:4000"): ExecutionContext {
+  function mockContext(
+    method: string,
+    origin?: string,
+    referer?: string,
+    host = "localhost:4000",
+  ): ExecutionContext {
     return {
       switchToHttp: () => ({
         getRequest: () => ({
@@ -41,53 +46,45 @@ describe("CsrfGuard", () => {
 
   describe("mutating methods with valid origin", () => {
     it("debe permitir POST con Origin permitido", () => {
-      expect(
-        guard.canActivate(mockContext("POST", "http://localhost:5173")),
-      ).toBe(true);
+      expect(guard.canActivate(mockContext("POST", "http://localhost:5173"))).toBe(true);
     });
 
     it("debe permitir PUT con Origin HTTPS permitido", () => {
-      expect(
-        guard.canActivate(mockContext("PUT", "https://app.ejemplo.cl")),
-      ).toBe(true);
+      expect(guard.canActivate(mockContext("PUT", "https://app.ejemplo.cl"))).toBe(true);
     });
 
     it("debe permitir DELETE con Referer permitido", () => {
       expect(
-        guard.canActivate(
-          mockContext("DELETE", undefined, "http://localhost:5173/page"),
-        ),
+        guard.canActivate(mockContext("DELETE", undefined, "http://localhost:5173/page")),
       ).toBe(true);
     });
 
-    it("debe permitir PATCH con wildcard de subdominio", () => {
+    it("debe bloquear wildcard de subdominio porque CORS debe ser exacto", () => {
       process.env.CORS_ORIGINS = "*.ejemplo.cl";
       guard = new CsrfGuard();
-      expect(
-        guard.canActivate(mockContext("PATCH", "https://admin.ejemplo.cl")),
-      ).toBe(true);
+      expect(guard.canActivate(mockContext("PATCH", "https://admin.ejemplo.cl"))).toBe(false);
     });
   });
 
   describe("mutating methods with invalid origin", () => {
     it("debe bloquear POST con origen malicioso", () => {
-      expect(
-        guard.canActivate(mockContext("POST", "https://evil.com")),
-      ).toBe(false);
+      expect(guard.canActivate(mockContext("POST", "https://evil.com"))).toBe(false);
     });
 
     it("debe bloquear POST con Referer malicioso", () => {
-      expect(
-        guard.canActivate(
-          mockContext("POST", undefined, "https://evil.com/api"),
-        ),
-      ).toBe(false);
+      expect(guard.canActivate(mockContext("POST", undefined, "https://evil.com/api"))).toBe(false);
     });
   });
 
-  describe("same-origin requests", () => {
-    it("debe permitir POST sin Origin ni Referer (same-origin)", () => {
+  describe("requests sin Origin ni Referer", () => {
+    it("debe permitir POST sin Origin ni Referer fuera de produccion", () => {
       expect(guard.canActivate(mockContext("POST"))).toBe(true);
+    });
+
+    it("debe bloquear POST sin Origin ni Referer en produccion", () => {
+      process.env.NODE_ENV = "production";
+      guard = new CsrfGuard();
+      expect(guard.canActivate(mockContext("POST"))).toBe(false);
     });
   });
 });

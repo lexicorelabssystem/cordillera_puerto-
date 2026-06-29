@@ -1,5 +1,10 @@
 import { Injectable, CanActivate, ExecutionContext, Logger } from "@nestjs/common";
 import type { FastifyRequest } from "fastify";
+import {
+  getAllowedOrigins,
+  isOriginAllowed,
+  normalizeOrigin,
+} from "../security/allowed-origins.js";
 
 const SAFE_METHODS = ["GET", "HEAD", "OPTIONS"];
 
@@ -7,18 +12,11 @@ const SAFE_METHODS = ["GET", "HEAD", "OPTIONS"];
 export class CsrfGuard implements CanActivate {
   private readonly logger = new Logger(CsrfGuard.name);
   private readonly allowedOrigins: string[];
+  private readonly isProduction: boolean;
 
   constructor() {
-    this.allowedOrigins = [
-      ...(process.env.CORS_ORIGINS || "http://localhost:5173").split(","),
-      process.env.FRONTEND_URL,
-      "https://cordillera-puerto-frontend.vercel.app",
-      "https://cordillera-puerto-frontend-lexicorelabssystemgmailcoms-projects.vercel.app",
-      "*.vercel.app",
-      "*.sslip.io",
-    ]
-      .map((o) => o?.trim())
-      .filter((o): o is string => Boolean(o));
+    this.allowedOrigins = getAllowedOrigins();
+    this.isProduction = process.env.NODE_ENV === "production";
   }
 
   canActivate(context: ExecutionContext): boolean {
@@ -28,44 +26,25 @@ export class CsrfGuard implements CanActivate {
       return true;
     }
 
-    const origin = (req.headers.origin || req.headers.referer || "") as string;
+    const originHeader = (req.headers.origin || "") as string;
+    const refererHeader = (req.headers.referer || "") as string;
+    const source = originHeader || refererHeader;
 
-    if (!origin) {
-      const host = req.headers.host || "";
-      const referer = req.headers.referer || "";
-      const isSameOrigin = referer.includes(host) || !referer;
-      if (!isSameOrigin) {
-        this.logger.warn(`CSRF: ${req.method} ${req.url} sin Origin, Referer inconsistente`);
+    if (!source) {
+      if (this.isProduction) {
+        this.logger.warn(`CSRF: ${req.method} ${req.url} sin Origin ni Referer en produccion`);
         return false;
       }
       return true;
     }
 
-    const originUrl = this.extractOrigin(origin);
-    const allowed = this.allowedOrigins.some((o) => {
-      if (o === "*") return true;
-      return this.extractOrigin(o) === originUrl || this.matchWildcard(o, originUrl);
-    });
+    const originUrl = normalizeOrigin(source);
+    const allowed = isOriginAllowed(originUrl, this.allowedOrigins);
 
     if (!allowed) {
       this.logger.warn(`CSRF: origen ${originUrl} no permitido para ${req.method} ${req.url}`);
     }
 
     return allowed;
-  }
-
-  private extractOrigin(raw: string): string {
-    try {
-      const url = new URL(raw);
-      return `${url.protocol}//${url.host}`;
-    } catch {
-      return raw.replace(/\/+$/, "");
-    }
-  }
-
-  private matchWildcard(pattern: string, origin: string): boolean {
-    if (!pattern.startsWith("*.")) return false;
-    const domain = pattern.slice(2);
-    return origin.endsWith("://" + domain) || origin.endsWith("." + domain);
   }
 }

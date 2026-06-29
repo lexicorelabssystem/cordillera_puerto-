@@ -36,7 +36,10 @@ export class ChangePasswordDto {
   @MinLength(6)
   currentPassword!: string;
 
-  @ApiProperty({ description: "Nueva contraseña (mín. 10 caracteres, 1 mayúscula, 1 minúscula, 1 número, 1 símbolo)" })
+  @ApiProperty({
+    description:
+      "Nueva contraseña (mín. 10 caracteres, 1 mayúscula, 1 minúscula, 1 número, 1 símbolo)",
+  })
   @IsString()
   @MinLength(10)
   newPassword!: string;
@@ -55,7 +58,9 @@ export class UpdateProfileDto {
 }
 
 export class RefreshTokenDto {
-  @ApiPropertyOptional({ description: "Refresh token obtenido en el login (opcional si se envía vía cookie httpOnly)" })
+  @ApiPropertyOptional({
+    description: "Refresh token obtenido en el login (opcional si se envía vía cookie httpOnly)",
+  })
   @IsOptional()
   @IsString()
   refreshToken?: string;

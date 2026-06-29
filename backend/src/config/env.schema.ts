@@ -124,12 +124,15 @@ const envSchema = z
       .filter(Boolean);
     if (
       corsOrigins.length === 0 ||
-      corsOrigins.some((origin) => origin === "*" || origin.includes("localhost"))
+      corsOrigins.some(
+        (origin) => origin === "*" || origin.startsWith("*.") || origin.includes("localhost"),
+      )
     ) {
       ctx.addIssue({
         code: "custom",
         path: ["CORS_ORIGINS"],
-        message: "CORS_ORIGINS must list exact non-localhost origins in production",
+        message:
+          "CORS_ORIGINS must list exact non-localhost origins without wildcards in production",
       });
     }
 

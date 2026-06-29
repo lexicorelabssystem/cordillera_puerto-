@@ -29,16 +29,9 @@ type AuthResponse = {
 const ACCESS_TOKEN_KEY = "cordillera_access_token";
 const REFRESH_TOKEN_KEY = "cordillera_refresh_token";
 
-function readStoredToken(key: string): string | null {
-  try {
-    return localStorage.getItem(key);
-  } catch {
-    return null;
-  }
-}
-
-let _accessToken: string | null = readStoredToken(ACCESS_TOKEN_KEY);
-let _refreshToken: string | null = readStoredToken(REFRESH_TOKEN_KEY);
+let _accessToken: string | null = null;
+persistToken(ACCESS_TOKEN_KEY, null);
+persistToken(REFRESH_TOKEN_KEY, null);
 
 function persistToken(key: string, value: string | null) {
   try {
@@ -52,17 +45,13 @@ function persistToken(key: string, value: string | null) {
 export function setAuthTokens(tokens: { token?: string; refreshToken?: string }) {
   if (tokens.token) {
     _accessToken = tokens.token;
-    persistToken(ACCESS_TOKEN_KEY, tokens.token);
+    persistToken(ACCESS_TOKEN_KEY, null);
   }
-  if (tokens.refreshToken) {
-    _refreshToken = tokens.refreshToken;
-    persistToken(REFRESH_TOKEN_KEY, tokens.refreshToken);
-  }
+  persistToken(REFRESH_TOKEN_KEY, null);
 }
 
 export function clearAuthTokens() {
   _accessToken = null;
-  _refreshToken = null;
   persistToken(ACCESS_TOKEN_KEY, null);
   persistToken(REFRESH_TOKEN_KEY, null);
 }
@@ -101,17 +90,9 @@ async function refreshSession(): Promise<boolean> {
 
   _refreshPromise = (async () => {
     try {
-      const headers = new Headers();
-      let body: string | undefined;
-      if (_refreshToken) {
-        headers.set("Content-Type", "application/json");
-        body = JSON.stringify({ refreshToken: _refreshToken });
-      }
       const response = await fetch(`${API_BASE}/auth/refresh`, {
         method: "POST",
         credentials: "include",
-        headers,
-        body,
       });
       if (response.ok) {
         const result = (await response.json().catch(() => null)) as AuthResponse | null;
@@ -233,7 +214,6 @@ export const api = {
   refresh: () =>
     request<AuthResponse>("/auth/refresh", {
       method: "POST",
-      body: _refreshToken ? JSON.stringify({ refreshToken: _refreshToken }) : undefined,
     }).then((result) => {
       setAuthTokens(result);
       return result;
