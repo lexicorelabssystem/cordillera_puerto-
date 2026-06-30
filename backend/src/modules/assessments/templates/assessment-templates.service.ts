@@ -1,9 +1,10 @@
-import { BadRequestException, ForbiddenException, Injectable, NotFoundException } from "@nestjs/common";
+import { BadRequestException, ForbiddenException, Injectable, Logger, NotFoundException } from "@nestjs/common";
 import { AssessmentDeliveryMode, AssessmentType, Prisma, QuestionType } from "@prisma/client";
 import { PrismaService } from "../../prisma/prisma.service.js";
 import { FilesService } from "../../data-ops/files/files.service.js";
 import { assertCourseScope, assertInstitutionScope, resolveUserScope } from "../../../common/authz/access-scope.js";
 import type { JwtPayload } from "../../../common/decorators/current-user.decorator.js";
+import * as path from "node:path";
 import { DocumentAssessmentParserService } from "../import/document-assessment-parser.service.js";
 import type {
   CreateAssessmentFromTemplateDto,
@@ -22,6 +23,8 @@ type TemplateWithQuestions = Prisma.AssessmentTemplateGetPayload<{
 
 @Injectable()
 export class AssessmentTemplatesService {
+  private readonly logger = new Logger(AssessmentTemplatesService.name);
+
   constructor(
     private readonly prisma: PrismaService,
     private readonly parser: DocumentAssessmentParserService,
@@ -50,14 +53,6 @@ export class AssessmentTemplatesService {
       fileName: params.fileName,
       mimeType: params.mimeType,
     });
-    const file = await this.filesService.uploadFile(
-      params.buffer,
-      params.fileName,
-      params.mimeType,
-      "assessment-template",
-      null,
-      scope.userId,
-    );
 
     const title = params.title?.trim() || params.fileName.replace(/\.[^.]+$/, "") || "Prueba importada";
     const created = await this.prisma.assessmentTemplate.create({
@@ -68,7 +63,6 @@ export class AssessmentTemplatesService {
         title,
         description: params.description?.trim() || null,
         status: "DRAFT",
-        sourceFileId: file.fileId,
         fileName: params.fileName,
         mimeType: params.mimeType,
         instructions: parsed.instructions,
@@ -97,12 +91,39 @@ export class AssessmentTemplatesService {
       include: this.templateInclude(),
     });
 
-    await this.prisma.fileAsset.update({
-      where: { id: file.fileId },
-      data: { entityId: created.id },
-    });
+    try {
+      const extension = this.getOriginalExtension(params.fileName, params.mimeType);
+      const storageName = `assessment-template-${created.id}${extension}`;
+      const objectKey = `assessment-templates/${created.id}/original${extension}`;
+      const file = await this.filesService.uploadFileAtKey(
+        params.buffer,
+        params.fileName,
+        params.mimeType,
+        "assessment-template",
+        created.id,
+        scope.userId,
+        {
+          storageName,
+          bucket: this.filesService.documentsBucket,
+          objectKey,
+        },
+      );
 
-    return this.formatTemplate(created);
+      this.logger.log(
+        `Assessment template source stored driver=${file.storageProvider} bucket=${file.bucket ?? "local"} objectKey=${file.objectKey ?? objectKey} size=${file.size}`,
+      );
+
+      const updated = await this.prisma.assessmentTemplate.update({
+        where: { id: created.id },
+        data: { sourceFileId: file.fileId },
+        include: this.templateInclude(),
+      });
+
+      return this.formatTemplate(updated);
+    } catch (error) {
+      await this.prisma.assessmentTemplate.delete({ where: { id: created.id } }).catch(() => undefined);
+      throw error;
+    }
   }
 
   async findAll(filters: {
@@ -393,6 +414,12 @@ export class AssessmentTemplatesService {
     };
   }
 
+  private getOriginalExtension(fileName: string, mimeType: string) {
+    const ext = path.extname(fileName).toLowerCase();
+    if (ext === ".pdf" || mimeType.includes("pdf")) return ".pdf";
+    if (ext === ".docx" || mimeType.includes("wordprocessingml")) return ".docx";
+    return ext || ".bin";
+  }
   private async getTemplateForRead(id: string, user: JwtPayload) {
     const template = await this.prisma.assessmentTemplate.findUnique({
       where: { id },

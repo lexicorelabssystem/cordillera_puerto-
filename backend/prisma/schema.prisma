@@ -1143,6 +1143,9 @@ model FileAsset {
   mimeType     String
   size         Int
   storagePath  String
+  storageProvider String @default("local")
+  bucket       String?
+  objectKey    String?
   url          String?
   createdBy    String?   @db.Uuid
   createdAt    DateTime  @default(now()) @db.Timestamptz()
@@ -1153,6 +1156,8 @@ model FileAsset {
   simceAssessments  SimceAssessment[]
 
   @@index([entityType, entityId])
+  @@index([storageProvider])
+  @@index([bucket, objectKey])
   @@map("file_assets")
 }
 

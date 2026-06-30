@@ -37,6 +37,7 @@ export class StorageService implements OnModuleInit {
     this.logger.log("MinIO storage backend enabled");
   }
 
+  get driver() { return this.config.storage.driver; }
   get isMinio() { return this.client !== null; }
   get documentsBucket() { return this.config.storage.documentsBucket; }
   get tempBucket() { return this.config.storage.tempBucket; }

@@ -20,6 +20,8 @@ export class FilesService {
   private readonly filesDir: string;
   private readonly exportsDir: string;
 
+  get documentsBucket() { return this.storage.documentsBucket; }
+
   constructor(private readonly prisma: PrismaService, private readonly storage: StorageService) {
     this.uploadRoot = path.resolve("uploads");
     this.filesDir = path.join(this.uploadRoot, "files");
@@ -28,30 +30,66 @@ export class FilesService {
   }
 
   async uploadFile(fileBuffer: Buffer, fileName: string, mimeType: string, entityType: string, entityId: string | null, userId: string) {
+    const fileId = crypto.randomUUID();
+    const ext = path.extname(fileName);
+    const storageName = `${fileId}${ext}`;
+    return this.uploadFileAtKey(fileBuffer, fileName, mimeType, entityType, entityId, userId, {
+      fileId,
+      storageName,
+      bucket: this.storage.documentsBucket,
+      objectKey: `files/${storageName}`,
+    });
+  }
+
+  async uploadFileAtKey(
+    fileBuffer: Buffer,
+    fileName: string,
+    mimeType: string,
+    entityType: string,
+    entityId: string | null,
+    userId: string,
+    options: { fileId?: string; storageName: string; bucket: string; objectKey: string },
+  ) {
     if (entityId) {
       await this.assertFileScope({ entityType, entityId, createdBy: null }, userId);
     }
 
-    const fileId = crypto.randomUUID();
-    const ext = path.extname(fileName);
-    const storageName = `${fileId}${ext}`;
-    const storagePath = await this.storage.put(this.storage.documentsBucket, `files/${storageName}`, fileBuffer, mimeType);
+    const fileId = options.fileId ?? crypto.randomUUID();
+    const storagePath = await this.storage.put(options.bucket, options.objectKey, fileBuffer, mimeType);
+    const storageProvider = this.storage.driver;
+
+    this.logger.log(
+      `Stored file asset driver=${storageProvider} bucket=${options.bucket} objectKey=${options.objectKey} size=${fileBuffer.length}`,
+    );
 
     const asset = await this.prisma.fileAsset.create({
       data: {
+        id: fileId,
         entityType,
         entityId,
-        fileName: storageName,
+        fileName: options.storageName,
         originalName: fileName,
         mimeType,
         size: fileBuffer.length,
         storagePath,
-        url: `/api/v1/files/download/${storageName}`,
+        storageProvider,
+        bucket: storageProvider === "minio" ? options.bucket : null,
+        objectKey: storageProvider === "minio" ? options.objectKey : null,
+        url: `/api/v1/files/download/${options.storageName}`,
         createdBy: userId,
       },
     });
 
-    return { fileId: asset.id, fileName, url: asset.url, size: asset.size };
+    return {
+      fileId: asset.id,
+      fileName,
+      url: asset.url,
+      size: asset.size,
+      storageProvider: asset.storageProvider,
+      bucket: asset.bucket,
+      objectKey: asset.objectKey,
+      storagePath: asset.storagePath,
+    };
   }
 
   async getDownloadInfo(fileName: string, user?: JwtPayload | string) {
@@ -232,9 +270,7 @@ export class FilesService {
     if (!asset) throw new NotFoundException("Archivo no encontrado");
     if (user) await this.assertFileScope(asset, user);
 
-    try {
-      fs.unlinkSync(asset.storagePath);
-    } catch { /* file may already be deleted */ }
+    await this.storage.remove(asset.storagePath).catch(() => undefined);
 
     return this.prisma.fileAsset.delete({ where: { id: fileId } });
   }
