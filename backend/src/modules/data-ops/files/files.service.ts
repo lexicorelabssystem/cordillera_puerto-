@@ -120,6 +120,18 @@ export class FilesService {
       originalName: safeName,
     };
   }
+  async getDownloadInfoById(fileId: string, user?: JwtPayload | string) {
+    const asset = await this.prisma.fileAsset.findUnique({ where: { id: fileId } });
+    if (!asset) throw new NotFoundException("Archivo no encontrado");
+    if (user) await this.assertFileScope(asset, user);
+    if (!(await this.storage.exists(asset.storagePath))) throw new NotFoundException("Archivo no encontrado");
+    return {
+      stream: await this.storage.get(asset.storagePath),
+      mimeType: asset.mimeType,
+      originalName: asset.originalName,
+      size: asset.size,
+    };
+  }
   private resolveSafeFileName(fileName: string) {
     const safeName = path.basename(fileName);
     if (

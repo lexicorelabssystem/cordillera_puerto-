@@ -173,11 +173,31 @@ async function request<T>(path: string, init?: RequestInit): Promise<T> {
 }
 
 async function requestBlob(path: string): Promise<Blob> {
-  const response = await fetch(`${API_BASE}${path}`, {
+  const headers = new Headers();
+  if (_accessToken) headers.set("Authorization", `Bearer ${_accessToken}`);
+
+  let response = await fetch(`${API_BASE}${path}`, {
     credentials: "include",
+    headers,
   });
+
+  if (response.status === 401 && !NO_REFRESH_PATHS.includes(path)) {
+    const refreshed = await refreshSession();
+    if (refreshed) {
+      if (_accessToken) headers.set("Authorization", `Bearer ${_accessToken}`);
+      response = await fetch(`${API_BASE}${path}`, {
+        credentials: "include",
+        headers,
+      });
+    } else {
+      if (_onSessionExpired) _onSessionExpired();
+      throw new Error("Sesion expirada. Por favor inicia sesion nuevamente.");
+    }
+  }
+
   if (!response.ok) {
-    throw new Error(`Descarga fallida (${response.status})`);
+    const err = await response.json().catch(() => null);
+    throw new Error(typeof err?.message === "string" ? err.message : `Descarga fallida (${response.status})`);
   }
   return response.blob();
 }
@@ -824,6 +844,8 @@ export const api = {
     request<unknown[]>(`/assessment-templates${buildQuery(params ?? {})}`),
   getAssessmentTemplate: (id: string) =>
     request<unknown>(`/assessment-templates/${id}`),
+  downloadAssessmentTemplateSource: (id: string) =>
+    requestBlob(`/assessment-templates/${id}/source/download`),
   updateAssessmentTemplate: (id: string, payload: Record<string, unknown>) =>
     request<unknown>(`/assessment-templates/${id}`, {
       method: "PATCH",

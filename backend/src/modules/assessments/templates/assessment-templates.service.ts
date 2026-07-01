@@ -190,6 +190,11 @@ export class AssessmentTemplatesService {
     return this.formatTemplate(template);
   }
 
+  async downloadSource(id: string, user: JwtPayload) {
+    const template = await this.getTemplateForRead(id, user);
+    if (!template.sourceFileId) throw new NotFoundException("La plantilla no tiene archivo fuente asociado");
+    return this.filesService.getDownloadInfoById(template.sourceFileId, user);
+  }
   async update(id: string, dto: UpdateAssessmentTemplateDto, user: JwtPayload) {
     const template = await this.getTemplateForManage(id, user);
     if (template.status === "PUBLISHED") {

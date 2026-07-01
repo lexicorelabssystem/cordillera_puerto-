@@ -13,10 +13,11 @@ import {
   Put,
   Query,
   Req,
+  Res,
   UseGuards,
 } from "@nestjs/common";
 import { ApiBearerAuth, ApiConsumes, ApiOperation, ApiTags } from "@nestjs/swagger";
-import type { FastifyRequest } from "fastify";
+import type { FastifyReply, FastifyRequest } from "fastify";
 import { JwtAuthGuard } from "../../auth/jwt-auth.guard.js";
 import { RolesGuard } from "../../../common/guards/roles.guard.js";
 import { Roles } from "../../../common/decorators/roles.decorator.js";
@@ -91,6 +92,20 @@ export class AssessmentTemplatesController {
     }, user);
   }
 
+  @Get(":id/source/download")
+  @Roles("ADMIN", "SUPER_ADMIN", "DIRECTION", "UTP", "TEACHER")
+  @ApiOperation({ summary: "Descargar archivo fuente de la plantilla" })
+  async downloadSource(
+    @Param("id", ParseUUIDPipe) id: string,
+    @CurrentUser() user: JwtPayload,
+    @Res() reply: FastifyReply,
+  ) {
+    const info = await this.service.downloadSource(id, user);
+    reply.header("Content-Type", info.mimeType);
+    reply.header("Content-Length", String(info.size));
+    reply.header("Content-Disposition", `attachment; filename="${info.originalName}"`);
+    reply.send(info.stream);
+  }
   @Get(":id")
   @Roles("ADMIN", "SUPER_ADMIN", "DIRECTION", "UTP", "TEACHER")
   @ApiOperation({ summary: "Ver detalle de plantilla con preguntas y alternativas" })

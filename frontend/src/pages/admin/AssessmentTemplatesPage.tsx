@@ -207,6 +207,17 @@ export function AssessmentTemplatesPage() {
     onError: (error) => toast(error instanceof Error ? error.message : "No se pudo publicar.", "error"),
   });
 
+  const downloadSourceMutation = useMutation({
+    mutationFn: async (template: AssessmentTemplate) => {
+      const blob = await api.downloadAssessmentTemplateSource(template.id);
+      const extension = template.mimeType?.includes("pdf") ? "pdf" : template.mimeType?.includes("wordprocessingml") ? "docx" : "bin";
+      const safeTitle = template.title.replace(/[^a-z0-9\-_]+/gi, "_").replace(/^_+|_+$/g, "") || "plantilla";
+      const fileName = template.fileName || `${safeTitle}.${extension}`;
+      downloadBlob(blob, fileName);
+    },
+    onSuccess: () => toast("Archivo fuente descargado.", "success"),
+    onError: (error) => toast(error instanceof Error ? error.message : "No se pudo descargar el archivo fuente.", "error"),
+  });
   const deleteTemplateMutation = useMutation({
     mutationFn: (id: string) => api.deleteAssessmentTemplate(id),
     onSuccess: (_, id) => {
@@ -380,7 +391,7 @@ export function AssessmentTemplatesPage() {
                   <td><span className={`badge ${template.status === "PUBLISHED" ? "badge--active" : template.status === "DRAFT" ? "badge--warning" : "badge--inactive"}`}>{template.status}</span></td>
                   <td>{template.questionsCount ?? 0}</td>
                   <td>{template.totalPoints}</td>
-                  <td style={{ display: "flex", gap: 6 }}><button className="btn-small" onClick={() => setSelectedId(template.id)}>Revisar</button><button className="btn-small btn-danger" disabled={deleteTemplateMutation.isPending} onClick={() => { if (window.confirm(`¿Eliminar plantilla "${template.title}" definitivamente?`)) deleteTemplateMutation.mutate(template.id); }}>Eliminar</button></td>
+                  <td style={{ display: "flex", gap: 6, flexWrap: "wrap" }}><button className="btn-small" onClick={() => setSelectedId(template.id)}>Revisar</button><button className="btn-small btn-secondary" disabled={!template.fileName || downloadSourceMutation.isPending} onClick={() => downloadSourceMutation.mutate(template)}>Descargar fuente</button><button className="btn-small btn-danger" disabled={deleteTemplateMutation.isPending} onClick={() => { if (window.confirm(`¿Eliminar plantilla "${template.title}" definitivamente?`)) deleteTemplateMutation.mutate(template.id); }}>Eliminar</button></td>
                 </tr>
               ))}
             </tbody>
@@ -396,6 +407,9 @@ export function AssessmentTemplatesPage() {
               <p>{questions.length} pregunta(s). Marca pauta y puntajes antes de publicar.</p>
             </div>
             <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
+              <button className="btn-secondary" disabled={!selectedTemplate?.fileName || !selectedTemplate || downloadSourceMutation.isPending} onClick={() => selectedTemplate && downloadSourceMutation.mutate(selectedTemplate)}>
+                {downloadSourceMutation.isPending ? "Descargando..." : "Descargar fuente"}
+              </button>
               <button className="btn-secondary" disabled={addQuestionMutation.isPending || selectedTemplate?.status === "PUBLISHED"} onClick={() => addQuestionMutation.mutate()}>
                 Agregar pregunta
               </button>
@@ -476,6 +490,16 @@ export function AssessmentTemplatesPage() {
   );
 }
 
+function downloadBlob(blob: Blob, fileName: string) {
+  const url = URL.createObjectURL(blob);
+  const link = document.createElement("a");
+  link.href = url;
+  link.download = fileName;
+  document.body.appendChild(link);
+  link.click();
+  link.remove();
+  URL.revokeObjectURL(url);
+}
 function needsOptions(type: string) {
   return type === "MULTIPLE_CHOICE" || type === "TRUE_FALSE";
 }
