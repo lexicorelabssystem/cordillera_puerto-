@@ -94,7 +94,7 @@ export class AssessmentTemplatesService {
     try {
       const extension = this.getOriginalExtension(params.fileName, params.mimeType);
       const storageName = `assessment-template-${created.id}${extension}`;
-      const objectKey = `assessment-templates/${created.id}/original${extension}`;
+      const objectKey = this.getSourceObjectKey(created.id, params.fileName, extension);
       const file = await this.filesService.uploadFileAtKey(
         params.buffer,
         params.fileName,
@@ -316,7 +316,10 @@ export class AssessmentTemplatesService {
   }
 
   async delete(id: string, user: JwtPayload) {
-    await this.getTemplateForManage(id, user);
+    const template = await this.getTemplateForManage(id, user);
+    if (template.sourceFileId) {
+      await this.filesService.deleteFile(template.sourceFileId, user, { failOnStorageError: true });
+    }
     await this.prisma.assessmentTemplate.delete({ where: { id } });
     return { ok: true };
   }
@@ -424,6 +427,21 @@ export class AssessmentTemplatesService {
     if (ext === ".pdf" || mimeType.includes("pdf")) return ".pdf";
     if (ext === ".docx" || mimeType.includes("wordprocessingml")) return ".docx";
     return ext || ".bin";
+  }
+
+  private getSourceObjectKey(templateId: string, fileName: string, extension: string) {
+    const originalBase = path.basename(fileName, path.extname(fileName));
+    const safeBase = this.safeObjectKeySegment(originalBase || "documento");
+    return `assessment-templates/${safeBase}-${templateId}/original${extension}`;
+  }
+
+  private safeObjectKeySegment(value: string) {
+    return value
+      .normalize("NFD")
+      .replace(/[\u0300-\u036f]/g, "")
+      .replace(/[^a-zA-Z0-9._-]+/g, "-")
+      .replace(/^-+|-+$/g, "")
+      .slice(0, 120) || "documento";
   }
   private async getTemplateForRead(id: string, user: JwtPayload) {
     const template = await this.prisma.assessmentTemplate.findUnique({

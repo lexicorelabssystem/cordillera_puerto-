@@ -1,4 +1,4 @@
-import { BadRequestException, ForbiddenException, Injectable, Logger, NotFoundException } from "@nestjs/common";
+import { BadRequestException, ForbiddenException, Injectable, InternalServerErrorException, Logger, NotFoundException } from "@nestjs/common";
 import { PrismaService } from "../../prisma/prisma.service.js";
 import { StorageService } from "../../storage/storage.service.js";
 import * as path from "node:path";
@@ -277,12 +277,24 @@ export class FilesService {
     });
   }
 
-  async deleteFile(fileId: string, user?: JwtPayload | string) {
+  async deleteFile(fileId: string, user?: JwtPayload | string, options: { failOnStorageError?: boolean } = {}) {
     const asset = await this.prisma.fileAsset.findUnique({ where: { id: fileId } });
     if (!asset) throw new NotFoundException("Archivo no encontrado");
     if (user) await this.assertFileScope(asset, user);
 
-    await this.storage.remove(asset.storagePath).catch(() => undefined);
+    try {
+      await this.storage.remove(asset.storagePath);
+      this.logger.log(
+        `Deleted file asset storageProvider=${asset.storageProvider} bucket=${asset.bucket ?? "local"} objectKey=${asset.objectKey ?? asset.fileName} size=${asset.size}`,
+      );
+    } catch (error) {
+      this.logger.warn(
+        `Failed to delete file asset storageProvider=${asset.storageProvider} bucket=${asset.bucket ?? "local"} objectKey=${asset.objectKey ?? asset.fileName}`,
+      );
+      if (options.failOnStorageError) {
+        throw new InternalServerErrorException("No se pudo eliminar el archivo del almacenamiento");
+      }
+    }
 
     return this.prisma.fileAsset.delete({ where: { id: fileId } });
   }
