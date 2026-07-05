@@ -13,6 +13,7 @@ RUN npm --workspace backend run prisma:generate
 COPY backend/tsconfig.json backend/tsconfig.build.json ./backend/
 COPY backend/src ./backend/src
 RUN npm --workspace backend run build
+RUN mkdir -p /app/.build-meta && echo ready > /app/.build-meta/backend-built
 
 # ─── PRODUCTION STAGE ──────────────────────────────
 FROM node:22-alpine
@@ -26,6 +27,7 @@ RUN apk add --no-cache wget openssl
 # Install only runtime dependencies instead of copying the full builder tree.
 COPY package.json package-lock.json ./
 COPY backend/package.json ./backend/package.json
+COPY --from=builder /app/.build-meta/backend-built ./.build-meta/backend-built
 RUN npm ci --omit=dev --workspace backend \
   && npm cache clean --force
 
