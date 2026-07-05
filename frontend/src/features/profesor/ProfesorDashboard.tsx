@@ -99,6 +99,24 @@ function getTeacherMaterialLabel(resource: LearningResourceRow) {
   }
   return MATERIAL_TYPE_LABELS[resource.type || ""] || resource.type || "RECURSO";
 }
+function canPreviewInBrowser(file: MaterialFileRow) {
+  return file.mimeType.includes("pdf") || file.mimeType.startsWith("image/") || file.mimeType.startsWith("text/");
+}
+
+function canPrintInBrowser(file: MaterialFileRow) {
+  return canPreviewInBrowser(file);
+}
+
+function downloadMaterialBlob(blob: Blob, fileName: string) {
+  const url = URL.createObjectURL(blob);
+  const link = document.createElement("a");
+  link.href = url;
+  link.download = fileName;
+  document.body.appendChild(link);
+  link.click();
+  link.remove();
+  URL.revokeObjectURL(url);
+}
 
 interface LearningObjectiveRow {
   id: string;
@@ -293,6 +311,8 @@ export function ProfesorDashboard({ user, onLogout }: Props) {
   const [materialFiles, setMaterialFiles] = useState<File[]>([]);
   const [materialUploadProgress, setMaterialUploadProgress] = useState<MaterialUploadProgress | null>(null);
   const [selectedMaterial, setSelectedMaterial] = useState<LearningResourceRow | null>(null);
+  const [materialPreviewUrls, setMaterialPreviewUrls] = useState<Record<string, string>>({});
+  const [materialFileActionId, setMaterialFileActionId] = useState<string | null>(null);
   const [observation, setObservation] = useState("");
   const [sessionMenuOpen, setSessionMenuOpen] = useState(false);
   const [isEditingProfile, setIsEditingProfile] = useState(false);
@@ -325,6 +345,40 @@ export function ProfesorDashboard({ user, onLogout }: Props) {
     queryFn: () => api.getLearningResourceUsage(selectedMaterial?.id || "") as Promise<ResourceUsageRow[]>,
     enabled: Boolean(selectedMaterial?.id),
   });
+
+  useEffect(() => {
+    const files = materialFilesQuery.data || [];
+    const previewableFiles = files.filter(canPreviewInBrowser);
+    let cancelled = false;
+    const createdUrls: string[] = [];
+
+    setMaterialPreviewUrls((current) => {
+      Object.values(current).forEach((url) => URL.revokeObjectURL(url));
+      return {};
+    });
+
+    if (!previewableFiles.length) return undefined;
+
+    Promise.all(
+      previewableFiles.map(async (file) => {
+        const blob = await api.downloadFileBlob(file.fileName, "view");
+        const url = URL.createObjectURL(blob);
+        createdUrls.push(url);
+        return [file.id, url] as const;
+      }),
+    )
+      .then((entries) => {
+        if (!cancelled) setMaterialPreviewUrls(Object.fromEntries(entries));
+      })
+      .catch(() => {
+        if (!cancelled) toast("No se pudo preparar la vista previa del archivo.", "error");
+      });
+
+    return () => {
+      cancelled = true;
+      createdUrls.forEach((url) => URL.revokeObjectURL(url));
+    };
+  }, [materialFilesQuery.data]);
 
   useEffect(() => {
     setDisplayName(user.name);
@@ -630,27 +684,55 @@ export function ProfesorDashboard({ user, onLogout }: Props) {
     });
   }
 
-  function abrirMaterial(url: string) {
-    registrarUsoMaterial("VIEW", "Visualización del ensayo o material.");
-    window.open(url, "_blank", "noopener,noreferrer");
+  async function abrirMaterial(file: MaterialFileRow) {
+    registrarUsoMaterial("VIEW", "Visualizacion del ensayo o material.");
+    setMaterialFileActionId(file.id);
+    try {
+      const blob = await api.downloadFileBlob(file.fileName, "view");
+      const url = URL.createObjectURL(blob);
+      window.open(url, "_blank", "noopener,noreferrer");
+      window.setTimeout(() => URL.revokeObjectURL(url), 60_000);
+    } catch (error) {
+      toast(error instanceof Error ? error.message : "No se pudo abrir el archivo.", "error");
+    } finally {
+      setMaterialFileActionId(null);
+    }
   }
 
-  function descargarMaterial(url: string) {
+  async function descargarMaterial(file: MaterialFileRow) {
     registrarUsoMaterial("DOWNLOAD", "Descarga del ensayo o material.");
-    window.location.href = url;
+    setMaterialFileActionId(file.id);
+    try {
+      const blob = await api.downloadFileBlob(file.fileName, "download");
+      downloadMaterialBlob(blob, file.originalName || file.fileName);
+    } catch (error) {
+      toast(error instanceof Error ? error.message : "No se pudo descargar el archivo.", "error");
+    } finally {
+      setMaterialFileActionId(null);
+    }
   }
 
-  function imprimirMaterial(url: string) {
-    registrarUsoMaterial("PRINT", "Impresión del ensayo o material.");
-    const printWindow = window.open(url, "_blank", "noopener,noreferrer");
-    if (printWindow) {
-      printWindow.addEventListener("load", () => {
-        try {
-          printWindow.print();
-        } catch {
-          // Algunos navegadores bloquean print() hasta que el PDF termina de cargar.
-        }
-      });
+  async function imprimirMaterial(file: MaterialFileRow) {
+    registrarUsoMaterial("PRINT", "Impresion del ensayo o material.");
+    setMaterialFileActionId(file.id);
+    try {
+      const blob = await api.downloadFileBlob(file.fileName, "view");
+      const url = URL.createObjectURL(blob);
+      const printWindow = window.open(url, "_blank", "noopener,noreferrer");
+      if (printWindow) {
+        printWindow.addEventListener("load", () => {
+          try {
+            printWindow.print();
+          } catch {
+            // Algunos navegadores bloquean print() hasta que el PDF termina de cargar.
+          }
+        });
+      }
+      window.setTimeout(() => URL.revokeObjectURL(url), 60_000);
+    } catch (error) {
+      toast(error instanceof Error ? error.message : "No se pudo imprimir el archivo.", "error");
+    } finally {
+      setMaterialFileActionId(null);
     }
   }
 
@@ -1525,10 +1607,10 @@ export function ProfesorDashboard({ user, onLogout }: Props) {
           <p>{selectedMaterial?.description || "Recurso asociado al curso activo."}</p>
           {materialFilesQuery.isLoading ? <LoadingSpinner size="sm" /> : null}
           {(materialFilesQuery.data || []).map((file) => {
-            const viewUrl = `/api/v1/files/view/${file.fileName}`;
-            const downloadUrl = `/api/v1/files/download/${file.fileName}`;
-            const canPrint = file.mimeType.includes("pdf") || file.mimeType.startsWith("image/") || file.mimeType.startsWith("text/");
-            const canEmbed = file.mimeType.includes("pdf") || file.mimeType.startsWith("image/") || file.mimeType.startsWith("text/");
+            const previewUrl = materialPreviewUrls[file.id];
+            const canPrint = canPrintInBrowser(file);
+            const canEmbed = canPreviewInBrowser(file);
+            const isBusy = materialFileActionId === file.id;
             return (
               <article key={file.id} className="teacher-material-file">
                 <div>
@@ -1536,13 +1618,13 @@ export function ProfesorDashboard({ user, onLogout }: Props) {
                   <span>{file.mimeType} · {(file.size / 1024).toFixed(1)} KB</span>
                 </div>
                 <div className="teacher-material-file__actions">
-                  <button type="button" className="btn-small" onClick={() => abrirMaterial(viewUrl)}>Abrir</button>
-                  <button type="button" className="btn-small" onClick={() => descargarMaterial(downloadUrl)}>Descargar</button>
-                  <button type="button" className="btn-small" disabled={!canPrint} onClick={() => imprimirMaterial(viewUrl)}>Imprimir</button>
+                  <button type="button" className="btn-small" disabled={isBusy} onClick={() => abrirMaterial(file)}>{isBusy ? "Abriendo..." : "Abrir"}</button>
+                  <button type="button" className="btn-small" disabled={isBusy} onClick={() => descargarMaterial(file)}>Descargar</button>
+                  <button type="button" className="btn-small" disabled={!canPrint || isBusy} onClick={() => imprimirMaterial(file)}>Imprimir</button>
                   <button
                     type="button"
                     className="btn-small btn-danger"
-                    disabled={deleteMaterialFile.isPending}
+                    disabled={deleteMaterialFile.isPending || isBusy}
                     onClick={() => {
                       const ok = window.confirm(`¿Eliminar el archivo "${file.originalName}"?`);
                       if (ok) deleteMaterialFile.mutate(file.id);
@@ -1552,10 +1634,17 @@ export function ProfesorDashboard({ user, onLogout }: Props) {
                   </button>
                 </div>
                 {canEmbed ? (
-                  file.mimeType.startsWith("image/") ? (
-                    <img src={viewUrl} alt={file.originalName} className="teacher-material-file__image" />
+                  previewUrl ? (
+                    file.mimeType.startsWith("image/") ? (
+                      <img src={previewUrl} alt={file.originalName} className="teacher-material-file__image" />
+                    ) : (
+                      <iframe src={previewUrl} title={file.originalName} className="teacher-material-file__frame" />
+                    )
                   ) : (
-                    <iframe src={viewUrl} title={file.originalName} className="teacher-material-file__frame" />
+                    <div className="teacher-material-file__placeholder">
+                      <LoadingSpinner size="sm" />
+                      <span>Preparando vista previa...</span>
+                    </div>
                   )
                 ) : (
                   <div className="teacher-material-file__placeholder">

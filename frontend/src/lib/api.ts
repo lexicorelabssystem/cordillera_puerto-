@@ -1003,6 +1003,8 @@ export const api = {
     request<{ id: string; fileName: string; originalName: string; mimeType: string; size: number; url: string | null; createdAt: string }[]>(
       `/files/entity/${entityType}/${entityId}`,
     ),
+  downloadFileBlob: (fileName: string, mode: "view" | "download" = "download") =>
+    requestBlob(`/files/${mode}/${encodeURIComponent(fileName)}`),
   deleteFile: (fileId: string) =>
     request<void>(`/files/${fileId}`, { method: "DELETE" }),
 
