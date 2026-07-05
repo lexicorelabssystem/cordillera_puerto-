@@ -10,6 +10,8 @@ import { Modal } from "../../components/common/Modal";
 import { LoadingSpinner } from "../../components/common/LoadingSpinner";
 import { AssessmentDownloadModal } from "../../components/common/AssessmentDownloadModal";
 import { api } from "../../lib/api";
+import * as pdfjsLib from "pdfjs-dist";
+import pdfWorkerUrl from "pdfjs-dist/build/pdf.worker.min.mjs?url";
 import { exportAssessmentToPdf, exportGradebookToPdf } from "../../lib/pdf";
 import type { AssessmentPdfOptions, AssessmentWithKey, GeneratedAssessmentPdf } from "../../lib/pdf";
 import type { AuthUser, CourseStudentRow } from "../../types/api";
@@ -118,6 +120,76 @@ function downloadMaterialBlob(blob: Blob, fileName: string) {
   URL.revokeObjectURL(url);
 }
 
+function MaterialPdfPreview({ url, fileName }: { url: string; fileName: string }) {
+  const containerRef = useRef<HTMLDivElement | null>(null);
+  const [status, setStatus] = useState<"loading" | "ready" | "error">("loading");
+
+  useEffect(() => {
+    let cancelled = false;
+    let pdfDocument: { destroy: () => Promise<void> } | null = null;
+    const container = containerRef.current;
+    if (!container) return undefined;
+    const target = container;
+
+    target.replaceChildren();
+    setStatus("loading");
+
+    async function renderPdf() {
+      try {
+        const loadingTask = pdfjsLib.getDocument({ url });
+        const pdf = await loadingTask.promise;
+        pdfDocument = pdf;
+        if (cancelled) return;
+
+        for (let pageNumber = 1; pageNumber <= pdf.numPages; pageNumber++) {
+          const page = await pdf.getPage(pageNumber);
+          if (cancelled) return;
+          const viewport = page.getViewport({ scale: 1.2 });
+          const canvas = document.createElement("canvas");
+          const context = canvas.getContext("2d");
+          if (!context) continue;
+
+          canvas.width = viewport.width;
+          canvas.height = viewport.height;
+          canvas.setAttribute("aria-label", `${fileName} pagina ${pageNumber}`);
+          target.appendChild(canvas);
+          await page.render({ canvas, canvasContext: context, viewport }).promise;
+          page.cleanup();
+        }
+
+        if (!cancelled) setStatus("ready");
+      } catch {
+        if (!cancelled) setStatus("error");
+      }
+    }
+
+    void renderPdf();
+
+    return () => {
+      cancelled = true;
+      target.replaceChildren();
+      void pdfDocument?.destroy();
+    };
+  }, [fileName, url]);
+
+  return (
+    <div className="teacher-material-pdf-preview">
+      {status === "loading" ? (
+        <div className="teacher-material-file__placeholder">
+          <LoadingSpinner size="sm" />
+          <span>Preparando vista previa...</span>
+        </div>
+      ) : null}
+      {status === "error" ? (
+        <div className="teacher-material-file__placeholder">
+          <strong>No se pudo mostrar el PDF en pantalla</strong>
+          <span>Usa Abrir o Descargar para verlo fuera del panel.</span>
+        </div>
+      ) : null}
+      <div ref={containerRef} className="teacher-material-pdf-preview__pages" hidden={status !== "ready"} />
+    </div>
+  );
+}
 interface LearningObjectiveRow {
   id: string;
   code: string;
@@ -136,6 +208,8 @@ interface TeacherAssignmentView {
 }
 
 type CeldaLibro = { estudianteId: string; evaluacionId: string } | null;
+
+pdfjsLib.GlobalWorkerOptions.workerSrc = pdfWorkerUrl;
 
 type TeacherGradebookStudent = {
   studentId: string;
@@ -1638,7 +1712,11 @@ export function ProfesorDashboard({ user, onLogout }: Props) {
                     file.mimeType.startsWith("image/") ? (
                       <img src={previewUrl} alt={file.originalName} className="teacher-material-file__image" />
                     ) : (
-                      <iframe src={previewUrl} title={file.originalName} className="teacher-material-file__frame" />
+                      file.mimeType.includes("pdf") ? (
+                        <MaterialPdfPreview url={previewUrl} fileName={file.originalName} />
+                      ) : (
+                        <iframe src={previewUrl} title={file.originalName} className="teacher-material-file__frame" />
+                      )
                     )
                   ) : (
                     <div className="teacher-material-file__placeholder">

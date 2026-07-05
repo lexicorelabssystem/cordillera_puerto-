@@ -6596,3 +6596,25 @@ input::placeholder, textarea::placeholder { color: var(--muted-light); }
 .simce-exam__answer-omitted { margin: 2px 0; color: #c43237; font-weight: 700; }
 @media (max-width: 600px) { .assessment-download-modal__versions { grid-template-columns: 1fr; } .simce-exam__answer-card-head, .simce-exam__answer-option { grid-template-columns: auto 1fr; } .simce-exam__answer-status, .simce-exam__answer-option-tag { grid-column: 2; } }
 @media print { .simce-exam__result { display: block !important; box-shadow: none; border: 0; padding: 0; } .simce-exam__answer-review { display: grid !important; } .simce-exam__topbar, .simce-exam__footer, .simce-exam__actions { display: none !important; } .simce-exam__answer-card { page-break-inside: avoid; } }
+.teacher-material-pdf-preview {
+  width: 100%;
+  max-height: min(68vh, 720px);
+  overflow: auto;
+  border: 1px solid #d8dee9;
+  border-radius: 8px;
+  background: #eef1f4;
+}
+
+.teacher-material-pdf-preview__pages {
+  display: grid;
+  gap: 14px;
+  justify-items: center;
+  padding: 16px;
+}
+
+.teacher-material-pdf-preview__pages canvas {
+  max-width: 100%;
+  height: auto;
+  background: #fff;
+  box-shadow: 0 8px 22px rgba(15, 23, 42, 0.16);
+}
