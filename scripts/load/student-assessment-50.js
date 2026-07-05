@@ -1,16 +1,21 @@
 import http from "k6/http";
 import { check, fail, sleep } from "k6";
 import { SharedArray } from "k6/data";
+import exec from "k6/execution";
 import { Trend, Rate } from "k6/metrics";
 
 const apiBase = (__ENV.API_BASE || "").replace(/\/+$/, "");
 const assessmentId = __ENV.ASSESSMENT_ID || "";
 const usersCsvPath = __ENV.USERS_CSV || "students.csv";
+const teachersCsvPath = __ENV.TEACHERS_CSV || "";
 const autosaveRounds = Number(__ENV.AUTOSAVE_ROUNDS || 3);
 const autosavePauseSec = Number(__ENV.AUTOSAVE_PAUSE_SEC || 15);
 const submitAtEnd = (__ENV.SUBMIT || "true").toLowerCase() !== "false";
 const thinkMinSec = Number(__ENV.THINK_MIN_SEC || 1);
 const thinkMaxSec = Number(__ENV.THINK_MAX_SEC || 4);
+const teacherVus = Number(__ENV.TEACHER_VUS || 0);
+const teacherDuration = __ENV.TEACHER_DURATION || __ENV.MAX_DURATION || "10m";
+const teacherPollSec = Number(__ENV.TEACHER_POLL_SEC || 10);
 
 export const slowRequests = new Rate("slow_requests_over_2s");
 export const verySlowRequests = new Rate("slow_requests_over_5s");
@@ -18,20 +23,29 @@ export const loginDuration = new Trend("login_duration");
 export const startAttemptDuration = new Trend("start_attempt_duration");
 export const saveAnswersDuration = new Trend("save_answers_duration");
 export const submitAttemptDuration = new Trend("submit_attempt_duration");
+export const teacherPollDuration = new Trend("teacher_poll_duration");
 
-const students = new SharedArray("student users", () => {
-  const raw = open(usersCsvPath).trim();
+function parseUsersCsv(raw, label) {
   const lines = raw.split(/\r?\n/).filter(Boolean);
   const header = lines.shift().split(",").map((h) => h.trim().toLowerCase());
   const emailIndex = header.indexOf("email");
   const passwordIndex = header.indexOf("password");
   if (emailIndex < 0 || passwordIndex < 0) {
-    throw new Error("USERS_CSV must have email,password columns");
+    throw new Error(`${label} must have email,password columns`);
   }
   return lines.map((line) => {
     const cols = line.split(",").map((v) => v.trim());
     return { email: cols[emailIndex], password: cols[passwordIndex] };
   });
+}
+
+const students = new SharedArray("student users", () => {
+  return parseUsersCsv(open(usersCsvPath).trim(), "USERS_CSV");
+});
+
+const teachers = new SharedArray("teacher users", () => {
+  if (!teachersCsvPath) return [];
+  return parseUsersCsv(open(teachersCsvPath).trim(), "TEACHERS_CSV");
 });
 
 export const options = {
@@ -42,6 +56,17 @@ export const options = {
       iterations: 1,
       maxDuration: __ENV.MAX_DURATION || "10m",
     },
+    ...(teacherVus > 0
+      ? {
+          teacher_watchers: {
+            executor: "constant-vus",
+            exec: "teacherWatcher",
+            vus: teacherVus,
+            duration: teacherDuration,
+            startTime: __ENV.TEACHER_START_TIME || "5s",
+          },
+        }
+      : {}),
   },
   thresholds: {
     http_req_failed: ["rate<0.05"],
@@ -52,6 +77,7 @@ export const options = {
     start_attempt_duration: ["p(95)<2500"],
     save_answers_duration: ["p(95)<2500"],
     submit_attempt_duration: ["p(95)<5000"],
+    ...(teacherVus > 0 ? { teacher_poll_duration: ["p(95)<2500"] } : {}),
   },
 };
 
@@ -73,6 +99,21 @@ function recordLatency(res, trend) {
 function randomSleep() {
   const span = Math.max(thinkMaxSec - thinkMinSec, 0);
   sleep(thinkMinSec + Math.random() * span);
+}
+
+function login(user) {
+  const loginRes = http.post(
+    `${apiBase}/auth/login`,
+    JSON.stringify({ email: user.email, password: user.password }),
+    { headers: { "Content-Type": "application/json" } },
+  );
+  recordLatency(loginRes, loginDuration);
+  check(loginRes, { "login 200": (r) => r.status === 200 });
+  if (loginRes.status !== 200) fail(`Login failed for ${user.email}: ${loginRes.status} ${loginRes.body}`);
+
+  const token = loginRes.json("token");
+  if (!token) fail(`Login response did not include token for ${user.email}`);
+  return token;
 }
 
 function pickAnswer(questionWrapper, vuSeed) {
@@ -98,18 +139,7 @@ export default function () {
   if (students.length === 0) fail("USERS_CSV has no users");
 
   const student = students[(__VU - 1) % students.length];
-
-  const loginRes = http.post(
-    `${apiBase}/auth/login`,
-    JSON.stringify({ email: student.email, password: student.password }),
-    { headers: { "Content-Type": "application/json" } },
-  );
-  recordLatency(loginRes, loginDuration);
-  check(loginRes, { "login 200": (r) => r.status === 200 });
-  if (loginRes.status !== 200) fail(`Login failed for ${student.email}: ${loginRes.status} ${loginRes.body}`);
-
-  const token = loginRes.json("token");
-  if (!token) fail(`Login response did not include token for ${student.email}`);
+  const token = login(student);
 
   randomSleep();
 
@@ -162,5 +192,28 @@ export default function () {
     if (submitRes.status !== 200) {
       fail(`Submit failed for ${student.email}: ${submitRes.status} ${submitRes.body}`);
     }
+  }
+}
+export function teacherWatcher() {
+  if (!apiBase) fail("API_BASE is required, e.g. https://preview.example.com/api/v1");
+  if (!assessmentId) fail("ASSESSMENT_ID is required");
+  if (teacherVus > 0 && teachers.length === 0) fail("TEACHERS_CSV is required when TEACHER_VUS > 0");
+
+  const teacher = teachers[(exec.vu.idInTest - 1) % teachers.length];
+  const token = login(teacher);
+
+  while (true) {
+    const responses = http.batch([
+      ["GET", `${apiBase}/assessments/${assessmentId}`, null, jsonHeaders(token)],
+      ["GET", `${apiBase}/attempts/assessment/${assessmentId}?limit=100`, null, jsonHeaders(token)],
+    ]);
+
+    for (const res of responses) {
+      recordLatency(res, teacherPollDuration);
+    }
+
+    check(responses[0], { "teacher assessment loaded": (r) => r.status === 200 });
+    check(responses[1], { "teacher attempts loaded": (r) => r.status === 200 });
+    sleep(teacherPollSec);
   }
 }

@@ -59,3 +59,29 @@ $env:AUTOSAVE_ROUNDS="6"
 $env:AUTOSAVE_PAUSE_SEC="5"
 k6 run scripts/load/student-assessment-50.js
 ```
+## Ejecucion con profesores observando
+
+Usa `TEACHER_VUS` para agregar profesores o UTP consultando la evaluacion y el listado de intentos mientras los alumnos responden.
+
+```powershell
+$env:API_BASE="https://TU-BACKEND/api/v1"
+$env:ASSESSMENT_ID="UUID_DE_LA_EVALUACION_ACTIVA"
+$env:USERS_CSV="scripts/load/students.preview.csv"
+$env:TEACHERS_CSV="scripts/load/teachers.preview.csv"
+$env:VUS="50"
+$env:TEACHER_VUS="3"
+$env:TEACHER_POLL_SEC="10"
+$env:AUTOSAVE_ROUNDS="3"
+$env:AUTOSAVE_PAUSE_SEC="15"
+$env:SUBMIT="true"
+k6 run scripts/load/student-assessment-50.js
+```
+
+Criterio sano para declarar la prueba apta:
+
+- `http_req_failed` bajo 1% idealmente, maximo 5%.
+- `http_req_duration p(95)` bajo 2s.
+- `save_answers_duration p(95)` bajo 2.5s.
+- `submit_attempt_duration p(95)` bajo 5s.
+- `teacher_poll_duration p(95)` bajo 2.5s si `TEACHER_VUS` esta activo.
+- Sin errores 500 ni timeouts en logs del backend.
