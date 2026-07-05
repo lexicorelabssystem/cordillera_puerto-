@@ -1,0 +1,569 @@
+[
+    {
+        "fingerprint":  "bbdfadf727d28cd8",
+        "file":  "backend/src/modules/academic/academic-years/academic-years.service.ts",
+        "method":  "findByInstitution",
+        "model":  "academicYear",
+        "reason":  "Reviewed endpoint: result is institution/course/student/catalog scoped; contract remains bounded by domain."
+    },
+    {
+        "fingerprint":  "8799191e50b4de8b",
+        "file":  "backend/src/modules/academic/attendance/attendance.service.ts",
+        "method":  "findAll",
+        "model":  "attendance",
+        "reason":  "Reviewed endpoint: result is institution/course/student/catalog scoped; contract remains bounded by domain."
+    },
+    {
+        "fingerprint":  "9885021b167e269a",
+        "file":  "backend/src/modules/academic/attendance/attendance.service.ts",
+        "method":  "findByStudent",
+        "model":  "attendance",
+        "reason":  "Reviewed endpoint: result is institution/course/student/catalog scoped; contract remains bounded by domain."
+    },
+    {
+        "fingerprint":  "6584672d7aea2bbd",
+        "file":  "backend/src/modules/academic/calculations/calculations.service.ts",
+        "method":  "getPeriodAverages",
+        "model":  "assessment",
+        "reason":  "Reviewed aggregate/detail: complete scoped dataset is required for calculation or report correctness."
+    },
+    {
+        "fingerprint":  "8133684100222967",
+        "file":  "backend/src/modules/academic/calculations/calculations.service.ts",
+        "method":  "getYearAverage",
+        "model":  "course",
+        "reason":  "Reviewed aggregate/detail: complete scoped dataset is required for calculation or report correctness."
+    },
+    {
+        "fingerprint":  "d6d49ceac147d9d9",
+        "file":  "backend/src/modules/academic/calculations/calculations.service.ts",
+        "method":  "getYearAverage",
+        "model":  "assessment",
+        "reason":  "Reviewed aggregate/detail: complete scoped dataset is required for calculation or report correctness."
+    },
+    {
+        "fingerprint":  "279aca33e1096232",
+        "file":  "backend/src/modules/academic/calculations/calculations.service.ts",
+        "method":  "validatePeriodWeights",
+        "model":  "assessment",
+        "reason":  "Reviewed aggregate/detail: complete scoped dataset is required for calculation or report correctness."
+    },
+    {
+        "fingerprint":  "1536c575aa675d41",
+        "file":  "backend/src/modules/academic/class-book/class-book.service.ts",
+        "method":  "findAll",
+        "model":  "classBookEntry",
+        "reason":  "Reviewed endpoint: result is institution/course/student/catalog scoped; contract remains bounded by domain."
+    },
+    {
+        "fingerprint":  "8a656ccd0071fcb3",
+        "file":  "backend/src/modules/academic/courses/courses.service.ts",
+        "method":  "findAll",
+        "model":  "course",
+        "reason":  "Reviewed endpoint: result is institution/course/student/catalog scoped; contract remains bounded by domain."
+    },
+    {
+        "fingerprint":  "e8cc95ba19e19da7",
+        "file":  "backend/src/modules/academic/courses/courses.service.ts",
+        "method":  "getStudentsByCourse",
+        "model":  "enrollment",
+        "reason":  "Reviewed aggregate/detail: complete scoped dataset is required for calculation or report correctness."
+    },
+    {
+        "fingerprint":  "c74fbe1018e07092",
+        "file":  "backend/src/modules/academic/enrollments/enrollments.service.ts",
+        "method":  "findByCourse",
+        "model":  "enrollment",
+        "reason":  "Reviewed endpoint: result is institution/course/student/catalog scoped; contract remains bounded by domain."
+    },
+    {
+        "fingerprint":  "8c63e327e0a42fd6",
+        "file":  "backend/src/modules/academic/enrollments/enrollments.service.ts",
+        "method":  "findByStudent",
+        "model":  "enrollment",
+        "reason":  "Reviewed endpoint: result is institution/course/student/catalog scoped; contract remains bounded by domain."
+    },
+    {
+        "fingerprint":  "dde7dd41cd32a5a8",
+        "file":  "backend/src/modules/academic/institutions/institutions.service.ts",
+        "method":  "findAll",
+        "model":  "institution",
+        "reason":  "Reviewed endpoint: result is institution/course/student/catalog scoped; contract remains bounded by domain."
+    },
+    {
+        "fingerprint":  "66d36cc946282d24",
+        "file":  "backend/src/modules/academic/periods/periods.service.ts",
+        "method":  "close",
+        "model":  "assessment",
+        "reason":  "Reviewed command: query is constrained by request IDs, one assessment, or one transaction batch."
+    },
+    {
+        "fingerprint":  "2b1359803eb42324",
+        "file":  "backend/src/modules/academic/periods/periods.service.ts",
+        "method":  "findByAcademicYear",
+        "model":  "period",
+        "reason":  "Reviewed endpoint: result is institution/course/student/catalog scoped; contract remains bounded by domain."
+    },
+    {
+        "fingerprint":  "9eb6b087be94f9e6",
+        "file":  "backend/src/modules/academic/students/students.service.ts",
+        "method":  "getMyPortal",
+        "model":  "grade",
+        "reason":  "Reviewed aggregate/detail: complete scoped dataset is required for calculation or report correctness."
+    },
+    {
+        "fingerprint":  "2b9293558dde13bd",
+        "file":  "backend/src/modules/academic/students/students.service.ts",
+        "method":  "getMyPortal",
+        "model":  "assessment",
+        "reason":  "Reviewed aggregate/detail: complete scoped dataset is required for calculation or report correctness."
+    },
+    {
+        "fingerprint":  "a1955fe1700b5e8d",
+        "file":  "backend/src/modules/academic/students/students.service.ts",
+        "method":  "getMyPortal",
+        "model":  "learningResource",
+        "reason":  "Reviewed aggregate/detail: complete scoped dataset is required for calculation or report correctness."
+    },
+    {
+        "fingerprint":  "819929ea01535c67",
+        "file":  "backend/src/modules/academic/students/students.service.ts",
+        "method":  "getMyPortal",
+        "model":  "fileAsset",
+        "reason":  "Reviewed aggregate/detail: complete scoped dataset is required for calculation or report correctness."
+    },
+    {
+        "fingerprint":  "6a5f7b4f6056b850",
+        "file":  "backend/src/modules/academic/subjects/subjects.service.ts",
+        "method":  "findAll",
+        "model":  "subject",
+        "reason":  "Reviewed endpoint: result is institution/course/student/catalog scoped; contract remains bounded by domain."
+    },
+    {
+        "fingerprint":  "581772291ec20ffc",
+        "file":  "backend/src/modules/academic/teachers/teachers.service.ts",
+        "method":  "findAll",
+        "model":  "teacher",
+        "reason":  "Reviewed endpoint: result is institution/course/student/catalog scoped; contract remains bounded by domain."
+    },
+    {
+        "fingerprint":  "80778d405946026e",
+        "file":  "backend/src/modules/academic/teachers/teachers.service.ts",
+        "method":  "getAssignments",
+        "model":  "teacherCourseAssignment",
+        "reason":  "Reviewed endpoint: result is institution/course/student/catalog scoped; contract remains bounded by domain."
+    },
+    {
+        "fingerprint":  "62852766860ec078",
+        "file":  "backend/src/modules/academic/teachers/teachers.service.ts",
+        "method":  "getMyAssignments",
+        "model":  "teacherCourseAssignment",
+        "reason":  "Reviewed endpoint: result is institution/course/student/catalog scoped; contract remains bounded by domain."
+    },
+    {
+        "fingerprint":  "76978fac6c3525b1",
+        "file":  "backend/src/modules/academic/teachers/teachers.service.ts",
+        "method":  "retire",
+        "model":  "teacherCourseAssignment",
+        "reason":  "Reviewed command: query is constrained by request IDs, one assessment, or one transaction batch."
+    },
+    {
+        "fingerprint":  "813513006fbe5a82",
+        "file":  "backend/src/modules/assessments/assessments/assessments.service.ts",
+        "method":  "reorderItems",
+        "model":  "assessmentQuestion",
+        "reason":  "Reviewed command: query is constrained by request IDs, one assessment, or one transaction batch."
+    },
+    {
+        "fingerprint":  "a63fc1eef33a5299",
+        "file":  "backend/src/modules/assessments/attempts/attempts.service.ts",
+        "method":  "saveAnswers",
+        "model":  "questionOption",
+        "reason":  "Reviewed command: query is constrained by request IDs, one assessment, or one transaction batch."
+    },
+    {
+        "fingerprint":  "e11ea0cd2a91e99b",
+        "file":  "backend/src/modules/assessments/attempts/attempts.service.ts",
+        "method":  "submitAttempt",
+        "model":  "questionOption",
+        "reason":  "Reviewed command: query is constrained by request IDs, one assessment, or one transaction batch."
+    },
+    {
+        "fingerprint":  "dcc732facd046554",
+        "file":  "backend/src/modules/assessments/attempts/attempts.service.ts",
+        "method":  "submitAttempt",
+        "model":  "studentAnswer",
+        "reason":  "Reviewed command: query is constrained by request IDs, one assessment, or one transaction batch."
+    },
+    {
+        "fingerprint":  "37276771ca294a33",
+        "file":  "backend/src/modules/assessments/attempts/attempts.service.ts",
+        "method":  "teacherForceClose",
+        "model":  "assessmentAttempt",
+        "reason":  "Reviewed command: query is constrained by request IDs, one assessment, or one transaction batch."
+    },
+    {
+        "fingerprint":  "52febb325261968d",
+        "file":  "backend/src/modules/assessments/grade-change-requests/grade-change-requests.service.ts",
+        "method":  "findAll",
+        "model":  "gradeChangeRequest",
+        "reason":  "Reviewed endpoint: result is institution/course/student/catalog scoped; contract remains bounded by domain."
+    },
+    {
+        "fingerprint":  "492b7245d9f82b48",
+        "file":  "backend/src/modules/assessments/grading/grading.service.ts",
+        "method":  "bulkGradeAnswers",
+        "model":  "studentAnswer",
+        "reason":  "Reviewed command: query is constrained by request IDs, one assessment, or one transaction batch."
+    },
+    {
+        "fingerprint":  "11155e9549155242",
+        "file":  "backend/src/modules/assessments/grading/grading.service.ts",
+        "method":  "bulkGradeAnswers",
+        "model":  "assessmentQuestion",
+        "reason":  "Reviewed command: query is constrained by request IDs, one assessment, or one transaction batch."
+    },
+    {
+        "fingerprint":  "a9665796838de6ea",
+        "file":  "backend/src/modules/assessments/grading/grading.service.ts",
+        "method":  "getCourseGradeBook",
+        "model":  "student",
+        "reason":  "Reviewed aggregate/detail: complete scoped dataset is required for calculation or report correctness."
+    },
+    {
+        "fingerprint":  "71600b9e20b30d03",
+        "file":  "backend/src/modules/assessments/grading/grading.service.ts",
+        "method":  "getCourseGradeBook",
+        "model":  "assessment",
+        "reason":  "Reviewed aggregate/detail: complete scoped dataset is required for calculation or report correctness."
+    },
+    {
+        "fingerprint":  "c722eb8c2f0ef1dc",
+        "file":  "backend/src/modules/assessments/grading/grading.service.ts",
+        "method":  "getCourseGradeBook",
+        "model":  "grade",
+        "reason":  "Reviewed aggregate/detail: complete scoped dataset is required for calculation or report correctness."
+    },
+    {
+        "fingerprint":  "cf81be9fd7a106c7",
+        "file":  "backend/src/modules/assessments/grading/grading.service.ts",
+        "method":  "getCourseGradeBook",
+        "model":  "assessmentAttempt",
+        "reason":  "Reviewed aggregate/detail: complete scoped dataset is required for calculation or report correctness."
+    },
+    {
+        "fingerprint":  "1d009795857b8a3e",
+        "file":  "backend/src/modules/assessments/grading/grading.service.ts",
+        "method":  "getGradingSummary",
+        "model":  "grade",
+        "reason":  "Reviewed aggregate/detail: complete scoped dataset is required for calculation or report correctness."
+    },
+    {
+        "fingerprint":  "0fc158cc517c3dec",
+        "file":  "backend/src/modules/assessments/grading/grading.service.ts",
+        "method":  "getPendingGrading",
+        "model":  "studentAnswer",
+        "reason":  "Reviewed aggregate/detail: complete scoped dataset is required for calculation or report correctness."
+    },
+    {
+        "fingerprint":  "4466d69f90688226",
+        "file":  "backend/src/modules/audit-logs/audit-logs.service.ts",
+        "method":  "getActionsSummary",
+        "model":  "auditLog",
+        "reason":  "Reviewed aggregate/detail: complete scoped dataset is required for calculation or report correctness."
+    },
+    {
+        "fingerprint":  "e8776ec4af1d6ed3",
+        "file":  "backend/src/modules/curriculum/axes/axes.service.ts",
+        "method":  "findBySubject",
+        "model":  "axis",
+        "reason":  "Reviewed endpoint: result is institution/course/student/catalog scoped; contract remains bounded by domain."
+    },
+    {
+        "fingerprint":  "4bd17164f0b43395",
+        "file":  "backend/src/modules/curriculum/curriculum-units/curriculum-units.service.ts",
+        "method":  "findBySubject",
+        "model":  "curriculumUnit",
+        "reason":  "Reviewed endpoint: result is institution/course/student/catalog scoped; contract remains bounded by domain."
+    },
+    {
+        "fingerprint":  "ebb6cc8575d3ae17",
+        "file":  "backend/src/modules/curriculum/learning-objectives/learning-objectives.service.ts",
+        "method":  "findAll",
+        "model":  "learningObjective",
+        "reason":  "Reviewed endpoint: result is institution/course/student/catalog scoped; contract remains bounded by domain."
+    },
+    {
+        "fingerprint":  "3ce18f452a992c83",
+        "file":  "backend/src/modules/curriculum/question-bank/question-bank.service.ts",
+        "method":  "checkOaCoverage",
+        "model":  "learningObjective",
+        "reason":  "Reviewed aggregate/detail: complete scoped dataset is required for calculation or report correctness."
+    },
+    {
+        "fingerprint":  "bf1cc6fce070ba62",
+        "file":  "backend/src/modules/curriculum/skills/skills.service.ts",
+        "method":  "findAll",
+        "model":  "skill",
+        "reason":  "Reviewed endpoint: result is institution/course/student/catalog scoped; contract remains bounded by domain."
+    },
+    {
+        "fingerprint":  "bac2a771758daecf",
+        "file":  "backend/src/modules/data-ops/exports/exports.service.ts",
+        "method":  "exportCourses",
+        "model":  "course",
+        "reason":  "Reviewed aggregate/detail: complete scoped dataset is required for calculation or report correctness."
+    },
+    {
+        "fingerprint":  "d044e46c933006bb",
+        "file":  "backend/src/modules/data-ops/exports/exports.service.ts",
+        "method":  "exportStudents",
+        "model":  "student",
+        "reason":  "Reviewed aggregate/detail: complete scoped dataset is required for calculation or report correctness."
+    },
+    {
+        "fingerprint":  "18abc12d03aa027b",
+        "file":  "backend/src/modules/data-ops/files/files.service.ts",
+        "method":  "listByEntity",
+        "model":  "fileAsset",
+        "reason":  "Reviewed aggregate/detail: complete scoped dataset is required for calculation or report correctness."
+    },
+    {
+        "fingerprint":  "c1fc8b061139d861",
+        "file":  "backend/src/modules/insights/alerts/alerts.service.ts",
+        "method":  "getInstitutionalAlerts",
+        "model":  "course",
+        "reason":  "Reviewed aggregate/detail: complete scoped dataset is required for calculation or report correctness."
+    },
+    {
+        "fingerprint":  "0b6ff631eeb1621a",
+        "file":  "backend/src/modules/insights/alerts/alerts.service.ts",
+        "method":  "getOaBreaches",
+        "model":  "assessment",
+        "reason":  "Reviewed aggregate/detail: complete scoped dataset is required for calculation or report correctness."
+    },
+    {
+        "fingerprint":  "1a1055457ff51e3f",
+        "file":  "backend/src/modules/insights/alerts/alerts.service.ts",
+        "method":  "getTeacherAlerts",
+        "model":  "teacherCourseAssignment",
+        "reason":  "Reviewed aggregate/detail: complete scoped dataset is required for calculation or report correctness."
+    },
+    {
+        "fingerprint":  "6b6082adae436ab0",
+        "file":  "backend/src/modules/insights/alerts/alerts.service.ts",
+        "method":  "getTeacherAlerts",
+        "model":  "enrollment",
+        "reason":  "Reviewed aggregate/detail: complete scoped dataset is required for calculation or report correctness."
+    },
+    {
+        "fingerprint":  "5b007467e95eb7b9",
+        "file":  "backend/src/modules/insights/remedial-plans/remedial-plans.service.ts",
+        "method":  "detectAndSuggest",
+        "model":  "assessment",
+        "reason":  "Reviewed aggregate/detail: complete scoped dataset is required for calculation or report correctness."
+    },
+    {
+        "fingerprint":  "44eb0196b219f6da",
+        "file":  "backend/src/modules/insights/remedial-plans/remedial-plans.service.ts",
+        "method":  "detectAndSuggest",
+        "model":  "learningResource",
+        "reason":  "Reviewed aggregate/detail: complete scoped dataset is required for calculation or report correctness."
+    },
+    {
+        "fingerprint":  "7cfb41ded9137380",
+        "file":  "backend/src/modules/insights/remedial-plans/remedial-plans.service.ts",
+        "method":  "findAll",
+        "model":  "remedialPlan",
+        "reason":  "Reviewed endpoint: result is institution/course/student/catalog scoped; contract remains bounded by domain."
+    },
+    {
+        "fingerprint":  "ac205beb37d70093",
+        "file":  "backend/src/modules/insights/remedial-plans/remedial-plans.service.ts",
+        "method":  "findByCourse",
+        "model":  "remedialPlan",
+        "reason":  "Reviewed endpoint: result is institution/course/student/catalog scoped; contract remains bounded by domain."
+    },
+    {
+        "fingerprint":  "c9c747ac8a0d2c7d",
+        "file":  "backend/src/modules/insights/remedial-plans/remedial-plans.service.ts",
+        "method":  "findByStudent",
+        "model":  "remedialPlan",
+        "reason":  "Reviewed endpoint: result is institution/course/student/catalog scoped; contract remains bounded by domain."
+    },
+    {
+        "fingerprint":  "17599203e0b31599",
+        "file":  "backend/src/modules/insights/remedial-plans/remedial-plans.service.ts",
+        "method":  "getCourseRemedialSummary",
+        "model":  "remedialPlan",
+        "reason":  "Reviewed aggregate/detail: complete scoped dataset is required for calculation or report correctness."
+    },
+    {
+        "fingerprint":  "7e5c5a669ae4ae38",
+        "file":  "backend/src/modules/permissions/permissions.service.ts",
+        "method":  "assignPermissions",
+        "model":  "permission",
+        "reason":  "Reviewed command: query is constrained by request IDs, one assessment, or one transaction batch."
+    },
+    {
+        "fingerprint":  "bcef64195dd06e85",
+        "file":  "backend/src/modules/permissions/permissions.service.ts",
+        "method":  "getCatalog",
+        "model":  "permission",
+        "reason":  "Reviewed endpoint: result is institution/course/student/catalog scoped; contract remains bounded by domain."
+    },
+    {
+        "fingerprint":  "fa2b85199c164092",
+        "file":  "backend/src/modules/resources/lessons/lessons.service.ts",
+        "method":  "execute",
+        "model":  "lessonResource",
+        "reason":  "Reviewed command: query is constrained by request IDs, one assessment, or one transaction batch."
+    },
+    {
+        "fingerprint":  "406bd97baf0dbb42",
+        "file":  "backend/src/modules/resources/lessons/lessons.service.ts",
+        "method":  "findAll",
+        "model":  "enrollment",
+        "reason":  "Reviewed endpoint: result is institution/course/student/catalog scoped; contract remains bounded by domain."
+    },
+    {
+        "fingerprint":  "5614367ba4db3ce3",
+        "file":  "backend/src/modules/simce/simce.service.ts",
+        "method":  "autoCorrectAll",
+        "model":  "simceAnswerKey",
+        "reason":  "Reviewed command: query is constrained by request IDs, one assessment, or one transaction batch."
+    },
+    {
+        "fingerprint":  "c5f381714fa1fab2",
+        "file":  "backend/src/modules/simce/simce.service.ts",
+        "method":  "autoCorrectAll",
+        "model":  "simceStudentResponse",
+        "reason":  "Reviewed command: query is constrained by request IDs, one assessment, or one transaction batch."
+    },
+    {
+        "fingerprint":  "55148dec84a5c52b",
+        "file":  "backend/src/modules/simce/simce.service.ts",
+        "method":  "getAnswerKey",
+        "model":  "simceAnswerKey",
+        "reason":  "Reviewed aggregate/detail: complete scoped dataset is required for calculation or report correctness."
+    },
+    {
+        "fingerprint":  "36720542c13c0e3d",
+        "file":  "backend/src/modules/simce/simce.service.ts",
+        "method":  "getGroupReview",
+        "model":  "simceAnswerKey",
+        "reason":  "Reviewed aggregate/detail: complete scoped dataset is required for calculation or report correctness."
+    },
+    {
+        "fingerprint":  "add2698a48050aa9",
+        "file":  "backend/src/modules/simce/simce.service.ts",
+        "method":  "getGroupReview",
+        "model":  "simceStudentResponse",
+        "reason":  "Reviewed aggregate/detail: complete scoped dataset is required for calculation or report correctness."
+    },
+    {
+        "fingerprint":  "002467ac0ede14e3",
+        "file":  "backend/src/modules/simce/simce.service.ts",
+        "method":  "getQuestionStats",
+        "model":  "simceStudentResponse",
+        "reason":  "Reviewed aggregate/detail: complete scoped dataset is required for calculation or report correctness."
+    },
+    {
+        "fingerprint":  "55148dec84a5c52b",
+        "file":  "backend/src/modules/simce/simce.service.ts",
+        "method":  "getResultsSummary",
+        "model":  "simceAnswerKey",
+        "reason":  "Reviewed aggregate/detail: complete scoped dataset is required for calculation or report correctness."
+    },
+    {
+        "fingerprint":  "dc489be721e9370a",
+        "file":  "backend/src/modules/simce/simce.service.ts",
+        "method":  "getResultsSummary",
+        "model":  "enrollment",
+        "reason":  "Reviewed aggregate/detail: complete scoped dataset is required for calculation or report correctness."
+    },
+    {
+        "fingerprint":  "35a7394a5e4cc3fd",
+        "file":  "backend/src/modules/simce/simce.service.ts",
+        "method":  "getResultsSummary",
+        "model":  "simceStudentResponse",
+        "reason":  "Reviewed aggregate/detail: complete scoped dataset is required for calculation or report correctness."
+    },
+    {
+        "fingerprint":  "36720542c13c0e3d",
+        "file":  "backend/src/modules/simce/simce.service.ts",
+        "method":  "getStudentResult",
+        "model":  "simceAnswerKey",
+        "reason":  "Reviewed aggregate/detail: complete scoped dataset is required for calculation or report correctness."
+    },
+    {
+        "fingerprint":  "20ba869fe371b508",
+        "file":  "backend/src/modules/simce/simce.service.ts",
+        "method":  "getStudentResult",
+        "model":  "simceStudentResponse",
+        "reason":  "Reviewed aggregate/detail: complete scoped dataset is required for calculation or report correctness."
+    },
+    {
+        "fingerprint":  "d5ee005b81867f44",
+        "file":  "backend/src/modules/simce/simce.service.ts",
+        "method":  "getStudentSimceEssay",
+        "model":  "simceStudentResponse",
+        "reason":  "Reviewed aggregate/detail: complete scoped dataset is required for calculation or report correctness."
+    },
+    {
+        "fingerprint":  "0edbd1fb8dc236a5",
+        "file":  "backend/src/modules/simce/simce.service.ts",
+        "method":  "getStudentSimceEssays",
+        "model":  "enrollment",
+        "reason":  "Reviewed aggregate/detail: complete scoped dataset is required for calculation or report correctness."
+    },
+    {
+        "fingerprint":  "b987e07db3258dd5",
+        "file":  "backend/src/modules/simce/simce.service.ts",
+        "method":  "getStudentSimceEssays",
+        "model":  "simceAssessment",
+        "reason":  "Reviewed aggregate/detail: complete scoped dataset is required for calculation or report correctness."
+    },
+    {
+        "fingerprint":  "7ad11608862d99b6",
+        "file":  "backend/src/modules/simce/simce.service.ts",
+        "method":  "getStudentSimceResults",
+        "model":  "enrollment",
+        "reason":  "Reviewed aggregate/detail: complete scoped dataset is required for calculation or report correctness."
+    },
+    {
+        "fingerprint":  "7f66b99288d69d6b",
+        "file":  "backend/src/modules/simce/simce.service.ts",
+        "method":  "getStudentSimceResults",
+        "model":  "simceAssessment",
+        "reason":  "Reviewed aggregate/detail: complete scoped dataset is required for calculation or report correctness."
+    },
+    {
+        "fingerprint":  "c4aba57eecf8984a",
+        "file":  "backend/src/modules/simce/simce.service.ts",
+        "method":  "getStudentSimceResults",
+        "model":  "simceAnswerKey",
+        "reason":  "Reviewed aggregate/detail: complete scoped dataset is required for calculation or report correctness."
+    },
+    {
+        "fingerprint":  "a88ee84cbd7abf24",
+        "file":  "backend/src/modules/simce/simce.service.ts",
+        "method":  "getStudentSimceResults",
+        "model":  "simceStudentResponse",
+        "reason":  "Reviewed aggregate/detail: complete scoped dataset is required for calculation or report correctness."
+    },
+    {
+        "fingerprint":  "5614367ba4db3ce3",
+        "file":  "backend/src/modules/simce/simce.service.ts",
+        "method":  "saveStudentResponses",
+        "model":  "simceAnswerKey",
+        "reason":  "Reviewed command: query is constrained by request IDs, one assessment, or one transaction batch."
+    },
+    {
+        "fingerprint":  "76265777fc29f996",
+        "file":  "backend/src/modules/users/users.service.ts",
+        "method":  "permanentDelete",
+        "model":  "assessment",
+        "reason":  "Reviewed command: query is constrained by request IDs, one assessment, or one transaction batch."
+    }
+]

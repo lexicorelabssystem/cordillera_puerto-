@@ -1,0 +1,25 @@
+{
+  "annotations": { "list": [] },
+  "editable": true,
+  "panels": [
+    { "type": "stat", "title": "Alumnos conectados (5 min)", "targets": [{ "expr": "cordillera_active_assessment_students_connected{assessment_id=\"$assessment\"}", "legendFormat": "Conectados" }], "gridPos": { "h": 4, "w": 4, "x": 0, "y": 0 } },
+    { "type": "stat", "title": "Intentos en progreso", "targets": [{ "expr": "cordillera_active_assessment_attempts{assessment_id=\"$assessment\",status=\"IN_PROGRESS\"}", "legendFormat": "En progreso" }], "gridPos": { "h": 4, "w": 4, "x": 4, "y": 0 } },
+    { "type": "stat", "title": "Entregas finalizadas", "targets": [{ "expr": "cordillera_active_assessment_attempts{assessment_id=\"$assessment\",status=\"COMPLETED\"}", "legendFormat": "Entregadas" }], "gridPos": { "h": 4, "w": 4, "x": 8, "y": 0 } },
+    { "type": "stat", "title": "Respuestas guardadas", "targets": [{ "expr": "cordillera_active_assessment_answers_saved{assessment_id=\"$assessment\"}", "legendFormat": "Respuestas" }], "gridPos": { "h": 4, "w": 4, "x": 12, "y": 0 } },
+    { "type": "stat", "title": "Respuestas en últimos 5 min", "targets": [{ "expr": "cordillera_active_assessment_answers_saved_last_5m{assessment_id=\"$assessment\"}", "legendFormat": "Actividad" }], "gridPos": { "h": 4, "w": 4, "x": 16, "y": 0 } },
+    { "type": "gauge", "title": "Avance global", "targets": [{ "expr": "100 * cordillera_active_assessment_answers_saved{assessment_id=\"$assessment\"} / clamp_min(cordillera_active_assessment_questions{assessment_id=\"$assessment\"} * sum(cordillera_active_assessment_attempts{assessment_id=\"$assessment\",status!=\"CANCELLED\"}), 1)", "legendFormat": "Avance" }], "fieldConfig": { "defaults": { "unit": "percent", "min": 0, "max": 100, "thresholds": { "mode": "absolute", "steps": [{ "color": "red", "value": null }, { "color": "yellow", "value": 50 }, { "color": "green", "value": 80 }] } }, "overrides": [] }, "gridPos": { "h": 4, "w": 4, "x": 20, "y": 0 } },
+    { "type": "timeseries", "title": "Alumnos conectados", "targets": [{ "expr": "cordillera_active_assessment_students_connected{assessment_id=\"$assessment\"}", "legendFormat": "Conectados" }, { "expr": "cordillera_active_assessment_attempts{assessment_id=\"$assessment\",status=\"IN_PROGRESS\"}", "legendFormat": "En progreso" }], "gridPos": { "h": 8, "w": 12, "x": 0, "y": 4 } },
+    { "type": "timeseries", "title": "Respuestas guardadas", "targets": [{ "expr": "cordillera_active_assessment_answers_saved{assessment_id=\"$assessment\"}", "legendFormat": "Acumuladas" }, { "expr": "cordillera_active_assessment_answers_saved_last_5m{assessment_id=\"$assessment\"}", "legendFormat": "Últimos 5 min" }], "gridPos": { "h": 8, "w": 12, "x": 12, "y": 4 } },
+    { "type": "bargauge", "title": "Estado de intentos", "targets": [{ "expr": "cordillera_active_assessment_attempts{assessment_id=\"$assessment\"}", "legendFormat": "{{status}}" }], "options": { "orientation": "horizontal", "displayMode": "gradient", "showUnfilled": true }, "gridPos": { "h": 7, "w": 12, "x": 0, "y": 12 } },
+    { "type": "timeseries", "title": "Latencia de guardado y envío p95", "targets": [{ "expr": "histogram_quantile(0.95, sum by (le, route) (rate(cordillera_http_request_duration_seconds_bucket{route=~\".*attempts.*\"}[5m])))", "legendFormat": "{{route}}" }], "fieldConfig": { "defaults": { "unit": "s" }, "overrides": [] }, "gridPos": { "h": 7, "w": 12, "x": 12, "y": 12 } }
+  ],
+  "refresh": "15s",
+  "schemaVersion": 39,
+  "tags": ["cordillera", "prueba-activa", "evaluaciones"],
+  "templating": { "list": [{ "name": "assessment", "label": "Evaluación activa", "type": "query", "datasource": { "type": "prometheus", "uid": "prometheus" }, "query": { "query": "label_values(cordillera_active_assessment_info, assessment_id)", "refId": "PrometheusVariableQueryEditor-VariableQuery" }, "definition": "label_values(cordillera_active_assessment_info, assessment_id)", "refresh": 1, "sort": 1, "includeAll": false, "multi": false, "current": {} }] },
+  "time": { "from": "now-1h", "to": "now" },
+  "timezone": "browser",
+  "title": "Cordillera - Prueba Activa",
+  "uid": "cordillera-active-assessment",
+  "version": 1
+}

@@ -3,6 +3,7 @@ import { Test, TestingModule } from "@nestjs/testing";
 import { NotFoundException, BadRequestException, ForbiddenException } from "@nestjs/common";
 import { GradingService } from "./grading.service.js";
 import { PrismaService } from "../../prisma/prisma.service.js";
+import { NotificationsService } from "../../notifications/notifications.service.js";
 
 const MOCK_ANSWER_ID = "answer-001";
 const MOCK_TEACHER_USER_ID = "teacher-user-001";
@@ -14,6 +15,7 @@ const MOCK_GRADE_ID = "grade-001";
 
 const mockStudent = {
   id: MOCK_STUDENT_ID,
+  userId: "student-user-001",
   firstName: "Pedro",
   lastName: "García",
   rut: "12345678-9",
@@ -21,6 +23,7 @@ const mockStudent = {
 
 const mockStudent2 = {
   id: "student-002",
+  userId: "student-user-002",
   firstName: "Ana",
   lastName: "Martínez",
   rut: "98765432-1",
@@ -35,6 +38,9 @@ const mockTeacher = {
 const mockAssessment = {
   id: MOCK_ASSESSMENT_ID,
   courseId: MOCK_COURSE_ID,
+  subjectId: "subject-001",
+  teacherId: mockTeacher.id,
+  course: { institutionId: "institution-001" },
   title: "Prueba de Lenguaje",
   status: "IN_GRADING",
   maxScore: 100,
@@ -43,6 +49,7 @@ const mockAssessment = {
   assessmentType: "FORMATIVA",
   teacher: mockTeacher,
   questions: [],
+  attempts: [],
 };
 
 const mockQuestion = {
@@ -114,6 +121,36 @@ describe("GradingService", () => {
   let prismaStudent: Record<string, jest.Mock<(...args: any[]) => any>>;
   let prismaCourse: Record<string, jest.Mock<(...args: any[]) => any>>;
   let prismaEnrollment: Record<string, jest.Mock<(...args: any[]) => any>>;
+  let prismaUser: Record<string, jest.Mock<(...args: any[]) => any>>;
+
+  const mockScopeUser = {
+    id: "scope-user-001",
+    role: "SUPER_ADMIN" as const,
+    isActive: true,
+    deletedAt: null,
+    institutionId: null,
+    teacher: null,
+    student: null,
+  };
+
+  const mockScopedTeacherUser = {
+    id: MOCK_TEACHER_USER_ID,
+    role: "TEACHER" as const,
+    isActive: true,
+    deletedAt: null,
+    institutionId: "institution-001",
+    teacher: {
+      id: mockTeacher.id,
+      courseAssignments: [{ courseId: MOCK_COURSE_ID, subjectId: "subject-001" }],
+    },
+    student: null,
+  };
+
+  const mockWrongTeacherUser = {
+    ...mockScopedTeacherUser,
+    id: "wrong-teacher",
+    teacher: { id: "wrong-teacher-profile", courseAssignments: [] },
+  };
 
   beforeEach(async () => {
     prismaStudentAnswer = {
@@ -129,6 +166,7 @@ describe("GradingService", () => {
     };
     prismaAssessmentQuestion = {
       findUnique: jest.fn(),
+      findMany: jest.fn(),
     };
     prismaAssessmentAttempt = {
       findMany: jest.fn(),
@@ -141,6 +179,7 @@ describe("GradingService", () => {
       update: jest.fn(),
     };
     prismaStudent = {
+      findUnique: jest.fn(),
       findMany: jest.fn(),
     };
     prismaCourse = {
@@ -149,6 +188,24 @@ describe("GradingService", () => {
     prismaEnrollment = {
       findFirst: jest.fn(),
     };
+    prismaUser = {
+      findUnique: jest.fn((args?: { where?: { id?: string } }) => {
+        if (args?.where?.id === "wrong-teacher") return Promise.resolve(mockWrongTeacherUser);
+        if (args?.where?.id === MOCK_TEACHER_USER_ID) return Promise.resolve(mockScopedTeacherUser);
+        return Promise.resolve(mockScopeUser);
+      }),
+    };
+
+    prismaAssessment.findUnique.mockResolvedValue(mockAssessment);
+    prismaAssessmentQuestion.findMany.mockResolvedValue([]);
+    prismaStudentAnswer.findMany.mockResolvedValue([]);
+    prismaStudentAnswer.update.mockResolvedValue(mockGradedAnswer);
+    prismaAssessmentAttempt.findMany.mockResolvedValue([]);
+    prismaGrade.findUnique.mockResolvedValue(mockGrade);
+    prismaGrade.findMany.mockResolvedValue([]);
+    prismaGrade.upsert.mockResolvedValue(mockGrade);
+    prismaStudent.findUnique.mockResolvedValue(mockStudent);
+    prismaStudent.findMany.mockResolvedValue([]);
 
     const module: TestingModule = await Test.createTestingModule({
       providers: [
@@ -156,6 +213,7 @@ describe("GradingService", () => {
         {
           provide: PrismaService,
           useValue: {
+            $transaction: jest.fn((operations: Array<Promise<unknown>>) => Promise.all(operations)),
             studentAnswer: prismaStudentAnswer,
             assessment: prismaAssessment,
             assessmentQuestion: prismaAssessmentQuestion,
@@ -164,6 +222,15 @@ describe("GradingService", () => {
             student: prismaStudent,
             course: prismaCourse,
             enrollment: prismaEnrollment,
+            user: prismaUser,
+          },
+        },
+        {
+          provide: NotificationsService,
+          useValue: {
+            notifyGradeChangeRequest: jest.fn<() => any>().mockResolvedValue(undefined),
+            notifyAssessmentGraded: jest.fn<() => any>().mockResolvedValue(undefined),
+            createForRole: jest.fn<() => any>().mockResolvedValue(undefined),
           },
         },
       ],
@@ -184,7 +251,12 @@ describe("GradingService", () => {
         isGraded: true,
       });
 
-      const result = await service.gradeAnswer(MOCK_ANSWER_ID, MOCK_TEACHER_USER_ID, 10, "Muy bien!");
+      const result = await service.gradeAnswer(
+        MOCK_ANSWER_ID,
+        MOCK_TEACHER_USER_ID,
+        10,
+        "Muy bien!",
+      );
 
       expect(result.answerId).toBe(MOCK_ANSWER_ID);
       expect(result.score).toBe(10);
@@ -239,17 +311,17 @@ describe("GradingService", () => {
     it("debe lanzar NotFoundException si la respuesta no existe", async () => {
       prismaStudentAnswer.findUnique.mockResolvedValue(null);
 
-      await expect(
-        service.gradeAnswer("nonexistent", MOCK_TEACHER_USER_ID, 10),
-      ).rejects.toThrow(NotFoundException);
+      await expect(service.gradeAnswer("nonexistent", MOCK_TEACHER_USER_ID, 10)).rejects.toThrow(
+        NotFoundException,
+      );
     });
 
     it("debe lanzar ForbiddenException si el profesor no es dueño de la evaluación", async () => {
       prismaStudentAnswer.findUnique.mockResolvedValue(mockAnswer);
 
-      await expect(
-        service.gradeAnswer(MOCK_ANSWER_ID, "wrong-teacher", 10),
-      ).rejects.toThrow(ForbiddenException);
+      await expect(service.gradeAnswer(MOCK_ANSWER_ID, "wrong-teacher", 10)).rejects.toThrow(
+        ForbiddenException,
+      );
     });
 
     it("debe lanzar BadRequestException si la evaluación no está en IN_GRADING o CLOSED", async () => {
@@ -257,29 +329,36 @@ describe("GradingService", () => {
         ...mockAnswer,
         attempt: {
           ...mockAnswer.attempt,
-          assessment: { ...mockAnswer.attempt.assessment, status: "ACTIVE", teacher: { ...mockTeacher, userId: MOCK_TEACHER_USER_ID } },
+          assessment: {
+            ...mockAnswer.attempt.assessment,
+            status: "ACTIVE",
+            teacher: { ...mockTeacher, userId: MOCK_TEACHER_USER_ID },
+          },
         },
       });
 
-      await expect(
-        service.gradeAnswer(MOCK_ANSWER_ID, MOCK_TEACHER_USER_ID, 10),
-      ).rejects.toThrow(BadRequestException);
+      await expect(service.gradeAnswer(MOCK_ANSWER_ID, MOCK_TEACHER_USER_ID, 10)).rejects.toThrow(
+        BadRequestException,
+      );
     });
 
     it("debe lanzar BadRequestException si el score supera el máximo", async () => {
       prismaStudentAnswer.findUnique.mockResolvedValue(mockAnswer);
       prismaAssessmentQuestion.findUnique.mockResolvedValue({ points: 10 });
 
-      await expect(
-        service.gradeAnswer(MOCK_ANSWER_ID, MOCK_TEACHER_USER_ID, 15),
-      ).rejects.toThrow(BadRequestException);
+      await expect(service.gradeAnswer(MOCK_ANSWER_ID, MOCK_TEACHER_USER_ID, 15)).rejects.toThrow(
+        BadRequestException,
+      );
     });
   });
 
   describe("bulkGradeAnswers", () => {
-    it("debe procesar múltiples respuestas exitosamente", async () => {
-      prismaStudentAnswer.findUnique.mockResolvedValue(mockAnswer);
-      prismaAssessmentQuestion.findUnique.mockResolvedValue({ points: 10 });
+    it("debe procesar multiples respuestas exitosamente", async () => {
+      const secondAnswer = { ...mockAnswer, id: "answer-002" };
+      prismaStudentAnswer.findMany.mockResolvedValue([mockAnswer, secondAnswer]);
+      prismaAssessmentQuestion.findMany.mockResolvedValue([
+        { assessmentId: MOCK_ASSESSMENT_ID, questionId: MOCK_QUESTION_ID, points: 10 },
+      ]);
       prismaStudentAnswer.update.mockResolvedValue(mockGradedAnswer);
 
       const grades = [
@@ -295,10 +374,10 @@ describe("GradingService", () => {
     });
 
     it("debe reportar fallos parciales cuando algunas respuestas fallan", async () => {
-      prismaStudentAnswer.findUnique
-        .mockResolvedValueOnce(mockAnswer)
-        .mockResolvedValueOnce(null);
-      prismaAssessmentQuestion.findUnique.mockResolvedValue({ points: 10 });
+      prismaStudentAnswer.findMany.mockResolvedValue([mockAnswer]);
+      prismaAssessmentQuestion.findMany.mockResolvedValue([
+        { assessmentId: MOCK_ASSESSMENT_ID, questionId: MOCK_QUESTION_ID, points: 10 },
+      ]);
       prismaStudentAnswer.update.mockResolvedValue(mockGradedAnswer);
 
       const grades = [
@@ -340,17 +419,17 @@ describe("GradingService", () => {
     it("debe lanzar NotFoundException si la evaluación no existe", async () => {
       prismaAssessment.findUnique.mockResolvedValue(null);
 
-      await expect(
-        service.getPendingGrading("nonexistent", MOCK_TEACHER_USER_ID),
-      ).rejects.toThrow(NotFoundException);
+      await expect(service.getPendingGrading("nonexistent", MOCK_TEACHER_USER_ID)).rejects.toThrow(
+        NotFoundException,
+      );
     });
 
     it("debe lanzar ForbiddenException si el profesor no es dueño de la evaluación", async () => {
       prismaAssessment.findUnique.mockResolvedValue(mockAssessment);
 
-      await expect(
-        service.getPendingGrading(MOCK_ASSESSMENT_ID, "wrong-teacher"),
-      ).rejects.toThrow(ForbiddenException);
+      await expect(service.getPendingGrading(MOCK_ASSESSMENT_ID, "wrong-teacher")).rejects.toThrow(
+        ForbiddenException,
+      );
     });
   });
 
@@ -391,11 +470,20 @@ describe("GradingService", () => {
       });
       prismaStudent.findMany.mockResolvedValue([mockStudent]);
       prismaAssessment.findMany.mockResolvedValue([
-        { ...mockAssessment, questions: [{ question: { learningObjective: { code: "OA01", description: "Leer" }, learningObjectiveId: "oa-1", id: "q-1" } }] },
+        {
+          ...mockAssessment,
+          questions: [
+            {
+              question: {
+                learningObjective: { code: "OA01", description: "Leer" },
+                learningObjectiveId: "oa-1",
+                id: "q-1",
+              },
+            },
+          ],
+        },
       ]);
-      prismaGrade.findMany.mockResolvedValue([
-        { ...mockGrade, grade: 3.5 },
-      ]);
+      prismaGrade.findMany.mockResolvedValue([{ ...mockGrade, grade: 3.5 }]);
       prismaAssessmentAttempt.findMany.mockResolvedValue([]);
 
       const result = await service.getCourseGradeBook(MOCK_COURSE_ID);
@@ -443,9 +531,9 @@ describe("GradingService", () => {
     it("debe lanzar NotFoundException si el registro no existe", async () => {
       prismaGrade.findUnique.mockResolvedValue(null);
 
-      await expect(
-        service.updateGradeRecord("nonexistent", 5.0),
-      ).rejects.toThrow(NotFoundException);
+      await expect(service.updateGradeRecord("nonexistent", 5.0)).rejects.toThrow(
+        NotFoundException,
+      );
     });
 
     it("debe lanzar BadRequestException si la evaluación está activa", async () => {
@@ -454,21 +542,21 @@ describe("GradingService", () => {
         assessment: { status: "ACTIVE" },
       });
 
-      await expect(
-        service.updateGradeRecord(MOCK_GRADE_ID, 5.0),
-      ).rejects.toThrow(BadRequestException);
+      await expect(service.updateGradeRecord(MOCK_GRADE_ID, 5.0)).rejects.toThrow(
+        BadRequestException,
+      );
     });
 
     it("debe lanzar BadRequestException si la nota está fuera de rango 1.0-7.0", async () => {
       prismaGrade.findUnique.mockResolvedValue(mockGrade);
 
-      await expect(
-        service.updateGradeRecord(MOCK_GRADE_ID, 8.0),
-      ).rejects.toThrow(BadRequestException);
+      await expect(service.updateGradeRecord(MOCK_GRADE_ID, 8.0)).rejects.toThrow(
+        BadRequestException,
+      );
 
-      await expect(
-        service.updateGradeRecord(MOCK_GRADE_ID, 0.5),
-      ).rejects.toThrow(BadRequestException);
+      await expect(service.updateGradeRecord(MOCK_GRADE_ID, 0.5)).rejects.toThrow(
+        BadRequestException,
+      );
     });
 
     it("debe actualizar recordedBy si se provee userId", async () => {
@@ -491,6 +579,10 @@ describe("GradingService", () => {
         id: MOCK_ASSESSMENT_ID,
         status: "CLOSED",
         courseId: MOCK_COURSE_ID,
+        subjectId: "subject-001",
+        teacherId: mockTeacher.id,
+        teacher: mockTeacher,
+        course: { institutionId: "institution-001", name: "4to Basico A" },
       });
       prismaEnrollment.findFirst.mockResolvedValue(mockEnrollment);
       prismaGrade.upsert.mockResolvedValue({
@@ -500,7 +592,11 @@ describe("GradingService", () => {
       });
 
       const result = await service.directGradeRecord(
-        MOCK_ASSESSMENT_ID, MOCK_STUDENT_ID, 6.5, MOCK_TEACHER_USER_ID, "Nota directa",
+        MOCK_ASSESSMENT_ID,
+        MOCK_STUDENT_ID,
+        6.5,
+        MOCK_TEACHER_USER_ID,
+        "Nota directa",
       );
 
       expect(result.ok).toBe(true);
@@ -521,12 +617,16 @@ describe("GradingService", () => {
         id: MOCK_ASSESSMENT_ID,
         status: "CLOSED",
         courseId: MOCK_COURSE_ID,
+        subjectId: "subject-001",
+        teacherId: mockTeacher.id,
+        teacher: mockTeacher,
+        course: { institutionId: "institution-001", name: "4to Basico A" },
       });
       prismaEnrollment.findFirst.mockResolvedValue(null);
 
       await expect(
         service.directGradeRecord(MOCK_ASSESSMENT_ID, "student-999", 5.0, MOCK_TEACHER_USER_ID),
-      ).rejects.toThrow(BadRequestException);
+      ).rejects.toThrow(ForbiddenException);
     });
 
     it("debe lanzar BadRequestException si la nota está fuera de rango", async () => {
@@ -534,6 +634,10 @@ describe("GradingService", () => {
         id: MOCK_ASSESSMENT_ID,
         status: "CLOSED",
         courseId: MOCK_COURSE_ID,
+        subjectId: "subject-001",
+        teacherId: mockTeacher.id,
+        teacher: mockTeacher,
+        course: { institutionId: "institution-001", name: "4to Basico A" },
       });
       prismaEnrollment.findFirst.mockResolvedValue(mockEnrollment);
 
@@ -547,6 +651,10 @@ describe("GradingService", () => {
     it("debe recalcular puntajes y notas para todos los intentos", async () => {
       prismaAssessment.findUnique.mockResolvedValue({
         id: MOCK_ASSESSMENT_ID,
+        courseId: MOCK_COURSE_ID,
+        subjectId: "subject-001",
+        teacherId: mockTeacher.id,
+        course: { institutionId: "institution-001" },
         teacher: mockTeacher,
         questions: [{ question: { id: MOCK_QUESTION_ID }, points: 10 }],
         attempts: [
@@ -554,7 +662,7 @@ describe("GradingService", () => {
             id: "attempt-001",
             studentId: MOCK_STUDENT_ID,
             status: "COMPLETED",
-            answers: [{ score: 8 }],
+            answers: [{ score: 8, isGraded: true }],
           },
         ],
       });
@@ -570,6 +678,10 @@ describe("GradingService", () => {
     it("debe lanzar ForbiddenException si el profesor no es dueño", async () => {
       prismaAssessment.findUnique.mockResolvedValue({
         id: MOCK_ASSESSMENT_ID,
+        courseId: MOCK_COURSE_ID,
+        subjectId: "subject-001",
+        teacherId: mockTeacher.id,
+        course: { institutionId: "institution-001" },
         teacher: mockTeacher,
         questions: [],
         attempts: [],

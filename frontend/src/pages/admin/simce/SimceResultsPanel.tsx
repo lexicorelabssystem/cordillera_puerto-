@@ -1,26 +1,23 @@
 import { useMemo } from "react";
 import { useQuery } from "@tanstack/react-query";
-import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Cell } from "recharts";
 import { api } from "../../../lib/api";
 import { LoadingSpinner } from "../../../components/common/LoadingSpinner";
 import { EmptyState } from "../../../components/common/EmptyState";
-import { useToast } from "../../../components/common/Toast";
 import { exportSimceCourseResultsToPdf } from "../../../lib/simce-export";
-import type { SimceAssessment, SimceResultsSummary } from "./simce.types";
+import type { SimceAnswerKey, SimceAssessment, SimceResultsSummary } from "./simce.types";
 
 interface Props {
   assessment: SimceAssessment;
 }
 
 const LEVELS = [
-  { min: 80, label: "Avanzado", color: "var(--success)", bg: "#22c55e20" },
-  { min: 60, label: "Adecuado", color: "var(--info)", bg: "#3b82f620" },
-  { min: 40, label: "Básico", color: "var(--warning)", bg: "#f59e0b20" },
-  { min: 0, label: "Crítico", color: "var(--danger)", bg: "#ef444420" },
+  { min: 75, label: "Adecuado", color: "var(--success)", bg: "#22c55e20" },
+  { min: 50, label: "Elemental", color: "var(--warning)", bg: "#f59e0b20" },
+  { min: 0, label: "Inicial", color: "var(--danger)", bg: "#ef444420" },
 ];
 
 function levelFor(pct: number) {
-  return LEVELS.find((l) => pct >= l.min) ?? LEVELS[LEVELS.length - 1];
+  return LEVELS.find((level) => pct >= level.min) ?? LEVELS[LEVELS.length - 1];
 }
 
 function difficultyColor(pct: number): string {
@@ -33,46 +30,43 @@ export function SimceResultsPanel({ assessment }: Props) {
   const resultsQuery = useQuery({
     queryKey: ["simce-results", assessment.id],
     queryFn: () => api.getSimceResults(assessment.id) as Promise<SimceResultsSummary>,
+    refetchInterval: 8000,
+  });
+
+  const keyQuery = useQuery({
+    queryKey: ["simce-answer-key", assessment.id],
+    queryFn: () => api.getSimceAnswerKey(assessment.id) as Promise<SimceAnswerKey>,
   });
 
   const data = resultsQuery.data;
 
   const stats = useMemo(() => {
     if (!data?.results) return null;
-    const answered = data.results.filter((r) => r.answered);
+    const answered = data.results.filter((result) => result.answered);
     return {
-      max: answered.length ? Math.max(...answered.map((r) => r.percentage)) : 0,
-      min: answered.length ? Math.min(...answered.map((r) => r.percentage)) : 0,
+      max: answered.length ? Math.max(...answered.map((result) => result.percentage)) : 0,
+      min: answered.length ? Math.min(...answered.map((result) => result.percentage)) : 0,
       avg: data.avgPercentage,
-      advanced: answered.filter((r) => r.percentage >= 80).length,
-      adequate: answered.filter((r) => r.percentage >= 60 && r.percentage < 80).length,
-      basic: answered.filter((r) => r.percentage >= 40 && r.percentage < 60).length,
-      critical: answered.filter((r) => r.percentage < 40).length,
-    };
-  }, [data]);
-
-  const performanceData = useMemo(() => {
-    if (!data?.skillsPerformance || !data?.axesPerformance || !data?.oasPerformance) return null;
-    return {
-      skills: data.skillsPerformance.slice(0, 8),
-      axes: data.axesPerformance.slice(0, 8),
-      oas: data.oasPerformance.slice(0, 8),
+      adequate: answered.filter((result) => result.percentage >= 75).length,
+      elemental: answered.filter((result) => result.percentage >= 50 && result.percentage < 75).length,
+      initial: answered.filter((result) => result.percentage < 50).length,
     };
   }, [data]);
 
   if (resultsQuery.isLoading) return <LoadingSpinner label="Cargando resultados..." />;
-  if (!data) return <EmptyState title="Sin resultados" description="Aún no hay datos de resultados." />;
+  if (!data) return <EmptyState title="Sin resultados" description="Aun no hay datos de resultados." />;
 
   const weakest = data.weakestQuestions || [];
-  const perf = performanceData;
+  const answerKeyItems = keyQuery.data?.items || [];
+  const minAchievementScore = Math.ceil(data.maxScore * 0.5);
+  const adequateScore = Math.ceil(data.maxScore * 0.75);
+  const elementalMax = Math.max(minAchievementScore, adequateScore - 1);
 
   const handleExportPdf = () => {
-    if (!data) return;
     exportSimceCourseResultsToPdf(data);
   };
 
-  const handleExportExcel = async () => {
-    if (!data) return;
+  const handleExportExcel = () => {
     window.open(`/api/v1/simce/${assessment.id}/export/excel?type=course`, "_blank");
   };
 
@@ -82,7 +76,8 @@ export function SimceResultsPanel({ assessment }: Props) {
         <div>
           <h3>Resultados del curso</h3>
           <p style={{ color: "var(--muted)", fontSize: ".84rem" }}>
-            {data.totalQuestions} preguntas · {data.maxScore} pts máx · {data.answeredCount}/{data.totalStudents} respondieron
+            {data.totalQuestions} preguntas · {data.maxScore} pts max · {data.answeredCount}/{data.totalStudents} respondieron
+            {resultsQuery.isFetching ? " · actualizando..." : ""}
           </p>
         </div>
         <div style={{ display: "flex", gap: 8 }}>
@@ -98,49 +93,110 @@ export function SimceResultsPanel({ assessment }: Props) {
       {stats && (
         <div className="kpi-grid simce-kpi-row">
           <div className="kpi-card"><span>Promedio</span><strong>{stats.avg}%</strong></div>
-          <div className="kpi-card"><span>Máximo</span><strong>{stats.max}%</strong></div>
-          <div className="kpi-card"><span>Mínimo</span><strong>{stats.min}%</strong></div>
-          <div className="kpi-card" style={{ borderLeftColor: "var(--success)" }}><span>Avanzado</span><strong>{stats.advanced}</strong></div>
-          <div className="kpi-card" style={{ borderLeftColor: "var(--info)" }}><span>Adecuado</span><strong>{stats.adequate}</strong></div>
-          <div className="kpi-card" style={{ borderLeftColor: "var(--warning)" }}><span>Básico</span><strong>{stats.basic}</strong></div>
-          <div className="kpi-card" style={{ borderLeftColor: "var(--danger)" }}><span>Crítico</span><strong>{stats.critical}</strong></div>
+          <div className="kpi-card"><span>Maximo</span><strong>{stats.max}%</strong></div>
+          <div className="kpi-card"><span>Minimo</span><strong>{stats.min}%</strong></div>
+          <div className="kpi-card" style={{ borderLeftColor: "var(--success)" }}><span>Adecuado</span><strong>{stats.adequate}</strong></div>
+          <div className="kpi-card" style={{ borderLeftColor: "var(--warning)" }}><span>Elemental</span><strong>{stats.elemental}</strong></div>
+          <div className="kpi-card" style={{ borderLeftColor: "var(--danger)" }}><span>Inicial</span><strong>{stats.initial}</strong></div>
         </div>
       )}
 
-      {/* ─── Preguntas con mayor dificultad ─── */}
+      <div className="kpi-grid simce-kpi-row">
+        <div className="kpi-card"><span>Total preguntas</span><strong>{data.totalQuestions}</strong></div>
+        <div className="kpi-card"><span>Punt. maximo</span><strong>{data.maxScore}</strong></div>
+        <div className="kpi-card"><span>Exigencia SIMCE</span><strong>50%</strong></div>
+        <div className="kpi-card"><span>Punt. min. logro</span><strong>{minAchievementScore}</strong></div>
+      </div>
+
+      <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(220px, 1fr))", gap: 12, marginBottom: 16 }}>
+        <div className="kpi-card" style={{ background: "#ef444410", borderColor: "#fca5a5" }}>
+          <span>Inicial</span>
+          <strong>0 - {Math.max(0, minAchievementScore - 1)} pts</strong>
+          <small>0 - 49%</small>
+        </div>
+        <div className="kpi-card" style={{ background: "#f59e0b10", borderColor: "#fbbf24" }}>
+          <span>Elemental</span>
+          <strong>{minAchievementScore} - {elementalMax} pts</strong>
+          <small>50 - 74%</small>
+        </div>
+        <div className="kpi-card" style={{ background: "#22c55e10", borderColor: "#86efac" }}>
+          <span>Adecuado</span>
+          <strong>{adequateScore} - {data.maxScore} pts</strong>
+          <small>75 - 100%</small>
+        </div>
+      </div>
+
+      {answerKeyItems.length > 0 && (
+        <div className="panel" style={{ marginBottom: 16 }}>
+          <div className="panel-heading">
+            <div>
+              <h3 style={{ fontSize: "1rem" }}>Pauta de respuestas - exclusivo docente</h3>
+              <p style={{ color: "var(--muted)", fontSize: ".8rem" }}>
+                Esta pauta no se entrega a estudiantes. Se muestra al profesor para correccion y revision posterior.
+              </p>
+            </div>
+          </div>
+          <div className="simce-table-wrap">
+            <table className="table table--compact">
+              <thead>
+                <tr>
+                  <th>N</th>
+                  <th>OA</th>
+                  <th>Respuesta correcta</th>
+                  <th>Alt.</th>
+                  <th>Puntaje</th>
+                </tr>
+              </thead>
+              <tbody>
+                {answerKeyItems.map((item) => (
+                  <tr key={item.questionNumber}>
+                    <td>{item.questionNumber}</td>
+                    <td>{item.oa?.code || "-"}</td>
+                    <td>{item.observation || item.correctOption}</td>
+                    <td><strong>{item.correctOption}</strong></td>
+                    <td>{item.score}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        </div>
+      )}
+
       {weakest.length > 0 && (
         <div className="panel" style={{ marginBottom: 16 }}>
           <div className="panel-heading">
             <div>
               <h3 style={{ fontSize: "1rem" }}>Preguntas con mayor dificultad</h3>
               <p style={{ color: "var(--muted)", fontSize: ".8rem" }}>
-                Las {weakest.length} preguntas con menor porcentaje de acierto.
+                Preguntas con menor porcentaje de acierto.
               </p>
             </div>
           </div>
           <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
-            {weakest.map((q) => {
-              const color = difficultyColor(q.correctPercent);
-              const axisLabel = q.axis?.name ?? "";
-              const skillLabel = q.skill?.name ?? "";
-              const oaLabel = q.oa ? `${q.oa.code}: ${q.oa.description}` : "";
-              const tags = [axisLabel, skillLabel, oaLabel].filter(Boolean).join(" · ");
+            {weakest.map((question) => {
+              const color = difficultyColor(question.correctPercent);
+              const tags = [
+                question.axis?.name,
+                question.skill?.name,
+                question.oa ? `${question.oa.code}: ${question.oa.description}` : "",
+              ].filter(Boolean).join(" · ");
               return (
-                <div key={q.questionNumber} className="simce-review-bar-row" style={{ padding: "4px 0" }}>
+                <div key={question.questionNumber} className="simce-review-bar-row" style={{ padding: "4px 0" }}>
                   <span className="simce-review-bar-row__label" style={{ fontSize: ".78rem", fontWeight: 600 }}>
-                    P{q.questionNumber}
+                    P{question.questionNumber}
                   </span>
                   <div className="simce-review-bar-row__track">
                     <div
                       className="simce-review-bar-row__fill"
-                      style={{ width: `${q.correctPercent}%`, background: color, height: 14, borderRadius: 4 }}
+                      style={{ width: `${question.correctPercent}%`, background: color, height: 14, borderRadius: 4 }}
                     />
                   </div>
                   <div style={{ minWidth: 60, textAlign: "right", fontSize: ".78rem", fontWeight: 600, color }}>
-                    {q.correctPercent}%
+                    {question.correctPercent}%
                   </div>
                   <span style={{ fontSize: ".72rem", color: "var(--muted)", minWidth: 120 }}>
-                    ({q.correctCount}/{q.totalResponses} aciertos)
+                    ({question.correctCount}/{question.totalResponses} aciertos)
                   </span>
                   <span style={{ fontSize: ".72rem", color: "var(--muted)", flex: 1, textAlign: "right" }}>
                     {tags}
@@ -152,119 +208,61 @@ export function SimceResultsPanel({ assessment }: Props) {
         </div>
       )}
 
-      {/* ─── Habilidades y ejes más descendidos ─── */}
-      {perf && (
-        <div className="simce-analysis-grid" style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(280px, 1fr))", gap: 12, marginBottom: 16 }}>
-          {perf.skills.length > 0 && (
-            <div className="panel" style={{ margin: 0 }}>
-              <div className="panel-heading">
-                <h3 style={{ fontSize: ".9rem", margin: 0 }}>Habilidades más descendidas</h3>
-              </div>
-              <div style={{ height: 200 }}>
-                <ResponsiveContainer width="100%" height="100%">
-                  <BarChart data={perf.skills} layout="vertical" margin={{ top: 4, right: 16, left: 4, bottom: 4 }}>
-                    <CartesianGrid strokeDasharray="3 3" horizontal={false} />
-                    <XAxis type="number" domain={[0, 100]} tick={{ fontSize: 11 }} />
-                    <YAxis type="category" dataKey="name" width={120} tick={{ fontSize: 10 }} />
-                    <Tooltip formatter={(value: number) => [`${value}%`, "Acierto promedio"]} />
-                    <Bar dataKey="avgCorrectPercent" radius={[0, 4, 4, 0]} barSize={16}>
-                      {perf.skills.map((_, idx) => (
-                        <Cell key={idx} fill={idx < 3 ? "var(--danger)" : "var(--warning)"} />
-                      ))}
-                    </Bar>
-                  </BarChart>
-                </ResponsiveContainer>
-              </div>
-            </div>
-          )}
-
-          {perf.axes.length > 0 && (
-            <div className="panel" style={{ margin: 0 }}>
-              <div className="panel-heading">
-                <h3 style={{ fontSize: ".9rem", margin: 0 }}>Ejes con menor rendimiento</h3>
-              </div>
-              <div style={{ height: 200 }}>
-                <ResponsiveContainer width="100%" height="100%">
-                  <BarChart data={perf.axes} layout="vertical" margin={{ top: 4, right: 16, left: 4, bottom: 4 }}>
-                    <CartesianGrid strokeDasharray="3 3" horizontal={false} />
-                    <XAxis type="number" domain={[0, 100]} tick={{ fontSize: 11 }} />
-                    <YAxis type="category" dataKey="name" width={120} tick={{ fontSize: 10 }} />
-                    <Tooltip formatter={(value: number) => [`${value}%`, "Acierto promedio"]} />
-                    <Bar dataKey="avgCorrectPercent" radius={[0, 4, 4, 0]} barSize={16}>
-                      {perf.axes.map((_, idx) => (
-                        <Cell key={idx} fill={idx < 3 ? "var(--danger)" : "var(--info)"} />
-                      ))}
-                    </Bar>
-                  </BarChart>
-                </ResponsiveContainer>
-              </div>
-            </div>
-          )}
-
-          {perf.oas.length > 0 && (
-            <div className="panel" style={{ margin: 0 }}>
-              <div className="panel-heading">
-                <h3 style={{ fontSize: ".9rem", margin: 0 }}>OA con menor rendimiento</h3>
-              </div>
-              <div style={{ height: 200 }}>
-                <ResponsiveContainer width="100%" height="100%">
-                  <BarChart data={perf.oas} layout="vertical" margin={{ top: 4, right: 16, left: 4, bottom: 4 }}>
-                    <CartesianGrid strokeDasharray="3 3" horizontal={false} />
-                    <XAxis type="number" domain={[0, 100]} tick={{ fontSize: 11 }} />
-                    <YAxis type="category" dataKey="name" width={120} tick={{ fontSize: 10 }} />
-                    <Tooltip formatter={(value: number) => [`${value}%`, "Acierto promedio"]} />
-                    <Bar dataKey="avgCorrectPercent" radius={[0, 4, 4, 0]} barSize={16}>
-                      {perf.oas.map((_, idx) => (
-                        <Cell key={idx} fill={idx < 3 ? "var(--danger)" : "var(--accent)"} />
-                      ))}
-                    </Bar>
-                  </BarChart>
-                </ResponsiveContainer>
-              </div>
-            </div>
-          )}
+      <div className="panel-heading">
+        <div>
+          <h3 style={{ fontSize: "1rem" }}>Registro de resultados del curso</h3>
+          <p style={{ color: "var(--muted)", fontSize: ".8rem" }}>
+            Se autollena mientras los estudiantes envian o el profesor registra respuestas.
+          </p>
         </div>
-      )}
+      </div>
 
-      {/* ─── Tabla de estudiantes ─── */}
       <div className="simce-table-wrap">
         <table className="table table--compact">
           <thead>
             <tr>
-              <th>#</th>
-              <th>Estudiante</th>
-              <th>Correctas</th>
+              <th>N lista</th>
+              <th>Nombre del estudiante</th>
+              <th>Correctas/{data.totalQuestions}</th>
               <th>Incorrectas</th>
               <th>Omitidas</th>
               <th>Puntaje</th>
-              <th>%</th>
-              <th>Nivel</th>
+              <th>% Logro</th>
+              <th>Nivel SIMCE</th>
+              <th>Estado</th>
             </tr>
           </thead>
           <tbody>
-            {(data.results || []).map((r, index) => {
-              const level = levelFor(r.percentage);
+            {(data.results || []).map((result, index) => {
+              const level = levelFor(result.percentage);
+              const completed = Boolean(result.completed);
               return (
-                <tr key={r.student.id} style={!r.answered ? { opacity: 0.5 } : {}}>
+                <tr key={result.student.id} style={!result.answered ? { opacity: 0.55 } : {}}>
                   <td>{index + 1}</td>
                   <td>
-                    <strong>{r.student.lastName}, {r.student.firstName}</strong>
-                    {!r.answered && <span style={{ color: "var(--muted)", fontSize: ".75rem", display: "block" }}>Sin responder</span>}
+                    <strong>{result.student.lastName}, {result.student.firstName}</strong>
+                    {!result.answered && <span style={{ color: "var(--muted)", fontSize: ".75rem", display: "block" }}>Sin responder</span>}
                   </td>
-                  <td style={{ color: "var(--success)", textAlign: "center" }}>{r.answered ? r.totalCorrect : "-"}</td>
-                  <td style={{ color: "var(--danger)", textAlign: "center" }}>{r.answered ? r.totalIncorrect : "-"}</td>
-                  <td style={{ color: "var(--muted)", textAlign: "center" }}>{r.answered ? r.totalOmitted : "-"}</td>
-                  <td style={{ textAlign: "center" }}>{r.answered ? `${r.totalScore}/${data.maxScore}` : "-"}</td>
-                  <td style={{ fontWeight: 700, color: level.color, textAlign: "center" }}>{r.answered ? `${r.percentage}%` : "-"}</td>
+                  <td style={{ color: "var(--success)", textAlign: "center" }}>{result.answered ? result.totalCorrect : "-"}</td>
+                  <td style={{ color: "var(--danger)", textAlign: "center" }}>{result.answered ? result.totalIncorrect : "-"}</td>
+                  <td style={{ color: "var(--muted)", textAlign: "center" }}>{result.answered ? result.totalOmitted : "-"}</td>
+                  <td style={{ textAlign: "center" }}>{result.answered ? `${result.totalScore}/${data.maxScore}` : "-"}</td>
+                  <td style={{ fontWeight: 700, color: level.color, textAlign: "center" }}>{result.answered ? `${result.percentage}%` : "-"}</td>
                   <td>
-                    {r.answered ? (
-                      <span style={{
-                        display: "inline-block", padding: "2px 8px", borderRadius: 10, fontSize: ".75rem",
-                        background: level.bg, color: level.color, fontWeight: 600,
-                      }}>
-                        {level.label}
+                    {result.answered ? (
+                      <span style={{ display: "inline-block", padding: "2px 8px", borderRadius: 10, fontSize: ".75rem", background: level.bg, color: level.color, fontWeight: 600 }}>
+                        {result.performanceLevel || level.label}
                       </span>
                     ) : "-"}
+                  </td>
+                  <td>
+                    {completed ? (
+                      <span className="badge badge--active">Respondio</span>
+                    ) : result.answered ? (
+                      <span className="badge badge--warning">{result.responseCount || 0}/{data.totalQuestions}</span>
+                    ) : (
+                      <span className="badge badge--inactive">Pendiente</span>
+                    )}
                   </td>
                 </tr>
               );

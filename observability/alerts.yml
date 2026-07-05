@@ -1,0 +1,63 @@
+groups:
+  - name: cordillera
+    rules:
+      - alert: CordilleraApiHighP95Latency
+        expr: histogram_quantile(0.95, sum by (le) (rate(cordillera_http_request_duration_seconds_bucket[5m]))) > 1.5
+        for: 5m
+        labels: { severity: warning }
+        annotations: { summary: "Latencia p95 de la API superior a 1.5 segundos" }
+      - alert: CordilleraApiErrors
+        expr: sum(rate(cordillera_http_requests_total{status_code=~"5.."}[5m])) > 0
+        for: 2m
+        labels: { severity: critical }
+        annotations: { summary: "La API esta respondiendo errores 5xx" }
+      - alert: CordilleraDatabaseDown
+        expr: cordillera_database_up == 0
+        for: 1m
+        labels: { severity: critical }
+        annotations: { summary: "PostgreSQL no responde al healthcheck" }
+      - alert: CordilleraQueueWithoutWorker
+        expr: cordillera_bullmq_workers == 0
+        for: 2m
+        labels: { severity: critical }
+        annotations: { summary: "Una cola BullMQ no tiene workers conectados" }
+      - alert: CordilleraQueueBacklog
+        expr: sum by (queue) (cordillera_bullmq_jobs{state=~"waiting|delayed"}) > 100
+        for: 5m
+        labels: { severity: warning }
+        annotations: { summary: "Una cola BullMQ acumula mas de 100 jobs" }
+      - alert: CordilleraHostMetricsDown
+        expr: up{job="cordillera-host"} == 0
+        for: 2m
+        labels: { severity: critical }
+        annotations: { summary: "Prometheus no puede obtener metricas del servidor" }
+
+      - alert: CordilleraHostHighCpu
+        expr: 100 * (1 - avg by (instance) (rate(node_cpu_seconds_total{job="cordillera-host",mode="idle"}[5m]))) > 80
+        for: 5m
+        labels: { severity: warning }
+        annotations: { summary: "CPU del servidor sobre 80% durante 5 minutos" }
+
+      - alert: CordilleraHostLowAvailableMemory
+        expr: node_memory_MemAvailable_bytes{job="cordillera-host"} < 1073741824
+        for: 5m
+        labels: { severity: warning }
+        annotations: { summary: "El servidor tiene menos de 1 GB de RAM disponible" }
+
+      - alert: CordilleraHostCriticalMemory
+        expr: 100 * (1 - node_memory_MemAvailable_bytes{job="cordillera-host"} / node_memory_MemTotal_bytes{job="cordillera-host"}) > 90
+        for: 5m
+        labels: { severity: critical }
+        annotations: { summary: "Uso de RAM del servidor sobre 90%" }
+
+      - alert: CordilleraHostDiskUsageHigh
+        expr: 100 * (1 - node_filesystem_avail_bytes{job="cordillera-host",fstype!~"tmpfs|overlay|squashfs|nsfs",mountpoint="/"} / node_filesystem_size_bytes{job="cordillera-host",fstype!~"tmpfs|overlay|squashfs|nsfs",mountpoint="/"}) > 70
+        for: 10m
+        labels: { severity: warning }
+        annotations: { summary: "Uso del disco principal sobre 70%" }
+
+      - alert: CordilleraHostDiskUsageCritical
+        expr: 100 * (1 - node_filesystem_avail_bytes{job="cordillera-host",fstype!~"tmpfs|overlay|squashfs|nsfs",mountpoint="/"} / node_filesystem_size_bytes{job="cordillera-host",fstype!~"tmpfs|overlay|squashfs|nsfs",mountpoint="/"}) > 90
+        for: 5m
+        labels: { severity: critical }
+        annotations: { summary: "Uso del disco principal sobre 90%" }

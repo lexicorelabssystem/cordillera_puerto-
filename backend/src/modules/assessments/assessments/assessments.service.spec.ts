@@ -3,6 +3,7 @@ import { Test, TestingModule } from "@nestjs/testing";
 import { NotFoundException, BadRequestException, ForbiddenException } from "@nestjs/common";
 import { AssessmentsService } from "./assessments.service.js";
 import { PrismaService } from "../../prisma/prisma.service.js";
+import { CacheService } from "../../cache/cache.service.js";
 
 const MOCK_ASSESSMENT_ID = "assessment-001";
 const MOCK_COURSE_ID = "course-001";
@@ -96,6 +97,17 @@ describe("AssessmentsService", () => {
   let prismaPeriod: Record<string, jest.Mock<(...args: any[]) => any>>;
   let prismaAssessmentQuestion: Record<string, jest.Mock<(...args: any[]) => any>>;
   let prismaQuestion: Record<string, jest.Mock<(...args: any[]) => any>>;
+  let prismaUser: Record<string, jest.Mock<(...args: any[]) => any>>;
+
+  const mockScopeUser = {
+    id: MOCK_USER_ID,
+    role: "SUPER_ADMIN" as const,
+    isActive: true,
+    deletedAt: null,
+    institutionId: null,
+    teacher: null,
+    student: null,
+  };
 
   beforeEach(async () => {
     prismaAssessment = {
@@ -119,6 +131,7 @@ describe("AssessmentsService", () => {
       delete: jest.fn(),
     };
     prismaQuestion = { findUnique: jest.fn() };
+    prismaUser = { findUnique: jest.fn<() => any>().mockResolvedValue(mockScopeUser) };
 
     const module: TestingModule = await Test.createTestingModule({
       providers: [
@@ -133,6 +146,14 @@ describe("AssessmentsService", () => {
             period: prismaPeriod,
             assessmentQuestion: prismaAssessmentQuestion,
             question: prismaQuestion,
+            user: prismaUser,
+          },
+        },
+        {
+          provide: CacheService,
+          useValue: {
+            getOrSet: jest.fn((_key: string, factory: () => unknown) => factory()),
+            del: jest.fn<() => any>().mockResolvedValue(undefined),
           },
         },
       ],

@@ -1,7 +1,7 @@
 import { ApiProperty, ApiPropertyOptional } from "@nestjs/swagger";
 import {
   IsString, IsUUID, IsInt, IsOptional, IsEnum, IsNumber,
-  IsArray, IsBoolean, Min, Max, MinLength, MaxLength, ValidateNested,
+  IsArray, IsBoolean, Min, Max, MinLength, MaxLength, ValidateNested, ArrayMaxSize,
 } from "class-validator";
 import { Type } from "class-transformer";
 import { SimceStatus } from "@prisma/client";
@@ -41,6 +41,7 @@ export class CreateSimceAssessmentDto {
   @ApiPropertyOptional()
   @IsOptional()
   @IsString()
+  @MaxLength(2000)
   description?: string;
 }
 
@@ -54,6 +55,7 @@ export class UpdateSimceAssessmentDto {
   @ApiPropertyOptional()
   @IsOptional()
   @IsString()
+  @MaxLength(2000)
   description?: string;
 
   @ApiPropertyOptional()
@@ -115,12 +117,14 @@ export class SimceAnswerKeyItemDto {
   @ApiPropertyOptional()
   @IsOptional()
   @IsString()
+  @MaxLength(1000)
   observation?: string;
 }
 
 export class SaveAnswerKeyDto {
   @ApiProperty({ type: [SimceAnswerKeyItemDto] })
   @IsArray()
+  @ArrayMaxSize(120)
   @ValidateNested({ each: true })
   @Type(() => SimceAnswerKeyItemDto)
   items!: SimceAnswerKeyItemDto[];
@@ -145,6 +149,7 @@ export class StudentResponseItemDto {
 export class SaveStudentResponsesDto {
   @ApiProperty({ type: [StudentResponseItemDto] })
   @IsArray()
+  @ArrayMaxSize(120)
   @ValidateNested({ each: true })
   @Type(() => StudentResponseItemDto)
   responses!: StudentResponseItemDto[];
@@ -157,6 +162,7 @@ export class BatchStudentResponsesDto {
 
   @ApiProperty({ type: [StudentResponseItemDto] })
   @IsArray()
+  @ArrayMaxSize(120)
   @ValidateNested({ each: true })
   @Type(() => StudentResponseItemDto)
   responses!: StudentResponseItemDto[];

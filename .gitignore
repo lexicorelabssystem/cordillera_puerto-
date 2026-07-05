@@ -1,14 +1,66 @@
+# Dependencies and generated builds
 node_modules/
+**/node_modules/
 dist/
-.env
-backend/data/
-backend/dist/
+**/dist/
+build/
+.next/
+.vercel/
 frontend/.vite/
-frontend/node_modules/
-backend/node_modules/
-*.log
 coverage/
-backups/
 *.tsbuildinfo
+
+# Environment files: examples remain versioned
+.env
+.env.*
+!.env.example
+!**/.env.example
+
+# Logs, caches, and temporary files
+*.log
+.tmp/
+tmp/
+temp/
+.cache/
+
+# Database dumps and local backups
+backups/
+*.dump
+*.bak
+*.sql.gz
+*.dump.gz
+
+# Local application data
+backend/data/
 backend/uploads/
-exel con usuaros/credenciales.xlsx
+uploads/
+exports/
+
+# Archives and non-product academic/personal documents
+*.zip
+*.rar
+*.7z
+*.pdf
+*.doc
+*.docx
+*.xls
+*.xlsx
+*.ppt
+*.pptx
+ENSAYOS SIMCE/
+exel con usuaros/
+libro-calificaciones-*
+
+# Certificates and private keys
+*.pem
+*.key
+*.p12
+*.pfx
+*.jks
+
+# IDE and operating-system files
+.vscode/
+.idea/
+.DS_Store
+Thumbs.db
+Desktop.ini

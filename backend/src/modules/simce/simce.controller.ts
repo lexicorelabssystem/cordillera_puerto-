@@ -13,13 +13,19 @@ import { JwtAuthGuard } from "../auth/jwt-auth.guard.js";
 import { RolesGuard } from "../../common/guards/roles.guard.js";
 import { Roles } from "../../common/decorators/roles.decorator.js";
 import { CurrentUser, JwtPayload } from "../../common/decorators/current-user.decorator.js";
+import { QueueService } from "../queue/queue.service.js";
+import { PrismaService } from "../prisma/prisma.service.js";
 
 @ApiTags("SIMCE")
 @Controller("simce")
 @UseGuards(JwtAuthGuard, RolesGuard)
 @ApiBearerAuth("access-token")
 export class SimceController {
-  constructor(private readonly service: SimceService) {}
+  constructor(
+    private readonly service: SimceService,
+    private readonly queueService: QueueService,
+    private readonly prisma: PrismaService,
+  ) {}
 
   // ─── CRUD SimceAssessment ────────────────────────────
 
@@ -61,6 +67,27 @@ export class SimceController {
   @ApiOperation({ summary: "Obtener ensayos SIMCE disponibles para el estudiante autenticado" })
   getStudentEssays(@CurrentUser() user: JwtPayload) {
     return this.service.getStudentSimceEssays(user);
+  }
+
+  @Get("student/essays/:assessmentId")
+  @Roles("STUDENT")
+  @ApiOperation({ summary: "Abrir ensayo SIMCE interactivo para responder" })
+  getStudentEssay(
+    @Param("assessmentId", ParseUUIDPipe) assessmentId: string,
+    @CurrentUser() user: JwtPayload,
+  ) {
+    return this.service.getStudentSimceEssay(assessmentId, user);
+  }
+
+  @Post("student/essays/:assessmentId/submit")
+  @Roles("STUDENT")
+  @ApiOperation({ summary: "Enviar respuestas del ensayo SIMCE y obtener resultado automatico" })
+  submitStudentEssay(
+    @Param("assessmentId", ParseUUIDPipe) assessmentId: string,
+    @Body() dto: SaveStudentResponsesDto,
+    @CurrentUser() user: JwtPayload,
+  ) {
+    return this.service.submitStudentSimceEssay(assessmentId, dto, user);
   }
 
   @Get("student/results")
@@ -128,9 +155,24 @@ export class SimceController {
 
   @Post(":id/answer-key/confirm")
   @Roles("ADMIN", "SUPER_ADMIN", "DIRECTION", "UTP", "TEACHER")
-  @ApiOperation({ summary: "Confirmar pauta y pasar a READY_TO_CORRECT" })
-  confirmAnswerKey(@Param("id", ParseUUIDPipe) id: string, @CurrentUser() user: JwtPayload) {
-    return this.service.confirmAnswerKey(id, user);
+  @ApiOperation({ summary: "Confirmar pauta y pasar a READY_TO_CORRECT. Pre-procesa el PDF en segundo plano." })
+  async confirmAnswerKey(@Param("id", ParseUUIDPipe) id: string, @CurrentUser() user: JwtPayload) {
+    const result = await this.service.confirmAnswerKey(id, user);
+
+    const assessment = await this.prisma.simceAssessment.findUnique({
+      where: { id },
+      select: { pdfFile: { select: { id: true, originalName: true, storagePath: true, mimeType: true } } },
+    });
+
+    if (assessment?.pdfFile) {
+      await this.queueService.enqueueSimcePdfProcessing({
+        assessmentId: id,
+        pdfFileId: assessment.pdfFile.id,
+        userId: user.sub,
+      });
+    }
+
+    return result;
   }
 
   // ─── Respuestas de estudiantes ───────────────────────
@@ -225,7 +267,7 @@ export class SimceController {
     const result = await this.service.exportResultsExcel(id, exportType, studentId, user);
 
     const filePath = `uploads/exports/${result.fileName}`;
-    // eslint-disable-next-line @typescript-eslint/no-require-imports
+
     const fs = await import("node:fs");
 
     reply.header("Content-Type", "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet");

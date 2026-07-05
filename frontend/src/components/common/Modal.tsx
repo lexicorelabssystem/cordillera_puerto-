@@ -8,9 +8,10 @@ interface Props {
   children: ReactNode;
   footer?: ReactNode;
   size?: "sm" | "md" | "lg";
+  className?: string;
 }
 
-export function Modal({ isOpen, onClose, title, children, footer, size = "md" }: Props) {
+export function Modal({ isOpen, onClose, title, children, footer, size = "md", className = "" }: Props) {
   useEffect(() => {
     if (!isOpen) return;
 
@@ -37,7 +38,7 @@ export function Modal({ isOpen, onClose, title, children, footer, size = "md" }:
 
   return (
     <div className="modal-overlay" onClick={handleOverlayClick}>
-      <div className={`modal-container ${sizeClass}`} role="dialog" aria-modal="true" aria-labelledby="modal-title">
+      <div className={`modal-container ${sizeClass} ${className}`.trim()} role="dialog" aria-modal="true" aria-labelledby="modal-title">
         <div className="modal-header">
           <h2 id="modal-title">{title}</h2>
           <button className="modal-close" onClick={onClose} type="button" aria-label="Cerrar">

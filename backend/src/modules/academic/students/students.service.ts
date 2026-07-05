@@ -1,5 +1,5 @@
-﻿import { Injectable, NotFoundException, ConflictException, Inject } from "@nestjs/common";
-import bcrypt from "bcryptjs";
+import { Injectable, NotFoundException, ConflictException, Inject } from "@nestjs/common";
+import bcrypt from "bcrypt";
 import { BadRequestException } from "@nestjs/common";
 import { ResourceStatus } from "@prisma/client";
 import { PrismaService } from "../../prisma/prisma.service.js";
@@ -104,6 +104,8 @@ export class StudentsService {
   }
 
   async findAll(search?: string, courseId?: string, page = 1, limit = 20, user?: JwtPayload, includeInactive = false) {
+    page = Number.isFinite(page) ? Math.max(1, Math.floor(page)) : 1;
+    limit = Number.isFinite(limit) ? Math.min(100, Math.max(1, Math.floor(limit))) : 20;
     const where: Record<string, unknown> = {};
     const andFilters: Record<string, unknown>[] = [];
     let canIncludeInactive = !user;
@@ -237,14 +239,14 @@ export class StudentsService {
 
     const courseIds = student.enrollments.map((enrollment) => enrollment.course.id);
 
-    const grades = courseIds.length
+    const grades: any[] = courseIds.length
       ? await this.prisma.grade.findMany({
           where: {
             studentId: student.id,
             assessment: {
               courseId: { in: courseIds },
               isActive: true,
-              status: { in: visibleAssessmentStatuses },
+              status: { in: visibleAssessmentStatuses as any },
             },
           },
           include: {
@@ -267,13 +269,13 @@ export class StudentsService {
         })
       : [];
 
-    const assessments = courseIds.length
+    const assessments: any[] = courseIds.length
       ? await this.prisma.assessment.findMany({
           where: {
             courseId: { in: courseIds },
             isActive: true,
-            status: { in: visibleAssessmentStatuses },
-          },
+            status: { in: visibleAssessmentStatuses as any },
+          } as any,
           include: {
             course: { select: { id: true, name: true } },
             subject: { select: { id: true, name: true } },
@@ -283,7 +285,7 @@ export class StudentsService {
               where: { studentId: student.id },
               select: { id: true, grade: true, comments: true, updatedAt: true },
             },
-          },
+          } as any,
           orderBy: [{ startDate: "desc" }, { updatedAt: "desc" }],
         })
       : [];

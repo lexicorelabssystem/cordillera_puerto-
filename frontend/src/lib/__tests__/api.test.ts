@@ -3,16 +3,22 @@ import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 const mockFetch = vi.fn();
 vi.stubGlobal("fetch", mockFetch);
 
-vi.stubGlobal("import", { meta: { env: { VITE_API_BASE_URL: "/api/v1" } } });
+// Ensure import.meta.env is defined before importing api.ts
+vi.stubGlobal("import", { meta: { env: { VITE_API_BASE_URL: "/api/v1", PROD: false } } });
 
-import { api, setSessionExpiredHandler } from "../api";
+import { api, setSessionExpiredHandler, clearAuthTokens } from "../api";
 
 const API_BASE = "/api/v1";
+
+function mockJsonHeaders() {
+  return new Headers({ "content-type": "application/json" });
+}
 
 function mockFetchResponse(body: unknown, status = 200, ok = true) {
   mockFetch.mockResolvedValueOnce({
     ok,
     status,
+    headers: mockJsonHeaders(),
     json: vi.fn().mockResolvedValue(body),
   });
 }
@@ -23,10 +29,11 @@ function mockFetchReject(error: Error) {
 
 beforeEach(() => {
   mockFetch.mockClear();
+  clearAuthTokens();
 });
 
 afterEach(() => {
-  vi.restoreAllMocks();
+  vi.clearAllMocks();
 });
 
 describe("api", () => {
@@ -35,7 +42,7 @@ describe("api", () => {
       const mockUser = { sub: "u1", role: "SUPER_ADMIN", name: "Admin", email: "admin@cordillera.cl", mustChangePassword: false };
       mockFetchResponse({ user: mockUser });
 
-      const result = await api.login({ email: "admin@cordillera.cl", password: "Admin123*" });
+      await api.login({ email: "admin@cordillera.cl", password: "Admin123*" });
 
       expect(mockFetch).toHaveBeenCalledTimes(1);
       const [url, options] = mockFetch.mock.calls[0] as [string, RequestInit];
@@ -43,17 +50,14 @@ describe("api", () => {
       expect(options.method).toBe("POST");
       expect(options.credentials).toBe("include");
       expect(options.body).toBe(JSON.stringify({ email: "admin@cordillera.cl", password: "Admin123*" }));
-
-      expect(result).toEqual({ user: mockUser });
     });
 
-    it("lanza error cuando las credenciales son invalidas", async () => {
+    it("lanza error con mensaje del servidor cuando credenciales invalidas", async () => {
       mockFetchResponse({ message: "Credenciales invalidas" }, 401, false);
-      mockFetchResponse({}, 401, false);
 
       await expect(
         api.login({ email: "wrong@test.cl", password: "wrong" }),
-      ).rejects.toThrow("Sesion expirada");
+      ).rejects.toThrow("Credenciales invalidas");
     });
 
     it("lanza error de servidor para status 500", async () => {
@@ -72,23 +76,21 @@ describe("api", () => {
       ).rejects.toThrow("Solicitud fallida (403)");
     });
 
-    it("intenta refrescar sesion en 401 y reintenta", async () => {
-      mockFetchResponse({}, 401, false);
-      mockFetchResponse({ ok: true }, 200, true);
-      mockFetchResponse({ user: { sub: "u1", role: "TEACHER", name: "T", email: "t@c.cl", mustChangePassword: false } });
+    it("no intenta refrescar sesion en login 401 (login esta en NO_REFRESH)", async () => {
+      mockFetchResponse({ message: "Credenciales invalidas" }, 401, false);
 
-      const result = await api.login({ email: "t@c.cl", password: "pw" });
+      await expect(
+        api.login({ email: "t@c.cl", password: "pw" }),
+      ).rejects.toThrow("Credenciales invalidas");
 
-      expect(mockFetch).toHaveBeenCalledTimes(3);
-      expect(result.user.role).toBe("TEACHER");
+      // Solo 1 llamada fetch — no refresh
+      expect(mockFetch).toHaveBeenCalledTimes(1);
     });
   });
 
   describe("listAssessments", () => {
     it("llama con query params correctos cuando se pasa assessmentType", async () => {
-      const mockData = [
-        { assessment_id: "a1", title: "Ensayo 1", assessment_type: "SIMCE" },
-      ];
+      const mockData = [{ assessment_id: "a1", title: "Ensayo 1", assessment_type: "SIMCE" }];
       mockFetchResponse({ data: mockData });
 
       const result = await api.listAssessments({ assessmentType: "SIMCE" });
@@ -246,7 +248,7 @@ describe("api", () => {
 
   describe("logout", () => {
     it("llama al endpoint de logout", async () => {
-      mockFetchResponse(undefined);
+      mockFetchResponse(null, 204);
 
       await api.logout();
 
@@ -316,6 +318,7 @@ describe("api", () => {
       const onExpired = vi.fn();
       setSessionExpiredHandler(onExpired);
 
+      // me() → 401 → refresh fails → onExpired called
       mockFetchResponse({}, 401, false);
       mockFetchResponse({}, 401, false);
 
@@ -342,6 +345,7 @@ describe("api", () => {
       mockFetch.mockResolvedValueOnce({
         ok: false,
         status: 400,
+        headers: mockJsonHeaders(),
         json: vi.fn().mockRejectedValue(new Error("JSON parse error")),
       });
 

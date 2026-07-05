@@ -1,5 +1,5 @@
 import {
-  Injectable, NotFoundException, ForbiddenException, BadRequestException,
+  Injectable, NotFoundException, ForbiddenException, BadRequestException, ServiceUnavailableException,
 } from "@nestjs/common";
 import { PrismaService } from "../prisma/prisma.service.js";
 import * as ExcelJS from "exceljs";
@@ -13,15 +13,24 @@ import type {
 } from "./dto/simce.dto.js";
 import { resolveUserScope } from "../../common/authz/access-scope.js";
 import type { JwtPayload } from "../../common/decorators/current-user.decorator.js";
+import { DocumentAssessmentParserService } from "../assessments/import/document-assessment-parser.service.js";
+import { CacheService } from "../cache/cache.service.js";
+import type { ParsedAssessmentDocument } from "../assessments/import/document-assessment-parser.service.js";
 
-const VALID_STATUS_TRANSITIONS: Record<SimceStatus, SimceStatus[]> = {
+
+type ParsedSimceCacheEntry = {
+  cacheKey: string;
+  instructions: ParsedAssessmentDocument["instructions"];
+  questions: ParsedAssessmentDocument["questions"];
+};
+export const VALID_STATUS_TRANSITIONS: Record<SimceStatus, SimceStatus[]> = {
   DRAFT:            ["KEY_PENDING"],
   KEY_PENDING:      ["READY_TO_CORRECT", "DRAFT"],
   READY_TO_CORRECT: ["CORRECTED", "KEY_PENDING"],
   CORRECTED:        ["READY_TO_CORRECT"],
 };
 
-function assertScopeForCourse(
+export function assertScopeForCourse(
   scope: Awaited<ReturnType<typeof resolveUserScope>>,
   courseInstitutionId: string,
   courseId: string,
@@ -51,7 +60,7 @@ function assertScopeForCourse(
   throw new ForbiddenException("No tienes acceso a este recurso");
 }
 
-function assertScopeForStudent(
+export function assertScopeForStudent(
   scope: Awaited<ReturnType<typeof resolveUserScope>>,
   enrollment: { course: { id: string; institutionId: string } } | null,
   studentId: string,
@@ -78,7 +87,13 @@ function assertScopeForStudent(
 
 @Injectable()
 export class SimceService {
-  constructor(private readonly prisma: PrismaService) {}
+  private readonly parsedSimceDocuments = new Map<string, ParsedSimceCacheEntry>();
+
+  constructor(
+    private readonly prisma: PrismaService,
+    private readonly documentParser: DocumentAssessmentParserService,
+    private readonly cache: CacheService,
+  ) {}
 
   // ══════════════════════════════════════════════════════
   //  CRUD SimceAssessment
@@ -142,6 +157,8 @@ export class SimceService {
     limit: number,
     user: JwtPayload,
   ) {
+    page = Number.isFinite(page) ? Math.max(1, Math.floor(page)) : 1;
+    limit = Number.isFinite(limit) ? Math.min(100, Math.max(1, Math.floor(limit))) : 20;
     const scope = await resolveUserScope(this.prisma, user);
     const where: Record<string, unknown> = {};
 
@@ -499,17 +516,29 @@ export class SimceService {
     const maxScore = answerKeys.reduce((s, k) => s + k.score, 0);
     const percentage = maxScore > 0 ? Math.round((totalScore / maxScore) * 100) : 0;
 
-    const performanceLevel = percentage >= 80 ? "Avanzado"
-      : percentage >= 60 ? "Adecuado"
-      : percentage >= 40 ? "Básico"
-      : "Crítico";
+    const performanceLevel = this.getSimcePerformanceLevel(percentage);
+    const grade = this.calculateSchoolGrade(percentage);
 
     return {
       student,
       assessment: { id: assessment.id, title: assessment.title },
-      summary: { totalCorrect, totalIncorrect, totalOmitted, totalQuestions: questions.length, totalScore, maxScore, percentage, performanceLevel },
+      summary: { totalCorrect, totalIncorrect, totalOmitted, totalQuestions: questions.length, totalScore, maxScore, percentage, performanceLevel, grade },
       questions,
     };
+  }
+
+  private getSimcePerformanceLevel(percentage: number) {
+    if (percentage >= 75) return "Adecuado";
+    if (percentage >= 50) return "Elemental";
+    return "Inicial";
+  }
+
+  private calculateSchoolGrade(percentage: number) {
+    const pct = Math.max(0, Math.min(100, percentage));
+    const grade = pct < 60
+      ? 1 + (pct / 60) * 3
+      : 4 + ((pct - 60) / 40) * 3;
+    return Number(Math.max(1, Math.min(7, grade)).toFixed(1));
   }
 
   async getResultsSummary(assessmentId: string, user: JwtPayload) {
@@ -555,12 +584,15 @@ export class SimceService {
     const results: Array<{
       student: { id: string; firstName: string; lastName: string; rut: string | null };
       answered: boolean;
+      completed: boolean;
+      responseCount: number;
       totalCorrect: number;
       totalIncorrect: number;
       totalOmitted: number;
       totalQuestions: number;
       totalScore: number;
       percentage: number;
+      performanceLevel: string;
     }> = [];
 
     for (const enrollment of enrolledStudents) {
@@ -568,20 +600,25 @@ export class SimceService {
 
       const totalCorrect = responses.filter((r) => r.isCorrect === true).length;
       const totalIncorrect = responses.filter((r) => r.isCorrect === false).length;
-      const totalOmitted = responses.filter((r) => r.selectedOption === null).length;
+      const totalOmitted = Math.max(0, answerKeys.length - totalCorrect - totalIncorrect);
       const totalScore = responses.reduce((s, r) => s + r.scoreObtained, 0);
       const percentage = maxScore > 0 ? Math.round((totalScore / maxScore) * 100) : 0;
       const answered = responses.length > 0;
+      const completed = responses.length >= answerKeys.length;
+      const performanceLevel = this.getSimcePerformanceLevel(percentage);
 
       results.push({
         student: enrollment.student,
         answered,
+        completed,
+        responseCount: responses.length,
         totalCorrect,
         totalIncorrect,
         totalOmitted,
         totalQuestions: answerKeys.length,
         totalScore,
         percentage,
+        performanceLevel,
       });
     }
 
@@ -882,9 +919,10 @@ export class SimceService {
 
       const totalCorrect = responses.filter((r) => r.isCorrect === true).length;
       const totalIncorrect = responses.filter((r) => r.isCorrect === false).length;
-      const totalOmitted = responses.filter((r) => r.selectedOption === null).length;
+      const totalOmitted = Math.max(0, answerKeys.length - totalCorrect - totalIncorrect);
       const totalScore = responses.reduce((s, r) => s + r.scoreObtained, 0);
       const percentage = maxScore > 0 ? Math.round((totalScore / maxScore) * 100) : 0;
+      const grade = this.calculateSchoolGrade(percentage);
 
       results.push({
         id: assessment.id,
@@ -901,11 +939,122 @@ export class SimceService {
         totalOmitted,
         totalScore,
         percentage,
+        grade,
         pdfFile: assessment.pdfFileId ? { id: assessment.pdfFileId } : null,
       });
     }
 
     return results;
+  }
+
+
+  // Método público para pre-procesar PDF desde el worker (evita parseo en vivo para el alumno)
+  async preParsePdfDocument(file: { id: string; originalName: string; storagePath: string; mimeType: string; buffer?: Buffer }): Promise<void> {
+    await this.getParsedSimceDocument(file);
+  }
+
+  private parsedDocumentCacheKey(fileId: string) {
+    return `simce:pdf:${fileId}:parsed`;
+  }
+  private async getParsedSimceDocument(file: { id: string; originalName: string; storagePath: string; mimeType: string; buffer?: Buffer }): Promise<ParsedSimceCacheEntry> {
+    const redisKey = this.parsedDocumentCacheKey(file.id);
+    const shared = await this.cache.get<ParsedSimceCacheEntry>(redisKey);
+    if (shared) return shared;
+
+    let buffer: Buffer;
+    try {
+      buffer = file.buffer ?? await fs.promises.readFile(file.storagePath);
+    } catch {
+      throw new NotFoundException("PDF SIMCE no encontrado");
+    }
+
+    const cacheKey = `${file.id}:${crypto.createHash("sha256").update(buffer).digest("hex")}`;
+    const cached = this.parsedSimceDocuments.get(file.id);
+    if (cached?.cacheKey === cacheKey) return cached;
+
+    const parsed = await this.documentParser.parse({ buffer, fileName: file.originalName, mimeType: file.mimeType });
+    const entry: ParsedSimceCacheEntry = { cacheKey, instructions: parsed.instructions, questions: parsed.questions };
+    await this.cache.set(redisKey, entry);
+    this.parsedSimceDocuments.set(file.id, entry);
+    if (this.parsedSimceDocuments.size > 100) {
+      const oldestKey = this.parsedSimceDocuments.keys().next().value;
+      if (oldestKey) this.parsedSimceDocuments.delete(oldestKey);
+    }
+    return entry;
+  }
+  async getStudentSimceEssay(assessmentId: string, user: JwtPayload) {
+    const scope = await resolveUserScope(this.prisma, user);
+    if (!scope.studentId) throw new ForbiddenException("Solo los estudiantes pueden ver ensayos SIMCE");
+
+    const assessment = await this.prisma.simceAssessment.findUnique({
+      where: { id: assessmentId },
+      include: {
+        course: { select: { id: true, name: true, gradeLevel: true, institutionId: true } },
+        subject: { select: { id: true, name: true } },
+        teacher: { include: { user: { select: { firstName: true, lastName: true } } } },
+        pdfFile: { select: { id: true, originalName: true, fileName: true, storagePath: true, mimeType: true } },
+        _count: { select: { answerKeys: true } },
+      },
+    });
+    if (!assessment) throw new NotFoundException("Prueba SIMCE no encontrada");
+    if (!["READY_TO_CORRECT", "CORRECTED"].includes(assessment.status)) {
+      throw new BadRequestException("La prueba SIMCE aun no esta disponible para responder");
+    }
+
+    const enrollment = await this.prisma.enrollment.findFirst({
+      where: { studentId: scope.studentId, courseId: assessment.courseId, isActive: true },
+      select: { id: true },
+    });
+    if (!enrollment) throw new ForbiddenException("No estas matriculado en el curso de esta prueba");
+    if (!assessment.pdfFile) throw new BadRequestException("Esta prueba no tiene PDF asociado");
+
+    const parsed = await this.cache.get<ParsedSimceCacheEntry>(
+      this.parsedDocumentCacheKey(assessment.pdfFile.id),
+    );
+    if (!parsed) {
+      throw new ServiceUnavailableException("El ensayo SIMCE aun se esta preparando. Intenta nuevamente en unos segundos");
+    }
+
+    const existingResponses = await this.prisma.simceStudentResponse.findMany({
+      where: { assessmentId, studentId: scope.studentId },
+      select: { questionNumber: true, selectedOption: true },
+    });
+    const responsesByQuestion = new Map(existingResponses.map((response) => [response.questionNumber, response.selectedOption]));
+
+    return {
+      assessment: {
+        id: assessment.id,
+        title: assessment.title,
+        date: assessment.date,
+        description: assessment.description,
+        status: assessment.status,
+        course: assessment.course,
+        subject: assessment.subject,
+        teacher: `${assessment.teacher.user.firstName} ${assessment.teacher.user.lastName}`,
+        pdfFile: {
+          id: assessment.pdfFile.id,
+          originalName: assessment.pdfFile.originalName,
+          fileName: assessment.pdfFile.fileName,
+        },
+      },
+      instructions: parsed.instructions,
+      totalQuestions: parsed.questions.length,
+      questions: parsed.questions.map((question) => ({
+        number: question.number,
+        statement: question.statement,
+        alternatives: question.alternatives.map((text, index) => ({
+          label: String.fromCharCode(65 + index),
+          text,
+        })),
+        selectedOption: responsesByQuestion.get(question.number) ?? null,
+      })),
+    };
+  }
+
+  async submitStudentSimceEssay(assessmentId: string, dto: SaveStudentResponsesDto, user: JwtPayload) {
+    const scope = await resolveUserScope(this.prisma, user);
+    if (!scope.studentId) throw new ForbiddenException("Solo los estudiantes pueden enviar ensayos SIMCE");
+    return this.saveStudentResponses(assessmentId, scope.studentId, dto, user);
   }
 
   async getStudentSimceDetail(assessmentId: string, user: JwtPayload) {

@@ -20,6 +20,22 @@ enum UserRole {
   PARENT
 }
 
+enum AssessmentStatus {
+  DRAFT
+  PUBLISHED
+  ACTIVE
+  CLOSED
+  IN_GRADING
+  GRADED
+  REPORTED
+  ARCHIVED
+}
+
+enum PeriodStatus {
+  ACTIVE
+  CLOSED
+}
+
 enum AssessmentType {
   DIAGNOSTICA
   PROCESO
@@ -272,7 +288,7 @@ model Period {
   startDate      DateTime  @db.Date
   endDate        DateTime  @db.Date
   weight         Float?
-  status         String    @default("ACTIVE")
+  status         PeriodStatus    @default(ACTIVE)
   closedAt       DateTime? @db.Timestamptz()
   closedBy       String?   @db.Uuid
   reopenedAt     DateTime? @db.Timestamptz()
@@ -650,12 +666,59 @@ model QuestionOption {
   sortOrder  Int     @default(0)
 
   question Question @relation(fields: [questionId], references: [id], onDelete: Cascade)
+  answers  StudentAnswer[]
 
   @@index([questionId])
   @@map("question_options")
 }
 
 // ─── EVALUACIONES ────────────────────────────────────
+
+model ImportedTestDraft {
+  id          String    @id @default(uuid()) @db.Uuid
+  courseId    String?   @db.Uuid
+  subjectId   String    @db.Uuid
+  teacherId   String?   @db.Uuid
+  createdBy   String    @db.Uuid
+  fileAssetId String?   @db.Uuid
+  fileName    String
+  fileSize    Int
+  mimeType    String
+  instructions String?
+  rawText     String?
+  status      String    @default("DRAFT")
+  createdAt   DateTime  @default(now()) @db.Timestamptz()
+  updatedAt   DateTime  @updatedAt @db.Timestamptz()
+  committedAt DateTime? @db.Timestamptz()
+
+  questions ImportedTestDraftQuestion[]
+
+  @@index([createdBy, status])
+  @@index([subjectId])
+  @@map("imported_test_drafts")
+}
+
+model ImportedTestDraftQuestion {
+  id            String   @id @default(uuid()) @db.Uuid
+  draftId       String   @db.Uuid
+  number        Int
+  statement     String
+  type          String   @default("MULTIPLE_CHOICE")
+  alternatives  Json
+  correctAnswer String?
+  points        Float    @default(1.0)
+  confidence    Float    @default(0.5)
+  status        String   @default("DRAFT")
+  questionId    String?  @db.Uuid
+  createdAt     DateTime @default(now()) @db.Timestamptz()
+  updatedAt     DateTime @updatedAt @db.Timestamptz()
+
+  draft ImportedTestDraft @relation(fields: [draftId], references: [id], onDelete: Cascade)
+
+  @@unique([draftId, number])
+  @@index([draftId, status])
+  @@map("imported_test_draft_questions")
+}
 
 model Assessment {
   id               String                 @id @default(uuid()) @db.Uuid
@@ -667,7 +730,7 @@ model Assessment {
   description      String?
   assessmentType   AssessmentType
   deliveryMode     AssessmentDeliveryMode @default(ONLINE)
-  status           String                 @default("DRAFT")
+  status           AssessmentStatus       @default(DRAFT)
   semester         Int
   maxScore         Float                  @default(100.0)
   weight           Float?                 @default(0)
@@ -678,6 +741,10 @@ model Assessment {
   allowRetake      Boolean                @default(false)
   shuffleQuestions Boolean                @default(false)
   answerKeyFileId  String?                @db.Uuid
+  sourceFileId     String?                @db.Uuid
+  sourceTemplateId String?                @db.Uuid
+  teacherValidatedAt DateTime?            @db.Timestamptz()
+  teacherValidatedBy String?              @db.Uuid
   publishedAt      DateTime?              @db.Timestamptz()
   closedAt         DateTime?              @db.Timestamptz()
   gradingStartedAt DateTime?              @db.Timestamptz()
@@ -698,7 +765,10 @@ model Assessment {
   learningResources LearningResource[]
 
   @@index([courseId, subjectId, assessmentType])
+  @@index([courseId])
+  @@index([subjectId])
   @@index([status])
+  @@index([courseId, status])
   @@index([isActive, startDate, endDate])
   @@map("assessments")
 }
@@ -719,6 +789,64 @@ model AssessmentQuestion {
 }
 
 // ─── APLICACIÓN ONLINE ───────────────────────────────
+
+model AssessmentTemplate {
+  id            String    @id @default(uuid()) @db.Uuid
+  institutionId String?   @db.Uuid
+  subjectId     String?   @db.Uuid
+  gradeLevel    Int?
+  title         String
+  description   String?
+  status        String    @default("DRAFT")
+  sourceFileId  String?   @db.Uuid
+  fileName      String?
+  mimeType      String?
+  instructions  String?
+  totalPoints   Float     @default(0)
+  createdBy     String    @db.Uuid
+  createdAt     DateTime  @default(now()) @db.Timestamptz()
+  updatedAt     DateTime  @updatedAt @db.Timestamptz()
+  publishedAt   DateTime? @db.Timestamptz()
+
+  questions AssessmentTemplateQuestion[]
+
+  @@index([institutionId, status])
+  @@index([subjectId, gradeLevel])
+  @@map("assessment_templates")
+}
+
+model AssessmentTemplateQuestion {
+  id          String       @id @default(uuid()) @db.Uuid
+  templateId  String       @db.Uuid
+  type        QuestionType
+  sortOrder   Int          @default(0)
+  statement   String
+  points      Float        @default(1.0)
+  explanation String?
+  confidence  Float        @default(0.5)
+  createdAt   DateTime     @default(now()) @db.Timestamptz()
+  updatedAt   DateTime     @updatedAt @db.Timestamptz()
+
+  template AssessmentTemplate         @relation(fields: [templateId], references: [id], onDelete: Cascade)
+  options  AssessmentTemplateOption[]
+
+  @@index([templateId, sortOrder])
+  @@map("assessment_template_questions")
+}
+
+model AssessmentTemplateOption {
+  id         String  @id @default(uuid()) @db.Uuid
+  questionId String  @db.Uuid
+  label      String?
+  text       String
+  isCorrect  Boolean @default(false)
+  sortOrder  Int     @default(0)
+
+  question AssessmentTemplateQuestion @relation(fields: [questionId], references: [id], onDelete: Cascade)
+
+  @@index([questionId])
+  @@map("assessment_template_options")
+}
 
 model AssessmentAttempt {
   id           String        @id @default(uuid()) @db.Uuid
@@ -757,8 +885,12 @@ model StudentAnswer {
 
   attempt  AssessmentAttempt @relation(fields: [attemptId], references: [id], onDelete: Cascade)
   question Question          @relation(fields: [questionId], references: [id])
+  option   QuestionOption?   @relation(fields: [selectedOptionId], references: [id])
 
   @@unique([attemptId, questionId])
+  @@index([attemptId])
+  @@index([questionId])
+  @@index([selectedOptionId])
   @@map("student_answers")
 }
 
@@ -783,6 +915,7 @@ model Grade {
   changeRequests GradeChangeRequest[]
 
   @@unique([assessmentId, studentId])
+  @@index([assessmentId])
   @@index([studentId])
   @@map("grades")
 }
@@ -897,17 +1030,45 @@ model ImportJob {
 }
 
 model ExportJob {
-  id          String    @id @default(uuid()) @db.Uuid
-  entityType  String
-  format      String
-  filters     Json?
-  status      String    @default("PENDING")
-  fileUrl     String?
-  actorId     String?   @db.Uuid
-  createdAt   DateTime  @default(now()) @db.Timestamptz()
-  completedAt DateTime? @db.Timestamptz()
+  id            String    @id @default(uuid()) @db.Uuid
+  entityType    String
+  format        String
+  filters       Json?
+  status        String    @default("PENDING")
+  bullJobId     String?   @map("bull_job_id")
+  institutionId String?   @db.Uuid @map("institution_id")
+  fileUrl       String?
+  errorMessage  String?   @map("error_message")
+  rowCount      Int?      @map("row_count")
+  actorId       String?   @db.Uuid
+  createdAt     DateTime  @default(now()) @db.Timestamptz()
+  completedAt   DateTime? @db.Timestamptz()
 
+  @@index([bullJobId])
+  @@index([actorId, status])
   @@map("export_jobs")
+}
+
+model BackgroundJob {
+  id            String    @id @default(uuid()) @db.Uuid
+  jobType       String    @map("job_type")
+  queueName     String    @map("queue_name")
+  bullJobId     String?   @map("bull_job_id")
+  status        String    @default("PENDING")
+  payload       Json?
+  result        Json?
+  errorMessage  String?   @map("error_message")
+  requestedById String?   @db.Uuid @map("requested_by_id")
+  institutionId String?   @db.Uuid @map("institution_id")
+  createdAt     DateTime  @default(now()) @db.Timestamptz() @map("created_at")
+  updatedAt     DateTime  @updatedAt @db.Timestamptz() @map("updated_at")
+  completedAt   DateTime? @db.Timestamptz() @map("completed_at")
+  failedAt      DateTime? @db.Timestamptz() @map("failed_at")
+
+  @@index([jobType, status])
+  @@index([bullJobId])
+  @@index([requestedById])
+  @@map("background_jobs")
 }
 
 // ─── AUDITORÍA ───────────────────────────────────────
@@ -982,6 +1143,9 @@ model FileAsset {
   mimeType     String
   size         Int
   storagePath  String
+  storageProvider String @default("local")
+  bucket       String?
+  objectKey    String?
   url          String?
   createdBy    String?   @db.Uuid
   createdAt    DateTime  @default(now()) @db.Timestamptz()
@@ -992,6 +1156,8 @@ model FileAsset {
   simceAssessments  SimceAssessment[]
 
   @@index([entityType, entityId])
+  @@index([storageProvider])
+  @@index([bucket, objectKey])
   @@map("file_assets")
 }
 
@@ -1244,6 +1410,8 @@ model SimceAssessment {
   responses    SimceStudentResponse[]
 
   @@index([courseId, subjectId])
+  @@index([courseId, status])
+  @@index([subjectId, status])
   @@index([teacherId, status])
   @@index([status])
   @@index([academicYearId])
@@ -1270,6 +1438,9 @@ model SimceAnswerKey {
 
   @@unique([assessmentId, questionNumber])
   @@index([assessmentId])
+  @@index([axisId])
+  @@index([skillId])
+  @@index([oaId])
   @@map("simce_answer_keys")
 }
 
@@ -1289,6 +1460,31 @@ model SimceStudentResponse {
 
   @@unique([assessmentId, studentId, questionNumber])
   @@index([assessmentId, studentId])
+  @@index([assessmentId, questionNumber])
   @@index([assessmentId])
+  @@index([studentId])
   @@map("simce_student_responses")
+}
+model ArchiveRecord {
+  id             String    @id @default(uuid()) @db.Uuid
+  scopeKey       String    @unique @map("scope_key")
+  institutionId  String?   @db.Uuid @map("institution_id")
+  cutoffDate     DateTime  @db.Timestamptz() @map("cutoff_date")
+  semester       Int?
+  status         String    @default("PENDING")
+  storagePath    String?   @map("storage_path")
+  checksum       String?
+  recordCounts   Json?     @map("record_counts")
+  retentionUntil DateTime  @db.Timestamptz() @map("retention_until")
+  requestedById  String?   @db.Uuid @map("requested_by_id")
+  archivedAt     DateTime? @db.Timestamptz() @map("archived_at")
+  restoredAt     DateTime? @db.Timestamptz() @map("restored_at")
+  errorMessage   String?   @map("error_message")
+  createdAt      DateTime  @default(now()) @db.Timestamptz() @map("created_at")
+  updatedAt      DateTime  @updatedAt @db.Timestamptz() @map("updated_at")
+
+  @@index([status, cutoffDate])
+  @@index([institutionId, archivedAt])
+  @@index([retentionUntil])
+  @@map("archive_records")
 }

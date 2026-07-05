@@ -1,7 +1,7 @@
 import {
-  Controller, Get, Post, Body, Param, HttpCode, HttpStatus, UseGuards, ParseUUIDPipe,
+  Controller, Get, Post, Body, Param, Query, HttpCode, HttpStatus, UseGuards, ParseUUIDPipe,
 } from "@nestjs/common";
-import { ApiTags, ApiOperation, ApiBearerAuth } from "@nestjs/swagger";
+import { ApiTags, ApiOperation, ApiBearerAuth, ApiQuery } from "@nestjs/swagger";
 import { AttemptsService } from "./attempts.service.js";
 import { SaveAnswersDto, SubmitAttemptDto } from "./dto/answer.dto.js";
 import { JwtAuthGuard } from "../../auth/jwt-auth.guard.js";
@@ -60,20 +60,31 @@ export class AttemptsController {
   @Get("student/:studentId")
   @Roles("STUDENT", "TEACHER", "ADMIN", "SUPER_ADMIN", "DIRECTION", "UTP")
   @ApiOperation({ summary: "Listar intentos de un estudiante" })
-  listByStudent(@Param("studentId", ParseUUIDPipe) studentId: string, @CurrentUser() user: JwtPayload) {
-    return this.service.listByStudent(studentId, user.sub);
+  @ApiQuery({ name: "page", required: false, type: Number })
+  @ApiQuery({ name: "limit", required: false, type: Number, schema: { minimum: 1, maximum: 100 } })
+  listByStudent(
+    @Param("studentId", ParseUUIDPipe) studentId: string,
+    @CurrentUser() user: JwtPayload,
+    @Query("page") page?: string,
+    @Query("limit") limit?: string,
+  ) {
+    return this.service.listByStudent(studentId, user.sub, Number(page ?? 1), Number(limit ?? 20));
   }
 
   // ─── TEACHER ─────────────────────────────────────────
 
   @Get("assessment/:assessmentId")
   @Roles("TEACHER", "ADMIN", "SUPER_ADMIN", "DIRECTION", "UTP")
-  @ApiOperation({ summary: "Listar intentos de una evaluación (profesor)" })
+  @ApiOperation({ summary: "Listar intentos de una evaluacion (profesor)" })
+  @ApiQuery({ name: "page", required: false, type: Number })
+  @ApiQuery({ name: "limit", required: false, type: Number, schema: { minimum: 1, maximum: 100 } })
   listByAssessment(
     @Param("assessmentId", ParseUUIDPipe) assessmentId: string,
     @CurrentUser() user: JwtPayload,
+    @Query("page") page?: string,
+    @Query("limit") limit?: string,
   ) {
-    return this.service.listByAssessment(assessmentId, user.sub);
+    return this.service.listByAssessment(assessmentId, user.sub, Number(page ?? 1), Number(limit ?? 100));
   }
 
   @Post("assessment/:assessmentId/force-close")

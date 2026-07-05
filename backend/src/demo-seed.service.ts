@@ -1,5 +1,5 @@
 import { Inject, Injectable, Logger, OnApplicationBootstrap } from "@nestjs/common";
-import bcrypt from "bcryptjs";
+import bcrypt from "bcrypt";
 import type { UserRole } from "@prisma/client";
 import { PrismaService } from "./modules/prisma/prisma.service.js";
 import type { AppConfig } from "./config/config.module.js";
@@ -92,7 +92,7 @@ export class DemoSeedService implements OnApplicationBootstrap {
           institutionId: demoUser.needsInstitution ? institution.id : null,
           isActive: true,
           deletedAt: null,
-          mustChangePassword: false,
+          mustChangePassword: true,
         },
         create: {
           email: demoUser.email,
@@ -102,7 +102,7 @@ export class DemoSeedService implements OnApplicationBootstrap {
           role: demoUser.role,
           institutionId: demoUser.needsInstitution ? institution.id : null,
           isActive: true,
-          mustChangePassword: false,
+          mustChangePassword: true,
         },
       });
 

@@ -1,0 +1,17 @@
+{
+  "annotations": { "list": [] },
+  "editable": true,
+  "panels": [
+    { "type": "stat", "title": "PostgreSQL", "targets": [{ "expr": "cordillera_database_up", "legendFormat": "Disponible" }], "gridPos": { "h": 4, "w": 6, "x": 0, "y": 0 } },
+    { "type": "stat", "title": "Latencia API p95", "targets": [{ "expr": "histogram_quantile(0.95, sum by (le) (rate(cordillera_http_request_duration_seconds_bucket[5m])))", "legendFormat": "p95" }], "fieldConfig": { "defaults": { "unit": "s" }, "overrides": [] }, "gridPos": { "h": 4, "w": 6, "x": 6, "y": 0 } },
+    { "type": "stat", "title": "Errores 5xx / segundo", "targets": [{ "expr": "sum(rate(cordillera_http_requests_total{status_code=~\"5..\"}[5m]))", "legendFormat": "5xx" }], "gridPos": { "h": 4, "w": 6, "x": 12, "y": 0 } },
+    { "type": "stat", "title": "Memoria RSS", "targets": [{ "expr": "cordillera_node_process_resident_memory_bytes", "legendFormat": "API" }], "fieldConfig": { "defaults": { "unit": "bytes" }, "overrides": [] }, "gridPos": { "h": 4, "w": 6, "x": 18, "y": 0 } },
+    { "type": "timeseries", "title": "Solicitudes HTTP por ruta", "targets": [{ "expr": "sum by (method, route) (rate(cordillera_http_requests_total[5m]))", "legendFormat": "{{method}} {{route}}" }], "gridPos": { "h": 8, "w": 12, "x": 0, "y": 4 } },
+    { "type": "timeseries", "title": "Jobs BullMQ", "targets": [{ "expr": "sum by (queue, state) (cordillera_bullmq_jobs)", "legendFormat": "{{queue}} {{state}}" }], "gridPos": { "h": 8, "w": 12, "x": 12, "y": 4 } },
+    { "type": "timeseries", "title": "Workers por cola", "targets": [{ "expr": "cordillera_bullmq_workers", "legendFormat": "{{queue}}" }], "gridPos": { "h": 7, "w": 12, "x": 0, "y": 12 } },
+    { "type": "timeseries", "title": "Latencia PostgreSQL", "targets": [{ "expr": "cordillera_database_healthcheck_duration_seconds", "legendFormat": "healthcheck" }], "fieldConfig": { "defaults": { "unit": "s" }, "overrides": [] }, "gridPos": { "h": 7, "w": 12, "x": 12, "y": 12 } }
+  ],
+  "refresh": "15s", "schemaVersion": 39, "tags": ["cordillera", "api", "bullmq"],
+  "templating": { "list": [] }, "time": { "from": "now-1h", "to": "now" }, "timezone": "browser",
+  "title": "Cordillera - Observabilidad", "uid": "cordillera-overview", "version": 1
+}

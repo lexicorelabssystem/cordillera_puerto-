@@ -36,6 +36,9 @@ export default tseslint.config(
       ...reactHooks.configs.recommended.rules,
       "react/react-in-jsx-scope": "off",
       "react/prop-types": "off",
+      "react/no-unescaped-entities": "warn",
+      "react-hooks/set-state-in-effect": "warn",
+      "react-hooks/preserve-manual-memoization": "warn",
     },
   },
 
@@ -43,6 +46,40 @@ export default tseslint.config(
     files: ["backend/**/*.ts"],
     languageOptions: {
       globals: { ...globals.node },
+    },
+  },
+
+  {
+    files: ["**/*.mjs"],
+    languageOptions: {
+      globals: { ...globals.node },
+    },
+  },
+
+  {
+    files: ["frontend/public/**/*.js"],
+    languageOptions: {
+      globals: { ...globals.browser, ...globals.serviceworker },
+    },
+  },
+
+  {
+    files: ["scripts/load/**/*.js"],
+    languageOptions: {
+      globals: {
+        __ENV: "readonly",
+        __VU: "readonly",
+        __ITER: "readonly",
+        open: "readonly",
+      },
+    },
+  },
+
+  {
+    rules: {
+      "no-case-declarations": "warn",
+      "no-useless-escape": "warn",
+      "@typescript-eslint/no-unused-expressions": "warn",
     },
   },
 

@@ -272,4 +272,4 @@ Niveles de desempeño:
 - [x] Lector de hojas de respuesta (OMR) — `frontend/src/lib/omr.ts` + `OMRReader`
 - [x] Notificaciones por email — 7 tipos de notificación HTML
 - [x] Redis para caché y sesiones distribuidas — CacheModule con fallback in-memory
-- [x] Tests unitarios y e2e — 288 tests (168 backend + 120 frontend) + e2e smoke test
+- [x] Tests unitarios y e2e — 328 tests (223 backend + 105 frontend) + e2e smoke test

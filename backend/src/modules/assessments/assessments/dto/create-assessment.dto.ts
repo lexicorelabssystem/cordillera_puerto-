@@ -1,8 +1,9 @@
 import { ApiProperty, ApiPropertyOptional } from "@nestjs/swagger";
 import {
   IsString, IsUUID, IsInt, IsOptional, IsEnum, IsBoolean, IsDateString,
-  IsNumber, IsArray, Min, Max, MinLength,
+  IsNumber, IsArray, Min, Max, MinLength, IsIn, ValidateNested,
 } from "class-validator";
+import { Type } from "class-transformer";
 import { AssessmentType, AssessmentDeliveryMode } from "@prisma/client";
 
 export class AssessmentItemDto {
@@ -168,4 +169,50 @@ export class ReorderItemsDto {
   @IsArray()
   @IsUUID("4", { each: true })
   itemIds!: string[];
+}
+
+export class UpdateAssessmentQuestionOptionDto {
+  @IsOptional()
+  @IsUUID()
+  id?: string;
+
+  @IsString()
+  text!: string;
+
+  @IsBoolean()
+  isCorrect!: boolean;
+
+  @IsOptional()
+  @IsInt()
+  @Min(0)
+  sortOrder?: number;
+}
+
+export class UpdateAssessmentQuestionDto {
+  @IsIn(["MULTIPLE_CHOICE", "TRUE_FALSE", "SHORT_ANSWER", "ESSAY"])
+  type!: "MULTIPLE_CHOICE" | "TRUE_FALSE" | "SHORT_ANSWER" | "ESSAY";
+
+  @IsString()
+  @MinLength(3)
+  statement!: string;
+
+  @IsNumber()
+  @Min(0.1)
+  @Max(100)
+  points!: number;
+
+  @IsOptional()
+  @IsString()
+  explanation?: string | null;
+
+  @IsOptional()
+  @IsInt()
+  @Min(0)
+  sortOrder?: number;
+
+  @IsOptional()
+  @IsArray()
+  @ValidateNested({ each: true })
+  @Type(() => UpdateAssessmentQuestionOptionDto)
+  options?: UpdateAssessmentQuestionOptionDto[];
 }

@@ -9,7 +9,7 @@
  */
 
 import { PrismaClient } from "@prisma/client";
-import bcrypt from "bcryptjs";
+import bcrypt from "bcrypt";
 import "dotenv/config";
 
 const prisma = new PrismaClient();
@@ -133,7 +133,12 @@ function answerPattern(studentIndex: number, questionIndex: number, assessmentIn
   return (studentIndex + questionIndex + assessmentIndex) % 4 !== 0;
 }
 
-async function findOrCreateQuestion(subjectId: string, createdBy: string, assessmentTitle: string, questionIndex: number) {
+async function findOrCreateQuestion(
+  subjectId: string,
+  createdBy: string,
+  assessmentTitle: string,
+  questionIndex: number,
+) {
   const statement = `${DEMO_MARKER} | ${assessmentTitle} | Pregunta ${questionIndex + 1}`;
   const existing = await prisma.question.findFirst({
     where: { subjectId, statement },
@@ -199,7 +204,8 @@ async function main() {
     where: { role: { in: ["SUPER_ADMIN", "ADMIN", "UTP", "TEACHER"] } },
     orderBy: { createdAt: "asc" },
   });
-  if (!recorder) throw new Error("No encontre un usuario administrativo/docente para registrar datos.");
+  if (!recorder)
+    throw new Error("No encontre un usuario administrativo/docente para registrar datos.");
 
   const period = await prisma.period.findFirst({
     where: { status: { in: ["OPEN", "ACTIVE"] } },
@@ -222,7 +228,9 @@ async function main() {
   const allStudents = await prisma.student.findMany({
     select: { id: true, userId: true, firstName: true },
   });
-  const nonAlexis = allStudents.filter((student) => student.firstName.trim().toLowerCase() !== "alexis");
+  const nonAlexis = allStudents.filter(
+    (student) => student.firstName.trim().toLowerCase() !== "alexis",
+  );
   const nonAlexisStudentIds = nonAlexis.map((student) => student.id);
   const nonAlexisUserIds = nonAlexis.map((student) => student.userId).filter(Boolean) as string[];
 
@@ -232,10 +240,15 @@ async function main() {
   console.log(`Meta de alumnos por curso: ${STUDENTS_PER_COURSE}`);
 
   if (DRY_RUN) {
-    const assignments = courses.reduce((total, course) => total + course.teacherAssignments.length, 0);
+    const assignments = courses.reduce(
+      (total, course) => total + course.teacherAssignments.length,
+      0,
+    );
     console.log(`Asignaciones docente/asignatura disponibles: ${assignments}`);
     console.log(`Se generarian hasta ${courses.length * STUDENTS_PER_COURSE} matriculas activas.`);
-    console.log(`Se generarian evaluaciones, notas, intentos online, asistencia, observaciones, libro, reportes e import/export.`);
+    console.log(
+      `Se generarian evaluaciones, notas, intentos online, asistencia, observaciones, libro, reportes e import/export.`,
+    );
     return;
   }
 
@@ -262,7 +275,9 @@ async function main() {
       orderBy: { student: { lastName: "asc" } },
     });
 
-    const hasAlexis = roster.some((enrollment) => enrollment.student.firstName.trim().toLowerCase() === "alexis");
+    const hasAlexis = roster.some(
+      (enrollment) => enrollment.student.firstName.trim().toLowerCase() === "alexis",
+    );
     if (!hasAlexis) {
       const email = `alexis.${slug(course.name)}@demo.cordillera.cl`;
       const user = await prisma.user.upsert({
@@ -390,11 +405,23 @@ async function main() {
 
       const questions = [];
       for (let questionIndex = 0; questionIndex < 4; questionIndex++) {
-        const question = await findOrCreateQuestion(assignment.subjectId, recorder.id, title, questionIndex);
+        const question = await findOrCreateQuestion(
+          assignment.subjectId,
+          recorder.id,
+          title,
+          questionIndex,
+        );
         questions.push(question);
         await prisma.assessmentQuestion.upsert({
-          where: { assessmentId_questionId: { assessmentId: assessment.id, questionId: question.id } },
-          create: { assessmentId: assessment.id, questionId: question.id, sortOrder: questionIndex + 1, points: 1 },
+          where: {
+            assessmentId_questionId: { assessmentId: assessment.id, questionId: question.id },
+          },
+          create: {
+            assessmentId: assessment.id,
+            questionId: question.id,
+            sortOrder: questionIndex + 1,
+            points: 1,
+          },
           update: { sortOrder: questionIndex + 1, points: 1 },
         });
       }
@@ -426,7 +453,9 @@ async function main() {
         if (student.userId && studentIndex < 12 && assessmentIndex === 0) {
           let correctCount = 0;
           const attempt = await prisma.assessmentAttempt.upsert({
-            where: { assessmentId_studentId: { assessmentId: assessment.id, studentId: student.id } },
+            where: {
+              assessmentId_studentId: { assessmentId: assessment.id, studentId: student.id },
+            },
             create: {
               assessmentId: assessment.id,
               studentId: student.id,
@@ -475,7 +504,10 @@ async function main() {
 
           await prisma.assessmentAttempt.update({
             where: { id: attempt.id },
-            data: { totalScore: correctCount, percentage: Math.round((correctCount / questions.length) * 100) },
+            data: {
+              totalScore: correctCount,
+              percentage: Math.round((correctCount / questions.length) * 100),
+            },
           });
         }
       }
@@ -492,7 +524,13 @@ async function main() {
               ? "LATE"
               : "PRESENT";
         await prisma.attendance.upsert({
-          where: { studentId_courseId_date: { studentId: student.id, courseId: course.id, date: attendanceDate } },
+          where: {
+            studentId_courseId_date: {
+              studentId: student.id,
+              courseId: course.id,
+              date: attendanceDate,
+            },
+          },
           create: {
             studentId: student.id,
             courseId: course.id,

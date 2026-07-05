@@ -229,7 +229,7 @@ export class RemedialPlansService {
     const assessments = await this.prisma.assessment.findMany({
       where: {
         courseId,
-        status: { in: ["GRADED", "REPORTED"] },
+        status: { in: ["GRADED", "REPORTED"] as any },
         ...(subjectId ? { subjectId } : {}),
       },
       include: {

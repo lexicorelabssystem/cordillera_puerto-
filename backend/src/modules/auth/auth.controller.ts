@@ -15,7 +15,13 @@ import { Throttle } from "@nestjs/throttler";
 import { ApiTags, ApiOperation, ApiResponse, ApiBearerAuth, ApiBody } from "@nestjs/swagger";
 import type { FastifyRequest, FastifyReply } from "fastify";
 import { AuthService } from "./auth.service.js";
-import { LoginDto, ChangePasswordDto, RefreshTokenDto, LoginResponseDto, UpdateProfileDto } from "./dto/login.dto.js";
+import {
+  LoginDto,
+  ChangePasswordDto,
+  RefreshTokenDto,
+  LoginResponseDto,
+  UpdateProfileDto,
+} from "./dto/login.dto.js";
 import { JwtAuthGuard } from "./jwt-auth.guard.js";
 import { Public } from "../../common/decorators/public.decorator.js";
 import { CurrentUser, JwtPayload } from "../../common/decorators/current-user.decorator.js";
@@ -28,8 +34,11 @@ export class AuthController {
   @Public()
   @Post("login")
   @HttpCode(HttpStatus.OK)
-  @Throttle({ default: { limit: 5, ttl: 60_000 } })
-  @ApiOperation({ summary: "Iniciar sesión", description: "Autentica un usuario y establece cookies JWT httpOnly." })
+  @Throttle({ default: { limit: 100, ttl: 60_000 } })
+  @ApiOperation({
+    summary: "Iniciar sesión",
+    description: "Autentica un usuario y establece cookies JWT httpOnly.",
+  })
   @ApiBody({ type: LoginDto })
   @ApiResponse({ status: 200, description: "Login exitoso", type: LoginResponseDto })
   @ApiResponse({ status: 401, description: "Credenciales inválidas" })
@@ -42,14 +51,17 @@ export class AuthController {
   ) {
     const result = await this.authService.login(dto.email, dto.password);
     this.setAuthCookies(reply, result.token, result.refreshToken);
-    return result;
+    return this.toPublicAuthResponse(result);
   }
 
   @Public()
   @Post("refresh")
   @HttpCode(HttpStatus.OK)
   @Throttle({ default: { limit: 10, ttl: 60_000 } })
-  @ApiOperation({ summary: "Renovar access token", description: "Usa el refresh token de cookie o body para obtener nuevos tokens." })
+  @ApiOperation({
+    summary: "Renovar access token",
+    description: "Usa el refresh token de cookie o body para obtener nuevos tokens.",
+  })
   @ApiBody({ type: RefreshTokenDto, required: false })
   @ApiResponse({ status: 200, description: "Token renovado", type: LoginResponseDto })
   @ApiResponse({ status: 401, description: "Refresh token inválido o expirado" })
@@ -64,14 +76,17 @@ export class AuthController {
     }
     const result = await this.authService.refreshAccessToken(refreshToken);
     this.setAuthCookies(reply, result.token, result.refreshToken);
-    return result;
+    return this.toPublicAuthResponse(result);
   }
 
   @Get("me")
   @HttpCode(HttpStatus.OK)
   @UseGuards(JwtAuthGuard)
   @ApiBearerAuth("access-token")
-  @ApiOperation({ summary: "Validar sesión", description: "Retorna los datos del usuario autenticado." })
+  @ApiOperation({
+    summary: "Validar sesión",
+    description: "Retorna los datos del usuario autenticado.",
+  })
   @ApiResponse({ status: 200, description: "Sesión válida" })
   @ApiResponse({ status: 401, description: "Token inválido o expirado" })
   async me(@CurrentUser() user: JwtPayload) {
@@ -82,7 +97,10 @@ export class AuthController {
   @HttpCode(HttpStatus.OK)
   @UseGuards(JwtAuthGuard)
   @ApiBearerAuth("access-token")
-  @ApiOperation({ summary: "Actualizar perfil propio", description: "Permite editar nombre y apellido del usuario autenticado." })
+  @ApiOperation({
+    summary: "Actualizar perfil propio",
+    description: "Permite editar nombre y apellido del usuario autenticado.",
+  })
   @ApiBody({ type: UpdateProfileDto })
   @ApiResponse({ status: 200, description: "Perfil actualizado", type: LoginResponseDto })
   async updateProfile(
@@ -92,7 +110,7 @@ export class AuthController {
   ) {
     const result = await this.authService.updateProfile(user.sub, dto.firstName, dto.lastName);
     this.setAuthCookies(reply, result.token, result.refreshToken);
-    return result;
+    return this.toPublicAuthResponse(result);
   }
 
   @Post("change-password")
@@ -100,30 +118,41 @@ export class AuthController {
   @UseGuards(JwtAuthGuard)
   @Throttle({ default: { limit: 5, ttl: 60_000 } })
   @ApiBearerAuth("access-token")
-  @ApiOperation({ summary: "Cambiar contraseña", description: "Cambia la contraseña del usuario autenticado." })
+  @ApiOperation({
+    summary: "Cambiar contraseña",
+    description: "Cambia la contraseña del usuario autenticado.",
+  })
   @ApiBody({ type: ChangePasswordDto })
-  @ApiResponse({ status: 200, description: "Contraseña cambiada exitosamente", type: LoginResponseDto })
+  @ApiResponse({
+    status: 200,
+    description: "Contraseña cambiada exitosamente",
+    type: LoginResponseDto,
+  })
   @ApiResponse({ status: 400, description: "Datos inválidos o política incumplida" })
   async changePassword(
     @CurrentUser() user: JwtPayload,
     @Body() dto: ChangePasswordDto,
     @Res({ passthrough: true }) reply: FastifyReply,
   ) {
-    const result = await this.authService.changePassword(user.sub, dto.currentPassword, dto.newPassword);
+    const result = await this.authService.changePassword(
+      user.sub,
+      dto.currentPassword,
+      dto.newPassword,
+    );
     this.setAuthCookies(reply, result.token, result.refreshToken);
-    return result;
+    return this.toPublicAuthResponse(result);
   }
 
   @Post("logout")
   @HttpCode(HttpStatus.NO_CONTENT)
   @UseGuards(JwtAuthGuard)
   @ApiBearerAuth("access-token")
-  @ApiOperation({ summary: "Cerrar sesión", description: "Revoca todos los refresh tokens y elimina cookies." })
+  @ApiOperation({
+    summary: "Cerrar sesión",
+    description: "Revoca todos los refresh tokens y elimina cookies.",
+  })
   @ApiResponse({ status: 204, description: "Sesión cerrada" })
-  async logout(
-    @CurrentUser() user: JwtPayload,
-    @Res({ passthrough: true }) reply: FastifyReply,
-  ) {
+  async logout(@CurrentUser() user: JwtPayload, @Res({ passthrough: true }) reply: FastifyReply) {
     await this.authService.logout(user.sub);
     this.clearAuthCookies(reply);
   }
@@ -144,6 +173,21 @@ export class AuthController {
   @ApiOperation({ summary: "Restablecer contraseña con token" })
   async resetPassword(@Body() dto: { token: string; newPassword: string }) {
     return this.authService.resetPassword(dto.token, dto.newPassword);
+  }
+
+  private toPublicAuthResponse(result: {
+    token: string;
+    refreshToken: string;
+    user: {
+      sub: string;
+      role: string;
+      name: string;
+      email: string;
+      institutionId?: string | null;
+      mustChangePassword?: boolean;
+    };
+  }) {
+    return { token: result.token, user: result.user };
   }
 
   private setAuthCookies(reply: FastifyReply, accessToken: string, refreshToken: string) {

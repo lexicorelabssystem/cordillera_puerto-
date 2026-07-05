@@ -6,7 +6,7 @@ import type { JwtPayload } from "../../common/decorators/current-user.decorator.
 
 describe("RolesGuard", () => {
   let guard: RolesGuard;
-  let reflector: jest.Mocked<Pick<Reflector, 'getAllAndOverride'>>;
+  let reflector: jest.Mocked<Pick<Reflector, "getAllAndOverride">>;
 
   function mockContext(user?: JwtPayload | null): ExecutionContext {
     return {
@@ -25,43 +25,35 @@ describe("RolesGuard", () => {
     guard = new RolesGuard(reflector as unknown as Reflector);
   });
 
-  it("debe permitir si no hay roles requeridos", () => {
+  it("debe permitir si no hay roles requeridos", async () => {
     const ctx = mockContext({ sub: "u1", role: "TEACHER", email: "t@t.cl", name: "T" });
-
-    expect(guard.canActivate(ctx)).toBe(true);
+    await expect(guard.canActivate(ctx)).resolves.toBe(true);
   });
 
-  it("debe permitir si el rol del usuario esta en los requeridos", () => {
+  it("debe permitir si el rol del usuario esta en los requeridos", async () => {
     reflector.getAllAndOverride.mockReturnValue(["ADMIN", "DIRECTION"]);
     const ctx = mockContext({ sub: "u1", role: "ADMIN", email: "a@a.cl", name: "A" });
-
-    expect(guard.canActivate(ctx)).toBe(true);
+    await expect(guard.canActivate(ctx)).resolves.toBe(true);
   });
 
-  it("debe lanzar ForbiddenException si el rol no esta en los requeridos", () => {
+  it("debe lanzar ForbiddenException si el rol no esta en los requeridos", async () => {
     reflector.getAllAndOverride.mockReturnValue(["SUPER_ADMIN"]);
     const ctx = mockContext({ sub: "u1", role: "TEACHER", email: "t@t.cl", name: "T" });
-
-    expect(() => guard.canActivate(ctx)).toThrow(ForbiddenException);
+    await expect(guard.canActivate(ctx)).rejects.toThrow(ForbiddenException);
   });
 
-  it("debe lanzar ForbiddenException si no hay usuario autenticado", () => {
+  it("debe lanzar ForbiddenException si no hay usuario autenticado", async () => {
     reflector.getAllAndOverride.mockReturnValue(["ADMIN"]);
     const ctx = mockContext(null);
-
-    expect(() => guard.canActivate(ctx)).toThrow(ForbiddenException);
+    await expect(guard.canActivate(ctx)).rejects.toThrow(ForbiddenException);
   });
 
-  it("debe mostrar mensaje con roles requeridos y rol actual", () => {
+  it("debe mostrar mensaje con roles requeridos y rol actual", async () => {
     reflector.getAllAndOverride.mockReturnValue(["SUPER_ADMIN", "ADMIN"]);
     const ctx = mockContext({ sub: "u1", role: "STUDENT", email: "s@t.cl", name: "S" });
 
-    try {
-      guard.canActivate(ctx);
-    } catch (e) {
-      const ex = e as ForbiddenException;
-      expect(ex.message).toContain("SUPER_ADMIN, ADMIN");
-      expect(ex.message).toContain("STUDENT");
-    }
+    await expect(guard.canActivate(ctx)).rejects.toThrow(
+      expect.objectContaining({ message: expect.stringContaining("SUPER_ADMIN, ADMIN") }),
+    );
   });
 });

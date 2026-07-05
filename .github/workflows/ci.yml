@@ -1,0 +1,37 @@
+name: CI
+
+on:
+  push:
+    branches: [main, coolify-deploy-test, develop]
+  pull_request:
+    branches: [main]
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  validate:
+    name: Lint · TypeCheck · Build · Test
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+
+      - run: npm ci
+
+      - run: npx prisma generate
+        working-directory: backend
+
+      - run: npm run lint
+      - run: npm run typecheck
+      - run: npm run build
+
+      - run: npm --workspace backend run test
+      - run: npm --workspace frontend run test

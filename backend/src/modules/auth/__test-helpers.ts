@@ -12,6 +12,7 @@ export function mockConfig(overrides: Partial<AppConfig> = {}): AppConfig {
     jwtAccessExpiresIn: "15m",
     jwtRefreshExpiresIn: "7d",
     corsOrigins: ["http://localhost:5173"],
+    frontendUrl: "http://localhost:5173",
     bcryptRounds: 4,
     enableDemoSeed: false,
     smtp: {
@@ -23,6 +24,17 @@ export function mockConfig(overrides: Partial<AppConfig> = {}): AppConfig {
     },
     notificationsEnabled: false,
     redisUrl: undefined,
+    storage: {
+      driver: "local",
+      endpoint: "localhost",
+      port: 9000,
+      useSSL: false,
+      accessKey: "test",
+      secretKey: "test-secret",
+      documentsBucket: "test-documents",
+      tempBucket: "test-temp",
+      archivesBucket: "test-archives",
+    },
     ...overrides,
   };
 }

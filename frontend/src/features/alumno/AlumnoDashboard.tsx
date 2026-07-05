@@ -1,6 +1,7 @@
-import { useQuery } from "@tanstack/react-query";
-import { useState } from "react";
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { useEffect, useState } from "react";
 import type { CSSProperties } from "react";
+import { Link } from "react-router-dom";
 import { ShellLayout } from "../../components/common/ShellLayout";
 import { KpiCard } from "../../components/common/KpiCard";
 import { LoadingSpinner } from "../../components/common/LoadingSpinner";
@@ -9,6 +10,28 @@ import { SimcePdfViewer } from "../../pages/admin/simce/SimcePdfViewer";
 import { api } from "../../lib/api";
 import type { AuthUser } from "../../types/api";
 
+function downloadStudentBlob(blob: Blob, fileName: string) {
+  const url = URL.createObjectURL(blob);
+  const link = document.createElement("a");
+  link.href = url;
+  link.download = fileName;
+  document.body.appendChild(link);
+  link.click();
+  link.remove();
+  URL.revokeObjectURL(url);
+}
+
+async function openStudentFile(fileName: string) {
+  const blob = await api.downloadFileBlob(fileName, "view");
+  const url = URL.createObjectURL(blob);
+  window.open(url, "_blank", "noopener,noreferrer");
+  window.setTimeout(() => URL.revokeObjectURL(url), 60_000);
+}
+
+async function downloadStudentFile(fileName: string, originalName: string) {
+  const blob = await api.downloadFileBlob(fileName, "download");
+  downloadStudentBlob(blob, originalName || fileName);
+}
 interface Props {
   user: AuthUser;
   onLogout: () => void;
@@ -18,9 +41,9 @@ export function AlumnoDashboard({ user, onLogout }: Props) {
   const portalQuery = useQuery({
     queryKey: ["student-portal"],
     queryFn: api.studentPortal,
-    staleTime: 0,
-    refetchInterval: 30000,
-    refetchOnWindowFocus: true,
+    staleTime: 60000,
+    refetchInterval: false,
+    refetchOnWindowFocus: false,
   });
   const portal = portalQuery.data;
 
@@ -131,6 +154,7 @@ export function AlumnoDashboard({ user, onLogout }: Props) {
                   <th>Profesor</th>
                   <th>Estado</th>
                   <th>Nota</th>
+                  <th>Accion</th>
                 </tr>
               </thead>
               <tbody>
@@ -142,6 +166,15 @@ export function AlumnoDashboard({ user, onLogout }: Props) {
                     <td>{row.teacher}</td>
                     <td><span className="badge badge--role">{row.status}</span></td>
                     <td>{row.grade ?? "Pendiente"}</td>
+                    <td>
+                      {row.raw_status === "ACTIVE" && !row.grade ? (
+                        <Link className="btn-small" to={`/student/evaluaciones/${row.assessment_id}`}>
+                          Responder
+                        </Link>
+                      ) : (
+                        <span style={{ color: "var(--muted)", fontSize: ".82rem" }}>-</span>
+                      )}
+                    </td>
                   </tr>
                 ))}
               </tbody>
@@ -169,12 +202,12 @@ export function AlumnoDashboard({ user, onLogout }: Props) {
                     {material.files.map((file) => (
                       <div key={file.id} style={{ display: "flex", flexWrap: "wrap", gap: 8, alignItems: "center" }}>
                         <span style={{ color: "var(--muted)", fontSize: ".82rem" }}>{file.originalName}</span>
-                        <a className="btn-small" href={file.viewUrl} target="_blank" rel="noreferrer">
+                        <button className="btn-small" type="button" onClick={() => openStudentFile(file.fileName).catch(() => alert("No se pudo abrir el archivo."))}>
                           Abrir
-                        </a>
-                        <a className="btn-small" href={file.downloadUrl} download>
+                        </button>
+                        <button className="btn-small" type="button" onClick={() => downloadStudentFile(file.fileName, file.originalName).catch(() => alert("No se pudo descargar el archivo."))}>
                           Descargar
-                        </a>
+                        </button>
                       </div>
                     ))}
                   </div>
@@ -423,6 +456,42 @@ interface SimceEssayRow {
   pdfFile: { id: string; originalName: string; fileName: string } | null;
 }
 
+interface StudentSimceEssayDetail {
+  assessment: {
+    id: string;
+    title: string;
+    date: string;
+    description: string | null;
+    status: string;
+    course: { id: string; name: string; gradeLevel: number };
+    subject: { id: string; name: string };
+    teacher: string;
+    pdfFile: { id: string; originalName: string; fileName: string } | null;
+  };
+  instructions: string | null;
+  totalQuestions: number;
+  questions: {
+    number: number;
+    statement: string;
+    alternatives: { label: string; text: string }[];
+    selectedOption: string | null;
+  }[];
+}
+
+interface StudentSimceSubmitResult {
+  summary: {
+    totalCorrect: number;
+    totalIncorrect: number;
+    totalOmitted: number;
+    totalQuestions: number;
+    totalScore: number;
+    maxScore: number;
+    percentage: number;
+    performanceLevel: string;
+    grade: number;
+  };
+}
+
 const essayStatusLabels: Record<string, string> = {
   DRAFT: "Borrador",
   KEY_PENDING: "En preparación",
@@ -431,18 +500,55 @@ const essayStatusLabels: Record<string, string> = {
 };
 
 function SimceEssaysSection() {
+  const queryClient = useQueryClient();
   const [selectedPdfUrl, setSelectedPdfUrl] = useState<string | null>(null);
   const [selectedPdfTitle, setSelectedPdfTitle] = useState("");
+  const [selectedEssayId, setSelectedEssayId] = useState<string | null>(null);
+  const [answers, setAnswers] = useState<Record<number, string>>({});
+  const [submitResult, setSubmitResult] = useState<StudentSimceSubmitResult | null>(null);
 
   const essaysQuery = useQuery({
     queryKey: ["student-simce-essays"],
     queryFn: () => api.getStudentSimceEssays() as Promise<SimceEssayRow[]>,
-    staleTime: 0,
-    refetchInterval: 30000,
-    refetchOnWindowFocus: true,
+    staleTime: 60000,
+    refetchInterval: false,
+    refetchOnWindowFocus: false,
   });
 
   const essays = essaysQuery.data || [];
+
+  const essayDetailQuery = useQuery({
+    queryKey: ["student-simce-essay", selectedEssayId],
+    queryFn: () => api.getStudentSimceEssay(selectedEssayId!) as Promise<StudentSimceEssayDetail>,
+    enabled: Boolean(selectedEssayId),
+  });
+
+  useEffect(() => {
+    if (!essayDetailQuery.data) return;
+    const initial: Record<number, string> = {};
+    essayDetailQuery.data.questions.forEach((question) => {
+      if (question.selectedOption) initial[question.number] = question.selectedOption;
+    });
+    setAnswers(initial);
+    setSubmitResult(null);
+  }, [essayDetailQuery.data]);
+
+  const submitMutation = useMutation({
+    mutationFn: async () => {
+      const detail = essayDetailQuery.data;
+      if (!selectedEssayId || !detail) throw new Error("No se pudo cargar la prueba.");
+      const responses = detail.questions.map((question) => ({
+        questionNumber: question.number,
+        selectedOption: answers[question.number] || undefined,
+      }));
+      return api.submitStudentSimceEssay(selectedEssayId, { responses }) as Promise<StudentSimceSubmitResult>;
+    },
+    onSuccess: (result) => {
+      setSubmitResult(result);
+      queryClient.invalidateQueries({ queryKey: ["student-simce-results"] });
+      queryClient.invalidateQueries({ queryKey: ["student-simce-essays"] });
+    },
+  });
 
   if (essaysQuery.isLoading) {
     return (
@@ -453,17 +559,35 @@ function SimceEssaysSection() {
     );
   }
 
-  const handleViewPdf = (essay: SimceEssayRow) => {
+  const handleViewPdf = async (essay: SimceEssayRow) => {
     if (!essay.pdfFile) return;
-    const url = `/api/v1/files/view/${essay.pdfFile.fileName}`;
-    setSelectedPdfUrl(url);
-    setSelectedPdfTitle(essay.title);
+    try {
+      const blob = await api.downloadFileBlob(essay.pdfFile.fileName, "view");
+      const url = URL.createObjectURL(blob);
+      setSelectedPdfUrl((current) => {
+        if (current) URL.revokeObjectURL(current);
+        return url;
+      });
+      setSelectedPdfTitle(essay.title);
+    } catch {
+      alert("No se pudo abrir el PDF.");
+    }
   };
 
-  const getDownloadUrl = (essay: SimceEssayRow) => {
-    if (!essay.pdfFile) return null;
-    return `/api/v1/files/download/${essay.pdfFile.fileName}`;
+  const handleOpenEssay = (essay: SimceEssayRow) => {
+    setSelectedEssayId(essay.id);
+    setAnswers({});
+    setSubmitResult(null);
   };
+
+  const handleCloseEssay = () => {
+    setSelectedEssayId(null);
+    setAnswers({});
+    setSubmitResult(null);
+  };
+
+  const essayDetail = essayDetailQuery.data;
+  const answeredCount = essayDetail ? Object.keys(answers).length : 0;
 
   return (
     <>
@@ -490,7 +614,6 @@ function SimceEssaysSection() {
               </thead>
               <tbody>
                 {essays.map((essay) => {
-                  const downloadUrl = getDownloadUrl(essay);
                   return (
                     <tr key={essay.id}>
                       <td>
@@ -512,15 +635,18 @@ function SimceEssaysSection() {
                       <td style={{ fontSize: ".84rem" }}>{essay.teacher}</td>
                       <td>
                         <div style={{ display: "flex", gap: 4 }}>
+                          <button className="btn-small btn-primary" onClick={() => handleOpenEssay(essay)}>
+                            Responder
+                          </button>
                           {essay.pdfFile && (
-                            <button className="btn-small" onClick={() => handleViewPdf(essay)}>
+                            <button className="btn-small btn-secondary" onClick={() => handleViewPdf(essay)}>
                               Ver PDF
                             </button>
                           )}
-                          {downloadUrl && (
-                            <a className="btn-small" href={downloadUrl} download>
+                          {essay.pdfFile && (
+                            <button className="btn-small" type="button" onClick={() => essay.pdfFile && downloadStudentFile(essay.pdfFile.fileName, essay.pdfFile.originalName).catch(() => alert("No se pudo descargar el PDF."))}>
                               Descargar
-                            </a>
+                            </button>
                           )}
                           {!essay.pdfFile && (
                             <span style={{ color: "var(--muted)", fontSize: ".75rem" }}>Sin archivo</span>
@@ -536,9 +662,110 @@ function SimceEssaysSection() {
         )}
       </section>
 
-      <Modal isOpen={Boolean(selectedPdfUrl)} onClose={() => { setSelectedPdfUrl(null); setSelectedPdfTitle(""); }} title={selectedPdfTitle} size="lg">
+      <Modal isOpen={Boolean(selectedPdfUrl)} onClose={() => { if (selectedPdfUrl) URL.revokeObjectURL(selectedPdfUrl); setSelectedPdfUrl(null); setSelectedPdfTitle(""); }} title={selectedPdfTitle} size="lg">
         {selectedPdfUrl && (
           <SimcePdfViewer url={selectedPdfUrl} fileName={selectedPdfTitle} />
+        )}
+      </Modal>
+
+      <Modal isOpen={Boolean(selectedEssayId)} onClose={handleCloseEssay} title={essayDetail?.assessment.title || "Ensayo SIMCE"} size="lg">
+        {essayDetailQuery.isLoading ? (
+          <LoadingSpinner label="Preparando prueba..." />
+        ) : !essayDetail ? (
+          <p style={{ color: "var(--muted)" }}>No se pudo cargar la prueba.</p>
+        ) : (
+          <div className="page-stack">
+            <div className="panel-heading" style={{ padding: 0 }}>
+              <div>
+                <h3 style={{ margin: 0 }}>{essayDetail.assessment.title}</h3>
+                <p style={{ color: "var(--muted)", fontSize: ".84rem", margin: "4px 0 0" }}>
+                  {essayDetail.assessment.subject.name} · {essayDetail.assessment.course.name} ({essayDetail.assessment.course.gradeLevel}°) · {essayDetail.totalQuestions} preguntas
+                </p>
+              </div>
+              <span className="badge badge--info">{answeredCount}/{essayDetail.totalQuestions}</span>
+            </div>
+
+            {essayDetail.assessment.description && (
+              <div className="empty-inline">
+                <strong>Descripcion</strong>
+                <span>{essayDetail.assessment.description}</span>
+              </div>
+            )}
+
+            <div style={{ display: "grid", gap: 12 }}>
+              {essayDetail.questions.map((question) => (
+                <article key={question.number} className="imported-test-question">
+                  <div className="imported-test-question__head">
+                    <strong>Pregunta {question.number}</strong>
+                  </div>
+                  <p style={{ fontWeight: 700, margin: "0 0 10px" }}>{question.statement}</p>
+                  <div style={{ display: "grid", gap: 8 }}>
+                    {question.alternatives.map((alternative) => {
+                      const selected = answers[question.number] === alternative.label;
+                      return (
+                        <button
+                          key={alternative.label}
+                          type="button"
+                          className={`simce-option-btn ${selected ? "simce-option-btn--selected" : ""}`}
+                          onClick={() => setAnswers((current) => ({ ...current, [question.number]: alternative.label }))}
+                          style={{
+                            width: "100%",
+                            minHeight: 44,
+                            display: "flex",
+                            alignItems: "center",
+                            gap: 10,
+                            justifyContent: "flex-start",
+                            padding: "8px 12px",
+                            background: selected ? "var(--primary)" : undefined,
+                            color: selected ? "white" : undefined,
+                          }}
+                        >
+                          <span style={{
+                            width: 28,
+                            height: 28,
+                            borderRadius: "50%",
+                            display: "inline-grid",
+                            placeItems: "center",
+                            border: selected ? "1px solid white" : "1px solid var(--border)",
+                            fontWeight: 800,
+                          }}>
+                            {alternative.label}
+                          </span>
+                          <span>{alternative.text}</span>
+                        </button>
+                      );
+                    })}
+                  </div>
+                </article>
+              ))}
+            </div>
+
+            <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 12, flexWrap: "wrap" }}>
+              <span style={{ color: "var(--muted)", fontSize: ".84rem" }}>
+                Puedes enviar aunque existan omitidas. Las no marcadas cuentan como omitidas.
+              </span>
+              <button className="btn-primary" disabled={submitMutation.isPending} onClick={() => submitMutation.mutate()}>
+                {submitMutation.isPending ? "Enviando..." : "Finalizar y ver nota"}
+              </button>
+            </div>
+
+            {submitMutation.isError && (
+              <div className="empty-inline" style={{ borderColor: "var(--danger)" }}>
+                <strong>No se pudo enviar</strong>
+                <span>{submitMutation.error instanceof Error ? submitMutation.error.message : "Intenta nuevamente."}</span>
+              </div>
+            )}
+
+            {submitResult && (
+              <div className="kpi-grid simce-kpi-row">
+                <div className="kpi-card"><span>Nota</span><strong>{submitResult.summary.grade.toFixed(1).replace(".", ",")}</strong></div>
+                <div className="kpi-card"><span>Correctas</span><strong>{submitResult.summary.totalCorrect}/{submitResult.summary.totalQuestions}</strong></div>
+                <div className="kpi-card"><span>Puntaje</span><strong>{submitResult.summary.totalScore}/{submitResult.summary.maxScore}</strong></div>
+                <div className="kpi-card"><span>% Logro</span><strong>{submitResult.summary.percentage}%</strong></div>
+                <div className="kpi-card"><span>Nivel SIMCE</span><strong>{submitResult.summary.performanceLevel}</strong></div>
+              </div>
+            )}
+          </div>
         )}
       </Modal>
     </>

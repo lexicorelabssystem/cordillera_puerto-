@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from "react";
+import { Link } from "react-router-dom";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { ShellLayout } from "../../components/common/ShellLayout";
 import { KpiCard } from "../../components/common/KpiCard";
@@ -7,8 +8,12 @@ import { VoiceTextarea } from "../../components/voice/VoiceTextarea";
 import { useToast } from "../../components/common/Toast";
 import { Modal } from "../../components/common/Modal";
 import { LoadingSpinner } from "../../components/common/LoadingSpinner";
+import { AssessmentDownloadModal } from "../../components/common/AssessmentDownloadModal";
 import { api } from "../../lib/api";
-import { exportGradebookToPdf } from "../../lib/pdf";
+import * as pdfjsLib from "pdfjs-dist";
+import pdfWorkerUrl from "pdfjs-dist/build/pdf.worker.min.mjs?url";
+import { exportAssessmentToPdf, exportGradebookToPdf } from "../../lib/pdf";
+import type { AssessmentPdfOptions, AssessmentWithKey, GeneratedAssessmentPdf } from "../../lib/pdf";
 import type { AuthUser, CourseStudentRow } from "../../types/api";
 
 interface Props {
@@ -96,7 +101,98 @@ function getTeacherMaterialLabel(resource: LearningResourceRow) {
   }
   return MATERIAL_TYPE_LABELS[resource.type || ""] || resource.type || "RECURSO";
 }
+function canPreviewInBrowser(file: MaterialFileRow) {
+  return file.mimeType.includes("pdf") || file.mimeType.startsWith("image/") || file.mimeType.startsWith("text/");
+}
 
+function canPrintInBrowser(file: MaterialFileRow) {
+  return canPreviewInBrowser(file);
+}
+
+function downloadMaterialBlob(blob: Blob, fileName: string) {
+  const url = URL.createObjectURL(blob);
+  const link = document.createElement("a");
+  link.href = url;
+  link.download = fileName;
+  document.body.appendChild(link);
+  link.click();
+  link.remove();
+  URL.revokeObjectURL(url);
+}
+
+function MaterialPdfPreview({ url, fileName }: { url: string; fileName: string }) {
+  const containerRef = useRef<HTMLDivElement | null>(null);
+  const [status, setStatus] = useState<"loading" | "ready" | "error">("loading");
+
+  useEffect(() => {
+    let cancelled = false;
+    let pdfDocument: { destroy: () => Promise<void> } | null = null;
+    const container = containerRef.current;
+    if (!container) return undefined;
+    const target = container;
+
+    target.replaceChildren();
+    setStatus("loading");
+
+    async function renderPdf() {
+      try {
+        const response = await fetch(url);
+        if (!response.ok) throw new Error("PDF preview request failed");
+        const data = new Uint8Array(await response.arrayBuffer());
+        const loadingTask = pdfjsLib.getDocument({ data });
+        const pdf = await loadingTask.promise;
+        pdfDocument = pdf;
+        if (cancelled) return;
+
+        for (let pageNumber = 1; pageNumber <= pdf.numPages; pageNumber++) {
+          const page = await pdf.getPage(pageNumber);
+          if (cancelled) return;
+          const viewport = page.getViewport({ scale: 1.2 });
+          const canvas = document.createElement("canvas");
+          const context = canvas.getContext("2d");
+          if (!context) continue;
+
+          canvas.width = viewport.width;
+          canvas.height = viewport.height;
+          canvas.setAttribute("aria-label", `${fileName} pagina ${pageNumber}`);
+          target.appendChild(canvas);
+          await page.render({ canvas, canvasContext: context, viewport }).promise;
+          page.cleanup();
+        }
+
+        if (!cancelled) setStatus("ready");
+      } catch {
+        if (!cancelled) setStatus("error");
+      }
+    }
+
+    void renderPdf();
+
+    return () => {
+      cancelled = true;
+      target.replaceChildren();
+      void pdfDocument?.destroy();
+    };
+  }, [fileName, url]);
+
+  return (
+    <div className="teacher-material-pdf-preview">
+      {status === "loading" ? (
+        <div className="teacher-material-file__placeholder">
+          <LoadingSpinner size="sm" />
+          <span>Preparando vista previa...</span>
+        </div>
+      ) : null}
+      {status === "error" ? (
+        <div className="teacher-material-file__placeholder">
+          <strong>No se pudo mostrar el PDF en pantalla</strong>
+          <span>Usa Abrir o Descargar para verlo fuera del panel.</span>
+        </div>
+      ) : null}
+      <div ref={containerRef} className="teacher-material-pdf-preview__pages" hidden={status !== "ready"} />
+    </div>
+  );
+}
 interface LearningObjectiveRow {
   id: string;
   code: string;
@@ -115,6 +211,8 @@ interface TeacherAssignmentView {
 }
 
 type CeldaLibro = { estudianteId: string; evaluacionId: string } | null;
+
+pdfjsLib.GlobalWorkerOptions.workerSrc = pdfWorkerUrl;
 
 type TeacherGradebookStudent = {
   studentId: string;
@@ -154,6 +252,7 @@ function getStudentField(student: CourseStudentRow, snakeKey: "student_id" | "fi
 
 export function ProfesorDashboard({ user, onLogout }: Props) {
   const fileInputRef = useRef<HTMLInputElement | null>(null);
+  const gradeBookPanelRef = useRef<HTMLElement | null>(null);
   const queryClient = useQueryClient();
   const assignmentsQuery = useQuery({
     queryKey: ["teacher-assignments"],
@@ -215,10 +314,14 @@ export function ProfesorDashboard({ user, onLogout }: Props) {
     queryFn: () => api.listCourses(),
   });
   const selectedCourse = coursesQuery.data?.find((course) => course.course_id === courseId);
+  const [shouldLoadGradeBook, setShouldLoadGradeBook] = useState(() =>
+    typeof window !== "undefined" && window.location.hash === "#teacher-grades"
+  );
   const gradeBookQuery = useQuery({
     queryKey: ["teacher-course-book", courseId, subjectId],
     queryFn: () => api.getCourseGradeBook(courseId, { subjectId }),
-    enabled: Boolean(courseId) && Boolean(subjectId),
+    enabled: shouldLoadGradeBook && Boolean(courseId) && Boolean(subjectId),
+    staleTime: 60_000,
   });
   const objectivesQuery = useQuery({
     queryKey: ["teacher-learning-objectives", subjectId, selectedCourse?.grade_level],
@@ -236,6 +339,34 @@ export function ProfesorDashboard({ user, onLogout }: Props) {
     queryFn: () => api.listLearningResources({ courseId, subjectId }) as Promise<LearningResourceRow[]>,
     enabled: Boolean(courseId) && Boolean(subjectId),
   });
+  useEffect(() => {
+    if (shouldLoadGradeBook || typeof window === "undefined") return;
+
+    const activateFromHash = () => {
+      if (window.location.hash === "#teacher-grades") setShouldLoadGradeBook(true);
+    };
+
+    activateFromHash();
+    window.addEventListener("hashchange", activateFromHash);
+
+    const node = gradeBookPanelRef.current;
+    if (!node || !("IntersectionObserver" in window)) {
+      return () => window.removeEventListener("hashchange", activateFromHash);
+    }
+
+    const observer = new IntersectionObserver(
+      ([entry]) => {
+        if (entry?.isIntersecting) setShouldLoadGradeBook(true);
+      },
+      { rootMargin: "180px 0px" },
+    );
+
+    observer.observe(node);
+    return () => {
+      window.removeEventListener("hashchange", activateFromHash);
+      observer.disconnect();
+    };
+  }, [shouldLoadGradeBook]);
   const [title, setTitle] = useState("Control unidad 1");
   const [assessmentType, setAssessmentType] = useState("PROCESO");
   const [semester, setSemester] = useState(1);
@@ -257,6 +388,8 @@ export function ProfesorDashboard({ user, onLogout }: Props) {
   const [materialFiles, setMaterialFiles] = useState<File[]>([]);
   const [materialUploadProgress, setMaterialUploadProgress] = useState<MaterialUploadProgress | null>(null);
   const [selectedMaterial, setSelectedMaterial] = useState<LearningResourceRow | null>(null);
+  const [materialPreviewUrls, setMaterialPreviewUrls] = useState<Record<string, string>>({});
+  const [materialFileActionId, setMaterialFileActionId] = useState<string | null>(null);
   const [observation, setObservation] = useState("");
   const [sessionMenuOpen, setSessionMenuOpen] = useState(false);
   const [isEditingProfile, setIsEditingProfile] = useState(false);
@@ -289,6 +422,40 @@ export function ProfesorDashboard({ user, onLogout }: Props) {
     queryFn: () => api.getLearningResourceUsage(selectedMaterial?.id || "") as Promise<ResourceUsageRow[]>,
     enabled: Boolean(selectedMaterial?.id),
   });
+
+  useEffect(() => {
+    const files = materialFilesQuery.data || [];
+    const previewableFiles = files.filter(canPreviewInBrowser);
+    let cancelled = false;
+    const createdUrls: string[] = [];
+
+    setMaterialPreviewUrls((current) => {
+      Object.values(current).forEach((url) => URL.revokeObjectURL(url));
+      return {};
+    });
+
+    if (!previewableFiles.length) return undefined;
+
+    Promise.all(
+      previewableFiles.map(async (file) => {
+        const blob = await api.downloadFileBlob(file.fileName, "view");
+        const url = URL.createObjectURL(blob);
+        createdUrls.push(url);
+        return [file.id, url] as const;
+      }),
+    )
+      .then((entries) => {
+        if (!cancelled) setMaterialPreviewUrls(Object.fromEntries(entries));
+      })
+      .catch(() => {
+        if (!cancelled) toast("No se pudo preparar la vista previa del archivo.", "error");
+      });
+
+    return () => {
+      cancelled = true;
+      createdUrls.forEach((url) => URL.revokeObjectURL(url));
+    };
+  }, [materialFilesQuery.data]);
 
   useEffect(() => {
     setDisplayName(user.name);
@@ -594,27 +761,55 @@ export function ProfesorDashboard({ user, onLogout }: Props) {
     });
   }
 
-  function abrirMaterial(url: string) {
-    registrarUsoMaterial("VIEW", "Visualización del ensayo o material.");
-    window.open(url, "_blank", "noopener,noreferrer");
+  async function abrirMaterial(file: MaterialFileRow) {
+    registrarUsoMaterial("VIEW", "Visualizacion del ensayo o material.");
+    setMaterialFileActionId(file.id);
+    try {
+      const blob = await api.downloadFileBlob(file.fileName, "view");
+      const url = URL.createObjectURL(blob);
+      window.open(url, "_blank", "noopener,noreferrer");
+      window.setTimeout(() => URL.revokeObjectURL(url), 60_000);
+    } catch (error) {
+      toast(error instanceof Error ? error.message : "No se pudo abrir el archivo.", "error");
+    } finally {
+      setMaterialFileActionId(null);
+    }
   }
 
-  function descargarMaterial(url: string) {
+  async function descargarMaterial(file: MaterialFileRow) {
     registrarUsoMaterial("DOWNLOAD", "Descarga del ensayo o material.");
-    window.location.href = url;
+    setMaterialFileActionId(file.id);
+    try {
+      const blob = await api.downloadFileBlob(file.fileName, "download");
+      downloadMaterialBlob(blob, file.originalName || file.fileName);
+    } catch (error) {
+      toast(error instanceof Error ? error.message : "No se pudo descargar el archivo.", "error");
+    } finally {
+      setMaterialFileActionId(null);
+    }
   }
 
-  function imprimirMaterial(url: string) {
-    registrarUsoMaterial("PRINT", "Impresión del ensayo o material.");
-    const printWindow = window.open(url, "_blank", "noopener,noreferrer");
-    if (printWindow) {
-      printWindow.addEventListener("load", () => {
-        try {
-          printWindow.print();
-        } catch {
-          // Algunos navegadores bloquean print() hasta que el PDF termina de cargar.
-        }
-      });
+  async function imprimirMaterial(file: MaterialFileRow) {
+    registrarUsoMaterial("PRINT", "Impresion del ensayo o material.");
+    setMaterialFileActionId(file.id);
+    try {
+      const blob = await api.downloadFileBlob(file.fileName, "view");
+      const url = URL.createObjectURL(blob);
+      const printWindow = window.open(url, "_blank", "noopener,noreferrer");
+      if (printWindow) {
+        printWindow.addEventListener("load", () => {
+          try {
+            printWindow.print();
+          } catch {
+            // Algunos navegadores bloquean print() hasta que el PDF termina de cargar.
+          }
+        });
+      }
+      window.setTimeout(() => URL.revokeObjectURL(url), 60_000);
+    } catch (error) {
+      toast(error instanceof Error ? error.message : "No se pudo imprimir el archivo.", "error");
+    } finally {
+      setMaterialFileActionId(null);
     }
   }
 
@@ -963,7 +1158,8 @@ export function ProfesorDashboard({ user, onLogout }: Props) {
           <strong>{selectedAssignment ? `${selectedAssignment.course_name} - ${selectedAssignment.subject_name}` : "Sin curso asignado"}</strong>
           <p>Libro de notas, evaluaciones, recursos, reportes y registro de clase del curso activo en una vista preparada para trabajo diario.</p>
           <div className="teacher-hero-actions">
-            <a href="#teacher-grades">Notas</a>
+            <a href="#teacher-grades" onClick={() => setShouldLoadGradeBook(true)}>Notas</a>
+            <Link to="/teacher/importar-prueba">Importar prueba</Link>
             <a href="#teacher-classbook">Clase</a>
             <a href="#teacher-material">Materiales</a>
             <a href="#teacher-analysis">Reportes</a>
@@ -995,7 +1191,8 @@ export function ProfesorDashboard({ user, onLogout }: Props) {
 
       <div className="teacher-complete-grid">
         <aside className="teacher-module-rail" aria-label="Módulos del profesor">
-          <a href="#teacher-grades">Notas</a>
+          <a href="#teacher-grades" onClick={() => setShouldLoadGradeBook(true)}>Notas</a>
+          <Link to="/teacher/importar-prueba">Importar prueba</Link>
           <a href="#teacher-classbook">Clase diaria</a>
           <a href="#teacher-material">Materiales</a>
           <a href="#teacher-curricular">Curriculum</a>
@@ -1074,7 +1271,7 @@ export function ProfesorDashboard({ user, onLogout }: Props) {
             </div>
           </section>
 
-          <section id="teacher-grades" className="panel teacher-work-panel teacher-gradebook-panel">
+          <section id="teacher-grades" ref={gradeBookPanelRef} className="panel teacher-work-panel teacher-gradebook-panel">
             <div className="panel-heading">
               <div>
                 <h3>Libro de Calificaciones</h3>
@@ -1141,10 +1338,18 @@ export function ProfesorDashboard({ user, onLogout }: Props) {
               />
             </div>
 
-            {gradeBookQuery.isLoading ? <LoadingSpinner label="Cargando libro de calificaciones..." /> : null}
-            {gradeBookQuery.isError ? <p className="error">No se pudo cargar el libro del curso asignado.</p> : null}
+            {!shouldLoadGradeBook ? (
+              <div className="empty-inline" style={{ marginTop: 16 }}>
+                <strong>Libro de calificaciones</strong>
+                <button type="button" className="btn-small" onClick={() => setShouldLoadGradeBook(true)} disabled={!courseId || !subjectId}>
+                  Cargar libro
+                </button>
+              </div>
+            ) : null}
+            {shouldLoadGradeBook && gradeBookQuery.isLoading ? <LoadingSpinner label="Cargando libro de calificaciones..." /> : null}
+            {shouldLoadGradeBook && gradeBookQuery.isError ? <p className="error">No se pudo cargar el libro del curso asignado.</p> : null}
 
-            {!gradeBookQuery.isLoading && gradeBookQuery.data ? (
+            {shouldLoadGradeBook && !gradeBookQuery.isLoading && gradeBookQuery.data ? (
               <>
                 <div className="gradebook-kpi-grid" style={{ marginTop: 16 }}>
                   <div className="gradebook-kpi-card"><div><span>Promedio</span><strong style={{ color: colorNota(gradeBookQuery.data.stats.courseAvg) }}>{formatearNota(gradeBookQuery.data.stats.courseAvg)}</strong></div></div>
@@ -1298,6 +1503,7 @@ export function ProfesorDashboard({ user, onLogout }: Props) {
             ) : null}
           </section>
 
+          <SharedAssessmentTemplatesPanel courseId={courseId} subjectId={subjectId} gradeLevel={selectedCourse?.grade_level} />
           <EvaluacionesProfesorPanel courseId={courseId} subjectId={subjectId} />
           <AnswersInspectionPanel courseId={courseId} subjectId={subjectId} />
 
@@ -1478,10 +1684,10 @@ export function ProfesorDashboard({ user, onLogout }: Props) {
           <p>{selectedMaterial?.description || "Recurso asociado al curso activo."}</p>
           {materialFilesQuery.isLoading ? <LoadingSpinner size="sm" /> : null}
           {(materialFilesQuery.data || []).map((file) => {
-            const viewUrl = `/api/v1/files/view/${file.fileName}`;
-            const downloadUrl = `/api/v1/files/download/${file.fileName}`;
-            const canPrint = file.mimeType.includes("pdf") || file.mimeType.startsWith("image/") || file.mimeType.startsWith("text/");
-            const canEmbed = file.mimeType.includes("pdf") || file.mimeType.startsWith("image/") || file.mimeType.startsWith("text/");
+            const previewUrl = materialPreviewUrls[file.id];
+            const canPrint = canPrintInBrowser(file);
+            const canEmbed = canPreviewInBrowser(file);
+            const isBusy = materialFileActionId === file.id;
             return (
               <article key={file.id} className="teacher-material-file">
                 <div>
@@ -1489,13 +1695,13 @@ export function ProfesorDashboard({ user, onLogout }: Props) {
                   <span>{file.mimeType} · {(file.size / 1024).toFixed(1)} KB</span>
                 </div>
                 <div className="teacher-material-file__actions">
-                  <button type="button" className="btn-small" onClick={() => abrirMaterial(viewUrl)}>Abrir</button>
-                  <button type="button" className="btn-small" onClick={() => descargarMaterial(downloadUrl)}>Descargar</button>
-                  <button type="button" className="btn-small" disabled={!canPrint} onClick={() => imprimirMaterial(viewUrl)}>Imprimir</button>
+                  <button type="button" className="btn-small" disabled={isBusy} onClick={() => abrirMaterial(file)}>{isBusy ? "Abriendo..." : "Abrir"}</button>
+                  <button type="button" className="btn-small" disabled={isBusy} onClick={() => descargarMaterial(file)}>Descargar</button>
+                  <button type="button" className="btn-small" disabled={!canPrint || isBusy} onClick={() => imprimirMaterial(file)}>Imprimir</button>
                   <button
                     type="button"
                     className="btn-small btn-danger"
-                    disabled={deleteMaterialFile.isPending}
+                    disabled={deleteMaterialFile.isPending || isBusy}
                     onClick={() => {
                       const ok = window.confirm(`¿Eliminar el archivo "${file.originalName}"?`);
                       if (ok) deleteMaterialFile.mutate(file.id);
@@ -1505,10 +1711,21 @@ export function ProfesorDashboard({ user, onLogout }: Props) {
                   </button>
                 </div>
                 {canEmbed ? (
-                  file.mimeType.startsWith("image/") ? (
-                    <img src={viewUrl} alt={file.originalName} className="teacher-material-file__image" />
+                  previewUrl ? (
+                    file.mimeType.startsWith("image/") ? (
+                      <img src={previewUrl} alt={file.originalName} className="teacher-material-file__image" />
+                    ) : (
+                      file.mimeType.includes("pdf") ? (
+                        <MaterialPdfPreview url={previewUrl} fileName={file.originalName} />
+                      ) : (
+                        <iframe src={previewUrl} title={file.originalName} className="teacher-material-file__frame" />
+                      )
+                    )
                   ) : (
-                    <iframe src={viewUrl} title={file.originalName} className="teacher-material-file__frame" />
+                    <div className="teacher-material-file__placeholder">
+                      <LoadingSpinner size="sm" />
+                      <span>Preparando vista previa...</span>
+                    </div>
                   )
                 ) : (
                   <div className="teacher-material-file__placeholder">
@@ -1550,6 +1767,263 @@ export function ProfesorDashboard({ user, onLogout }: Props) {
         </div>
       </Modal>
     </ShellLayout>
+  );
+}
+
+function SharedAssessmentTemplatesPanel({ courseId, subjectId, gradeLevel }: { courseId: string; subjectId: string; gradeLevel?: number }) {
+  const queryClient = useQueryClient();
+  const { toast } = useToast();
+  const [publishingId, setPublishingId] = useState("");
+  const [modalOpen, setModalOpen] = useState(false);
+  const [selectedTemplate, setSelectedTemplate] = useState<{ id: string; title: string; questionsCount: number; totalPoints: number } | null>(null);
+  const [timeLimit, setTimeLimit] = useState("");
+  const [downloadTemplate, setDownloadTemplate] = useState<{ id: string; title: string; questionsCount: number; totalPoints: number; gradeLevel?: number | null } | null>(null);
+  const [isPreparingDownload, setIsPreparingDownload] = useState(false);
+  const [recentDownloads, setRecentDownloads] = useState<GeneratedAssessmentPdf[]>([]);
+  const templatesQuery = useQuery({
+    queryKey: ["teacher-assessment-templates", courseId, subjectId],
+    queryFn: () => api.listAssessmentTemplates({ status: "PUBLISHED" }) as Promise<{
+      id: string;
+      title: string;
+      description: string | null;
+      subjectId: string | null;
+      gradeLevel: number | null;
+      status: string;
+      fileName: string | null;
+      totalPoints: number;
+      questionsCount: number;
+    }[]>,
+    enabled: Boolean(courseId) && Boolean(subjectId),
+  });
+
+  const createFromTemplate = useMutation({
+    mutationFn: async (params: { templateId: string; title: string; timeLimitMin?: number }) => {
+      const result = await api.createAssessmentFromTemplate(params.templateId, {
+        courseId,
+        subjectId,
+        title: params.title,
+        assessmentType: "PROCESO",
+        deliveryMode: "ONLINE",
+        semester: 1,
+        startDate: new Date().toISOString(),
+        publishNow: true,
+        timeLimitMin: params.timeLimitMin,
+      }) as { assessmentId: string; createdCount: number; maxScore: number; status: string };
+      await api.activateAssessment(result.assessmentId);
+      return result;
+    },
+    onMutate: (params) => setPublishingId(params.templateId),
+    onSuccess: (result, params) => {
+      const timeMsg = params.timeLimitMin ? ` (${params.timeLimitMin} min)` : "";
+      toast(`Prueba asignada con ${result.createdCount} pregunta(s)${timeMsg}. Los alumnos ya pueden responder.`, "success");
+      setModalOpen(false);
+      setSelectedTemplate(null);
+      setTimeLimit("");
+      queryClient.invalidateQueries({ queryKey: ["teacher-course-assessments", courseId, subjectId] });
+      queryClient.invalidateQueries({ queryKey: ["teacher-profile-assessments", courseId, subjectId] });
+      queryClient.invalidateQueries({ queryKey: ["teacher-course-book", courseId, subjectId] });
+    },
+    onError: (error) => {
+      toast(error instanceof Error ? error.message : "No se pudo asignar la prueba al curso.", "error");
+    },
+    onSettled: () => setPublishingId(""),
+  });
+
+  async function downloadPublishedTemplate(options: Required<AssessmentPdfOptions>) {
+    if (!downloadTemplate) return [];
+    setIsPreparingDownload(true);
+    try {
+      const detail = await api.getAssessmentTemplate(downloadTemplate.id) as {
+        title: string; gradeLevel: number | null; totalPoints: number;
+        questions: { type: string; sortOrder: number; statement: string; points: number; explanation?: string | null; options: { text: string; isCorrect: boolean; sortOrder: number }[] }[];
+      };
+      const assessment: AssessmentWithKey = {
+        title: detail.title,
+        courseName: detail.gradeLevel ? `${detail.gradeLevel}° básico/medio` : "Nivel flexible",
+        subjectName: "Asignatura del curso",
+        assessmentType: "SIMCE",
+        totalPoints: detail.totalPoints,
+        items: [...detail.questions].sort((a, b) => a.sortOrder - b.sortOrder).map((question, index) => ({
+          nro: index + 1,
+          statement: question.statement,
+          type: question.type,
+          points: question.points,
+          explanation: question.explanation,
+          options: [...question.options].sort((a, b) => a.sortOrder - b.sortOrder).map((option) => ({ text: option.text, isCorrect: option.isCorrect })),
+        })),
+      };
+      const files = exportAssessmentToPdf(assessment, "Profesor", options);
+      setRecentDownloads(files);
+      toast(`${files.length} archivo(s) PDF descargado(s).`, "success");
+      return files;
+    } catch (error) {
+      toast(error instanceof Error ? error.message : "No se pudo preparar la descarga.", "error");
+      return [];
+    } finally {
+      setIsPreparingDownload(false);
+    }
+  }
+  const templates = templatesQuery.data || [];
+  if (!courseId || !subjectId) return null;
+
+  return (
+    <section className="panel">
+      <div className="panel-heading">
+        <div>
+          <h3>Banco de Pruebas Compartido</h3>
+          <p>Pruebas validadas por UTP/Admin listas para convertir en evaluacion digital del curso.</p>
+        </div>
+        <Link className="btn-secondary" to="/teacher/importar-prueba">Subir prueba propia</Link>
+      </div>
+
+      {templatesQuery.isLoading ? <LoadingSpinner size="sm" /> : null}
+      {!templatesQuery.isLoading && templates.length === 0 ? (
+        <div className="empty-inline">
+          <strong>No hay pruebas publicadas en el banco institucional.</strong>
+          <span>Un administrador o UTP debe subir y publicar plantillas desde el panel Admin &gt; Banco de Pruebas.</span>
+        </div>
+      ) : null}
+
+      {templates.length > 0 ? (
+        <div className="table-wrap">
+          <table className="table">
+            <thead>
+              <tr>
+                <th>Prueba</th>
+                <th>Nivel</th>
+                <th>Preguntas</th>
+                <th>Puntaje</th>
+                <th></th>
+              </tr>
+            </thead>
+            <tbody>
+              {templates.map((template) => {
+                const gradeMismatch = gradeLevel && template.gradeLevel && template.gradeLevel !== gradeLevel;
+                return (
+                <tr key={template.id}>
+                  <td>
+                    <strong>{template.title}</strong>
+                    <br />
+                    <small>{template.description || template.fileName || "Plantilla publicada"}</small>
+                  </td>
+                  <td>
+                    {template.gradeLevel ? `${template.gradeLevel} basico/medio` : "Flexible"}
+                    {gradeMismatch ? (
+                      <span className="badge badge--role" style={{ display: "inline-block", marginLeft: 6, fontSize: 10, background: "var(--warning-bg)", color: "var(--warning)" }}>
+                        no coincide
+                      </span>
+                    ) : null}
+                  </td>
+                  <td>{template.questionsCount}</td>
+                  <td>{template.totalPoints}</td>
+                  <td>
+                    <div className="assessment-template-actions">
+                      <button type="button" className="btn-small btn-secondary" onClick={() => setDownloadTemplate(template)} title="Descargar prueba, pauta u hoja de respuestas">
+                        Descargar
+                      </button>
+                      <button
+                        className="btn-small"
+                        disabled={createFromTemplate.isPending}
+                        onClick={() => {
+                          setSelectedTemplate(template);
+                          setTimeLimit("");
+                          setModalOpen(true);
+                        }}
+                        title={gradeMismatch ? "El nivel no coincide con el curso, pero puedes usarlo igual" : "Configurar y asignar prueba al curso"}
+                      >
+                        Asignar al curso
+                      </button>
+                    </div>
+                  </td>
+                </tr>
+                );
+              })}
+            </tbody>
+          </table>
+        </div>
+      ) : null}
+
+      <AssessmentDownloadModal
+        isOpen={Boolean(downloadTemplate)}
+        title={downloadTemplate?.title ?? "Prueba"}
+        isPending={isPreparingDownload}
+        onClose={() => setDownloadTemplate(null)}
+        onDownload={downloadPublishedTemplate}
+      />
+
+      {recentDownloads.length > 0 ? (
+        <aside className="assessment-downloads-panel" aria-live="polite">
+          <button type="button" className="assessment-downloads-panel__close" onClick={() => setRecentDownloads([])} aria-label="Cerrar descargas">×</button>
+          <h4>Descargas</h4>
+          <strong>{recentDownloads.length} lista(s)</strong>
+          <div>
+            {recentDownloads.map((file) => (
+              <div className="assessment-downloads-panel__item" key={file.fileName}>
+                <span className="assessment-downloads-panel__status">✓</span>
+                <span><strong>{file.label}</strong><small>PDF · {file.fileName}</small></span>
+              </div>
+            ))}
+          </div>
+        </aside>
+      ) : null}
+      <Modal
+        isOpen={modalOpen}
+        onClose={() => { setModalOpen(false); setSelectedTemplate(null); setTimeLimit(""); }}
+        title="Configurar prueba"
+        size="sm"
+        footer={
+          <div style={{ display: "flex", gap: 8, justifyContent: "flex-end" }}>
+            <button
+              className="btn-secondary"
+              onClick={() => { setModalOpen(false); setSelectedTemplate(null); setTimeLimit(""); }}
+              disabled={createFromTemplate.isPending}
+            >
+              Cancelar
+            </button>
+            <button
+              disabled={createFromTemplate.isPending}
+              onClick={() => {
+                if (!selectedTemplate) return;
+                createFromTemplate.mutate({
+                  templateId: selectedTemplate.id,
+                  title: selectedTemplate.title,
+                  timeLimitMin: timeLimit ? Number(timeLimit) : undefined,
+                });
+              }}
+            >
+              {createFromTemplate.isPending ? "Asignando..." : "Asignar y activar"}
+            </button>
+          </div>
+        }
+      >
+        {selectedTemplate ? (
+          <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
+            <div>
+              <strong>{selectedTemplate.title}</strong>
+              <p style={{ color: "var(--text-secondary)", fontSize: 13, marginTop: 4 }}>
+                {selectedTemplate.questionsCount} pregunta(s) · {selectedTemplate.totalPoints} pts total
+              </p>
+            </div>
+            <div className="form-field">
+              <label>Tiempo limite (minutos)</label>
+              <input
+                type="number"
+                min={1}
+                max={240}
+                value={timeLimit}
+                onChange={(e) => setTimeLimit(e.target.value)}
+                placeholder="Sin limite (recomendado: 45-90 min)"
+              />
+              {timeLimit ? (
+                <small>{Number(timeLimit) >= 60 ? `${Math.floor(Number(timeLimit) / 60)}h ${Number(timeLimit) % 60 > 0 ? `${Number(timeLimit) % 60}m` : ""}` : `${timeLimit} min`}</small>
+              ) : (
+                <small>Dejar vacio para que los alumnos respondan sin presion de tiempo.</small>
+              )}
+            </div>
+          </div>
+        ) : null}
+      </Modal>
+    </section>
   );
 }
 
@@ -1601,6 +2075,7 @@ function EvaluacionesProfesorPanel({ courseId, subjectId }: { courseId: string; 
                 <th>Intentos</th>
                 <th>Notas</th>
                 <th>Fecha</th>
+                <th></th>
               </tr>
             </thead>
             <tbody>
@@ -1616,6 +2091,7 @@ function EvaluacionesProfesorPanel({ courseId, subjectId }: { courseId: string; 
                   <td style={{ textAlign: "center" }}>{a.attempts_count}</td>
                   <td style={{ textAlign: "center" }}>{a.grades_count}</td>
                   <td style={{ fontSize: ".78rem", whiteSpace: "nowrap" }}>{new Date(a.created_at).toLocaleDateString("es-CL")}</td>
+                  <td><Link className="btn-small" to={`/teacher/evaluaciones/${a.assessment_id}`}>{a.status === "DRAFT" ? "Revisar" : "Ver"}</Link></td>
                 </tr>
               ))}
             </tbody>
@@ -1627,12 +2103,18 @@ function EvaluacionesProfesorPanel({ courseId, subjectId }: { courseId: string; 
 }
 
 function AnswersInspectionPanel({ courseId, subjectId }: { courseId: string; subjectId: string }) {
+  const queryClient = useQueryClient();
+  const { toast } = useToast();
   const [selectedAssessmentId, setSelectedAssessmentId] = useState("");
   const [showModal, setShowModal] = useState(false);
+  const [manualScores, setManualScores] = useState<Record<string, string>>({});
 
   const assessmentsQuery = useQuery({
     queryKey: ["teacher-assessments", courseId, subjectId],
-    queryFn: () => api.listAssessments({ courseId, subjectId, status: "CLOSED" }) as Promise<{ assessment_id: string; title: string; assessment_type: string; status: string; attempts_count: number }[]>,
+    queryFn: async () => {
+      const data = await api.listAssessments({ courseId, subjectId }) as { assessment_id: string; title: string; assessment_type: string; status: string; attempts_count: number }[];
+      return data.filter((assessment) => ["CLOSED", "IN_GRADING", "GRADED"].includes(assessment.status));
+    },
     enabled: Boolean(courseId) && Boolean(subjectId),
   });
 
@@ -1651,6 +2133,34 @@ function AnswersInspectionPanel({ courseId, subjectId }: { courseId: string; sub
   const assessments = (assessmentsQuery.data || []) as { assessment_id: string; title: string; assessment_type: string; status: string; attempts_count: number }[];
   const summary = summaryQuery.data;
   const pending = pendingQuery.data;
+
+  const gradeAnswerMutation = useMutation({
+    mutationFn: ({ answerId, score, maxScore }: { answerId: string; score: number; maxScore: number }) =>
+      api.gradeAnswer(answerId, {
+        score,
+        status: score <= 0 ? "INCORRECT" : score >= maxScore ? "CORRECT" : "PARTIAL",
+      }),
+    onSuccess: () => {
+      toast("Respuesta corregida.", "success");
+      queryClient.invalidateQueries({ queryKey: ["pending-grading-teacher", selectedAssessmentId] });
+      queryClient.invalidateQueries({ queryKey: ["grading-summary", selectedAssessmentId] });
+      queryClient.invalidateQueries({ queryKey: ["teacher-course-assessments", courseId, subjectId] });
+      queryClient.invalidateQueries({ queryKey: ["teacher-course-book", courseId, subjectId] });
+    },
+    onError: (error) => {
+      toast(error instanceof Error ? error.message : "No se pudo guardar la correccion.", "error");
+    },
+  });
+
+  function submitManualScore(answerId: string, maxScore: number) {
+    const raw = manualScores[answerId];
+    const score = Number(raw);
+    if (raw === undefined || Number.isNaN(score) || score < 0 || score > maxScore) {
+      toast(`Ingresa un puntaje entre 0 y ${maxScore}.`, "error");
+      return;
+    }
+    gradeAnswerMutation.mutate({ answerId, score, maxScore });
+  }
 
   return (
     <section className="panel">
@@ -1723,6 +2233,43 @@ function AnswersInspectionPanel({ courseId, subjectId }: { courseId: string; sub
                 <div className="kpi-grid">
                   <div className="kpi-card"><span>Total pendientes</span><strong>{pending.totalPending}</strong></div>
                   <div className="kpi-card"><span>Alumnos</span><strong>{pending.byStudent.length}</strong></div>
+                </div>
+                <div className="student-timeline" style={{ marginTop: 12 }}>
+                  {pending.byStudent.map((student) => (
+                    <article key={student.studentName} className="student-timeline__item">
+                      <span>{student.pendingCount} pendiente(s)</span>
+                      <strong>{student.studentName}</strong>
+                      <div style={{ display: "grid", gap: 10, marginTop: 10 }}>
+                        {student.answers.map((answer) => (
+                          <div key={answer.id} className="imported-test-question" style={{ padding: 12 }}>
+                            <div className="imported-test-question__head">
+                              <span className="badge badge--warning">{answer.status}</span>
+                              <span>{answer.question.points} pts</span>
+                            </div>
+                            <p style={{ marginTop: 8 }}>{answer.question.statement}</p>
+                            <p style={{ color: "var(--muted)", marginTop: 6 }}>{answer.textAnswer || "Sin respuesta escrita."}</p>
+                            <div className="form-row" style={{ marginTop: 8 }}>
+                              <input
+                                type="number"
+                                min={0}
+                                max={answer.question.points}
+                                step={0.5}
+                                placeholder={`0 a ${answer.question.points}`}
+                                value={manualScores[answer.id] ?? ""}
+                                onChange={(event) => setManualScores((current) => ({ ...current, [answer.id]: event.target.value }))}
+                              />
+                              <button
+                                disabled={gradeAnswerMutation.isPending}
+                                onClick={() => submitManualScore(answer.id, answer.question.points)}
+                              >
+                                Guardar puntaje
+                              </button>
+                            </div>
+                          </div>
+                        ))}
+                      </div>
+                    </article>
+                  ))}
                 </div>
               </div>
             )}

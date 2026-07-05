@@ -305,7 +305,7 @@ export function AssessmentsPage() {
                     >
                       <span>{column.label}</span>
                       <button
-                        onClick={() => column.assessment ? navigate(`/admin/evaluaciones/${column.assessment.id}`) : openCreateAssessment()}
+                        onClick={() => column.assessment ? navigate(column.assessment.id) : openCreateAssessment()}
                         title={column.assessment?.title || "Crear evaluación para este espacio"}
                       >
                         ▾
@@ -425,7 +425,7 @@ export function AssessmentsPage() {
                   const assessmentId = getAssessmentId(a);
                   const createdAt = getCreatedAt(a);
                   return (
-                  <tr key={assessmentId} onClick={() => navigate(`/admin/evaluaciones/${assessmentId}`)} style={{ cursor: "pointer" }}>
+                  <tr key={assessmentId} onClick={() => navigate(assessmentId)} style={{ cursor: "pointer" }}>
                     <td><strong>{a.title}</strong></td>
                     <td><span className="badge badge--role">{getAssessmentType(a)}</span></td>
                     <td>{getCourseName(a)}</td>

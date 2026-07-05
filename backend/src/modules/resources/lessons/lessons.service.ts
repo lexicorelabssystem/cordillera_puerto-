@@ -63,6 +63,8 @@ export class LessonsService {
   }
 
   async findAll(filters: LessonFilterDto, userId: string, page = 1, limit = 20) {
+    page = Number.isFinite(page) ? Math.max(1, Math.floor(page)) : 1;
+    limit = Number.isFinite(limit) ? Math.min(100, Math.max(1, Math.floor(limit))) : 20;
     const where: Record<string, unknown> = {};
 
     const teacher = await this.prisma.teacher.findUnique({ where: { userId } });

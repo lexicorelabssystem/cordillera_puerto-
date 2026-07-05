@@ -7,6 +7,7 @@ import { Modal } from "../../components/common/Modal";
 import { LoadingSpinner } from "../../components/common/LoadingSpinner";
 import { useToast } from "../../components/common/Toast";
 import { useInstitution } from "../../app/InstitutionContext";
+import { StudentBulkImportPanel } from "./StudentBulkImportPanel";
 
 const MANAGED_ROLES: { value: UserRole; label: string }[] = [
   { value: "SUPER_ADMIN", label: "Super Admin" },
@@ -47,6 +48,7 @@ export function UsersView() {
     role: "TEACHER" as UserRole,
     courseId: "",
   });
+  const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
 
   const users = useQuery({
     queryKey: ["users", { page, role: roleFilter, search, institutionId: selectedInstitution?.id }],
@@ -99,6 +101,39 @@ export function UsersView() {
     },
     onError: (err) =>
       toast(err instanceof Error ? err.message : "Error al desactivar usuario.", "error"),
+  });
+
+  const permanentDeleteMutation = useMutation({
+    mutationFn: api.permanentDeleteUser,
+    onSuccess: () => {
+      toast("Usuario eliminado definitivamente.", "success");
+      setSelectedIds(new Set());
+      queryClient.invalidateQueries({ queryKey: ["users"] });
+    },
+    onError: (err) =>
+      toast(err instanceof Error ? err.message : "Error al eliminar usuario.", "error"),
+  });
+
+  const bulkDeleteMutation = useMutation({
+    mutationFn: api.bulkDeleteUsers,
+    onSuccess: (data) => {
+      toast(`${data.succeeded} usuario(s) eliminado(s) definitivamente.${data.failed > 0 ? ` ${data.failed} error(es).` : ""}`, data.failed > 0 ? "warning" : "success");
+      setSelectedIds(new Set());
+      queryClient.invalidateQueries({ queryKey: ["users"] });
+    },
+    onError: (err) =>
+      toast(err instanceof Error ? err.message : "Error en eliminacion masiva.", "error"),
+  });
+
+  const toggleMutation = useMutation({
+    mutationFn: ({ id, isActive }: { id: string; isActive: boolean }) =>
+      api.updateUser(id, { isActive }),
+    onSuccess: () => {
+      toast("Estado del usuario actualizado.", "success");
+      queryClient.invalidateQueries({ queryKey: ["users"] });
+    },
+    onError: (err) =>
+      toast(err instanceof Error ? err.message : "Error al cambiar estado.", "error"),
   });
 
   function startEdit(user: UserRow) {
@@ -165,10 +200,39 @@ export function UsersView() {
   const isEditingStudent = editingId !== null && form.role === "STUDENT";
   const requiresCourse = form.role === "STUDENT";
 
-  const isPending = createMutation.isPending || updateMutation.isPending;
+  const isPending = createMutation.isPending || updateMutation.isPending || toggleMutation.isPending;
+
+  const inactiveUsers = apiList.filter((u) => !u.isActive);
+  const allInactiveSelected = inactiveUsers.length > 0 && inactiveUsers.every((u) => selectedIds.has(u.id));
+
+  function toggleSelectAllInactive() {
+    if (allInactiveSelected) {
+      setSelectedIds(new Set());
+    } else {
+      setSelectedIds(new Set(inactiveUsers.map((u) => u.id)));
+    }
+  }
+
+  function toggleSelectUser(id: string) {
+    setSelectedIds((prev) => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id);
+      else next.add(id);
+      return next;
+    });
+  }
+
+  function handleBulkDelete() {
+    if (selectedIds.size === 0) return;
+    if (window.confirm(`\u00bfEliminar definitivamente ${selectedIds.size} usuario(s) inactivo(s)? Esta accion no se puede deshacer.`)) {
+      bulkDeleteMutation.mutate(Array.from(selectedIds));
+    }
+  }
 
   return (
     <>
+      {isUtpMode ? <StudentBulkImportPanel /> : null}
+
       <section className="panel">
         <h3>{editingId ? "Editar Usuario" : "Crear Nuevo Usuario"}</h3>
         <div className="form-grid">
@@ -304,14 +368,44 @@ export function UsersView() {
           </div>
         ) : (
           <>
+            {inactiveUsers.length > 0 ? (
+              <div className="bulk-actions-bar">
+                <label className="bulk-select-all" style={{ gap: 8, alignItems: "center" }}>
+                  <input
+                    type="checkbox"
+                    checked={allInactiveSelected}
+                    onChange={toggleSelectAllInactive}
+                  />
+                  <span>Seleccionar todos los inactivos ({inactiveUsers.length})</span>
+                </label>
+                {selectedIds.size > 0 ? (
+                  <button
+                    className="btn-small btn-danger"
+                    onClick={handleBulkDelete}
+                    disabled={bulkDeleteMutation.isPending}
+                  >
+                    {bulkDeleteMutation.isPending ? "Eliminando..." : `Eliminar definitivo (${selectedIds.size})`}
+                  </button>
+                ) : null}
+              </div>
+            ) : null}
             <div className="table-wrap">
               <table className="table">
                 <thead>
-                  <tr><th>Nombre</th><th>Email</th><th>Rol</th><th>Curso</th><th>Activo</th><th>Ultimo acceso</th><th>Acciones</th></tr>
+                  <tr><th></th><th>Nombre</th><th>Email</th><th>Rol</th><th>Curso</th><th>Activo</th><th>Ultimo acceso</th><th>Acciones</th></tr>
                 </thead>
                 <tbody>
                   {apiList.map((u) => (
                     <tr key={u.id}>
+                      <td>
+                        {!u.isActive ? (
+                          <input
+                            type="checkbox"
+                            checked={selectedIds.has(u.id)}
+                            onChange={() => toggleSelectUser(u.id)}
+                          />
+                        ) : null}
+                      </td>
                       <td><strong>{u.firstName} {u.lastName}</strong></td>
                       <td>{u.email}</td>
                       <td><span className={`badge badge--role-${u.role.toLowerCase()}`}>{u.role === "STUDENT" ? "Estudiante" : u.role === "TEACHER" ? "Docente" : ROLE_LABELS[u.role] || u.role}</span></td>
@@ -329,11 +423,22 @@ export function UsersView() {
                           <button
                             className="btn-small btn-danger"
                             onClick={() => {
-                              if (window.confirm(u.isActive ? `¿Desactivar a ${u.firstName} ${u.lastName}?` : `¿Reactivar a ${u.firstName} ${u.lastName}?`)) {
-                                deleteMutation.mutate(u.id);
+                              if (window.confirm(u.isActive ? `\u00bfDesactivar a ${u.firstName} ${u.lastName}?` : `\u00bfReactivar a ${u.firstName} ${u.lastName}?`)) {
+                                toggleMutation.mutate({ id: u.id, isActive: !u.isActive });
                               }
                             }}
                           >{u.isActive ? "Desactivar" : "Activar"}</button>
+                          {!u.isActive ? (
+                            <button
+                              className="btn-small btn-danger"
+                              style={{ background: "var(--danger-dark, #8b0000)" }}
+                              onClick={() => {
+                                if (window.confirm(`\u00bfEliminar definitivamente a ${u.firstName} ${u.lastName}? Esta accion no se puede deshacer.`)) {
+                                  permanentDeleteMutation.mutate(u.id);
+                                }
+                              }}
+                            >Eliminar Def.</button>
+                          ) : null}
                         </div>
                       </td>
                     </tr>

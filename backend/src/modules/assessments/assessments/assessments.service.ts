@@ -3,7 +3,14 @@ import {
   ForbiddenException,
 } from "@nestjs/common";
 import { PrismaService } from "../../prisma/prisma.service.js";
-import type { CreateAssessmentDto, UpdateAssessmentDto, AssessmentItemDto, ReorderItemsDto } from "./dto/create-assessment.dto.js";
+import { CacheService } from "../../cache/cache.service.js";
+import type {
+  AssessmentItemDto,
+  CreateAssessmentDto,
+  ReorderItemsDto,
+  UpdateAssessmentDto,
+  UpdateAssessmentQuestionDto,
+} from "./dto/create-assessment.dto.js";
 import { isSubjectAllowedForGrade } from "../../../common/utils/curriculum.js";
 import type { JwtPayload } from "../../../common/decorators/current-user.decorator.js";
 import {
@@ -27,7 +34,10 @@ const VALID_TRANSITIONS: Record<AssessmentStatus, AssessmentStatus[]> = {
 
 @Injectable()
 export class AssessmentsService {
-  constructor(private readonly prisma: PrismaService) {}
+  constructor(
+    private readonly prisma: PrismaService,
+    private readonly cache: CacheService,
+  ) {}
 
   // ══════════════════════════════════════════════════════
   //  CRUD
@@ -126,6 +136,8 @@ export class AssessmentsService {
     courseId?: string; subjectId?: string; status?: string;
     assessmentType?: string; teacherId?: string; periodId?: string;
   }, page = 1, limit = 20, user?: JwtPayload | string) {
+    page = Number.isFinite(page) ? Math.max(1, Math.floor(page)) : 1;
+    limit = Number.isFinite(limit) ? Math.min(100, Math.max(1, Math.floor(limit))) : 20;
     const where: Record<string, unknown> = {};
     if (filters.subjectId) where.subjectId = filters.subjectId;
     if (filters.status) where.status = filters.status;
@@ -174,6 +186,16 @@ export class AssessmentsService {
 
   async findById(id: string, user?: JwtPayload | string) {
     if (user) await assertAssessmentScope(this.prisma, user, id);
+    const scope = user ? await resolveUserScope(this.prisma, user) : null;
+    const canSeeAnswerKey = !scope || scope.role !== "STUDENT";
+
+    if (!canSeeAnswerKey) {
+      return this.cache.getOrSet(
+        this.studentAssessmentCacheKey(id),
+        async () => this.findStudentAssessmentById(id),
+        60,
+      );
+    }
 
     const assessment = await this.prisma.assessment.findUnique({
       where: { id },
@@ -190,7 +212,7 @@ export class AssessmentsService {
                 subject: { select: { id: true, name: true } },
                 learningObjective: { select: { id: true, code: true, description: true } },
                 axis: { select: { id: true, name: true } },
-                options: { orderBy: { sortOrder: "asc" }, select: { id: true, text: true, sortOrder: true } },
+                options: { orderBy: { sortOrder: "asc" }, select: { id: true, text: true, sortOrder: true, isCorrect: true } },
               },
             },
           },
@@ -218,7 +240,7 @@ export class AssessmentsService {
       throw new BadRequestException("La fecha de cierre debe ser posterior a la de inicio");
     }
 
-    return this.prisma.assessment.update({
+    const updated = await this.prisma.assessment.update({
       where: { id },
       data: {
         ...(dto.title !== undefined && { title: dto.title }),
@@ -233,6 +255,8 @@ export class AssessmentsService {
         ...(dto.shuffleQuestions !== undefined && { shuffleQuestions: dto.shuffleQuestions }),
       },
     });
+    await this.invalidateAssessmentCache(id);
+    return updated;
   }
 
   async softDelete(id: string, user?: JwtPayload | string) {
@@ -250,10 +274,12 @@ export class AssessmentsService {
       );
     }
 
-    return this.prisma.assessment.update({
+    const updated = await this.prisma.assessment.update({
       where: { id },
       data: { isActive: false, status: "ARCHIVED", archivedAt: new Date() },
     });
+    await this.invalidateAssessmentCache(id);
+    return updated;
   }
 
   // ══════════════════════════════════════════════════════
@@ -265,7 +291,14 @@ export class AssessmentsService {
 
     const assessment = await this.prisma.assessment.findUnique({
       where: { id },
-      include: { _count: { select: { questions: true } } },
+      include: {
+        questions: {
+          include: {
+            question: { include: { options: true } },
+          },
+        },
+        _count: { select: { questions: true } },
+      },
     });
     if (!assessment) throw new NotFoundException("Evaluación no encontrada");
 
@@ -273,6 +306,24 @@ export class AssessmentsService {
 
     if (assessment._count.questions === 0) {
       throw new BadRequestException("No se puede publicar una evaluación sin preguntas");
+    }
+
+    if (assessment.questions.length > 0) {
+      const totalPoints = assessment.questions.reduce((sum, item) => sum + item.points, 0);
+      if (totalPoints <= 0) {
+        throw new BadRequestException("No se puede publicar una evaluacion sin puntaje total valido");
+      }
+
+      for (const item of assessment.questions) {
+        if (["MULTIPLE_CHOICE", "TRUE_FALSE"].includes(item.question.type)) {
+          const correctCount = item.question.options.filter((option) => option.isCorrect).length;
+          if (item.question.options.length < 2 || correctCount !== 1) {
+            throw new BadRequestException(
+              `La pregunta ${item.sortOrder + 1} requiere alternativas y una respuesta correcta confirmada`,
+            );
+          }
+        }
+      }
     }
 
     if (["CIERRE", "FINAL"].includes(assessment.assessmentType) && !assessment.periodId) {
@@ -283,10 +334,17 @@ export class AssessmentsService {
       throw new BadRequestException("La evaluación debe tener fecha de inicio");
     }
 
-    return this.prisma.assessment.update({
+    const updated = await this.prisma.assessment.update({
       where: { id },
-      data: { status: "PUBLISHED", publishedAt: new Date() },
+      data: {
+        status: "PUBLISHED",
+        publishedAt: new Date(),
+        teacherValidatedAt: new Date(),
+        teacherValidatedBy: typeof user === "string" ? user : user?.sub ?? assessment.createdBy,
+      },
     });
+    await this.invalidateAssessmentCache(id);
+    return updated;
   }
 
   async activate(id: string, user?: JwtPayload | string) {
@@ -315,10 +373,12 @@ export class AssessmentsService {
       throw new BadRequestException("No se puede activar una evaluación en un periodo cerrado");
     }
 
-    return this.prisma.assessment.update({
+    const updated = await this.prisma.assessment.update({
       where: { id },
       data: { status: "ACTIVE", startDate: new Date() },
     });
+    await this.invalidateAssessmentCache(id);
+    return updated;
   }
 
   async close(id: string, user?: JwtPayload | string) {
@@ -329,10 +389,12 @@ export class AssessmentsService {
 
     this.validateTransition(assessment.status, "CLOSED");
 
-    return this.prisma.assessment.update({
+    const updated = await this.prisma.assessment.update({
       where: { id },
       data: { status: "CLOSED", closedAt: new Date(), endDate: new Date() },
     });
+    await this.invalidateAssessmentCache(id);
+    return updated;
   }
 
   async startGrading(id: string, user?: JwtPayload | string) {
@@ -343,10 +405,12 @@ export class AssessmentsService {
 
     this.validateTransition(assessment.status, "IN_GRADING");
 
-    return this.prisma.assessment.update({
+    const updated = await this.prisma.assessment.update({
       where: { id },
       data: { status: "IN_GRADING", gradingStartedAt: new Date() },
     });
+    await this.invalidateAssessmentCache(id);
+    return updated;
   }
 
   async markGraded(id: string, user?: JwtPayload | string) {
@@ -364,10 +428,12 @@ export class AssessmentsService {
       throw new BadRequestException("No se puede marcar como corregida: no hay notas registradas");
     }
 
-    return this.prisma.assessment.update({
+    const updated = await this.prisma.assessment.update({
       where: { id },
       data: { status: "GRADED", gradedAt: new Date() },
     });
+    await this.invalidateAssessmentCache(id);
+    return updated;
   }
 
   async markReported(id: string, user?: JwtPayload | string) {
@@ -378,10 +444,12 @@ export class AssessmentsService {
 
     this.validateTransition(assessment.status, "REPORTED");
 
-    return this.prisma.assessment.update({
+    const updated = await this.prisma.assessment.update({
       where: { id },
       data: { status: "REPORTED", reportedAt: new Date() },
     });
+    await this.invalidateAssessmentCache(id);
+    return updated;
   }
 
   async archive(id: string, user?: JwtPayload | string) {
@@ -392,10 +460,12 @@ export class AssessmentsService {
 
     this.validateTransition(assessment.status, "ARCHIVED");
 
-    return this.prisma.assessment.update({
+    const updated = await this.prisma.assessment.update({
       where: { id },
       data: { status: "ARCHIVED", archivedAt: new Date(), isActive: false },
     });
+    await this.invalidateAssessmentCache(id);
+    return updated;
   }
 
   async revertToDraft(id: string, user?: JwtPayload | string) {
@@ -415,10 +485,12 @@ export class AssessmentsService {
       throw new BadRequestException("No se puede revertir: ya hay intentos registrados");
     }
 
-    return this.prisma.assessment.update({
+    const updated = await this.prisma.assessment.update({
       where: { id },
       data: { status: "DRAFT", publishedAt: null },
     });
+    await this.invalidateAssessmentCache(id);
+    return updated;
   }
 
   // ══════════════════════════════════════════════════════
@@ -461,6 +533,7 @@ export class AssessmentsService {
       results.push(created);
     }
 
+    await this.invalidateAssessmentCache(assessmentId);
     return results;
   }
 
@@ -479,7 +552,9 @@ export class AssessmentsService {
     });
     if (!item) throw new NotFoundException("La pregunta no está en esta evaluación");
 
-    return this.prisma.assessmentQuestion.delete({ where: { id: item.id } });
+    const deleted = await this.prisma.assessmentQuestion.delete({ where: { id: item.id } });
+    await this.invalidateAssessmentCache(assessmentId);
+    return deleted;
   }
 
   async reorderItems(assessmentId: string, dto: ReorderItemsDto, user?: JwtPayload | string) {
@@ -497,16 +572,132 @@ export class AssessmentsService {
       ),
     );
 
-    return this.prisma.assessmentQuestion.findMany({
+    const ordered = await this.prisma.assessmentQuestion.findMany({
       where: { assessmentId },
       orderBy: { sortOrder: "asc" },
     });
+    await this.invalidateAssessmentCache(assessmentId);
+    return ordered;
   }
 
   // ══════════════════════════════════════════════════════
   //  PRIVATE
   // ══════════════════════════════════════════════════════
 
+  async updateQuestion(assessmentId: string, questionId: string, dto: UpdateAssessmentQuestionDto, user?: JwtPayload | string) {
+    if (user) await assertAssessmentScope(this.prisma, user, assessmentId);
+
+    const assessment = await this.prisma.assessment.findUnique({
+      where: { id: assessmentId },
+      include: { questions: { include: { question: { include: { options: true } } } } },
+    });
+    if (!assessment) throw new NotFoundException("Evaluacion no encontrada");
+    if (assessment.status !== "DRAFT") {
+      throw new BadRequestException("Solo se puede editar la pauta antes de publicar la evaluacion");
+    }
+
+    const item = assessment.questions.find((row) => row.questionId === questionId);
+    if (!item) throw new NotFoundException("La pregunta no pertenece a esta evaluacion");
+
+    const options = this.cleanQuestionOptions(dto.options ?? []);
+    if (["MULTIPLE_CHOICE", "TRUE_FALSE"].includes(dto.type)) {
+      if (options.length < 2) throw new BadRequestException("Las preguntas objetivas requieren al menos dos alternativas");
+      if (options.filter((option) => option.isCorrect).length !== 1) {
+        throw new BadRequestException("Marca exactamente una alternativa correcta");
+      }
+    }
+
+    await this.prisma.$transaction(async (tx) => {
+      await tx.question.update({
+        where: { id: questionId },
+        data: {
+          type: dto.type,
+          statement: dto.statement.trim(),
+          explanation: dto.explanation?.trim() || null,
+          points: dto.points,
+        },
+      });
+      await tx.assessmentQuestion.update({
+        where: { id: item.id },
+        data: {
+          points: dto.points,
+          ...(dto.sortOrder !== undefined && { sortOrder: dto.sortOrder }),
+        },
+      });
+      await tx.questionOption.deleteMany({ where: { questionId } });
+      if (options.length) {
+        await tx.questionOption.createMany({
+          data: options.map((option, index) => ({
+            questionId,
+            text: option.text,
+            isCorrect: option.isCorrect,
+            sortOrder: option.sortOrder ?? index,
+          })),
+        });
+      }
+      const totalPoints = await tx.assessmentQuestion.aggregate({
+        where: { assessmentId },
+        _sum: { points: true },
+      });
+      await tx.assessment.update({
+        where: { id: assessmentId },
+        data: { maxScore: totalPoints._sum.points ?? dto.points },
+      });
+    });
+
+    await this.invalidateAssessmentCache(assessmentId);
+    return this.findById(assessmentId, user);
+  }
+
+
+  private studentAssessmentCacheKey(assessmentId: string) {
+    return `assessment:${assessmentId}:student-view`;
+  }
+
+  private async invalidateAssessmentCache(assessmentId: string) {
+    await this.cache.del(this.studentAssessmentCacheKey(assessmentId));
+  }
+
+  private async findStudentAssessmentById(id: string) {
+    const assessment = await this.prisma.assessment.findUnique({
+      where: { id },
+      include: {
+        course: { select: { id: true, name: true, gradeLevel: true, academicYear: { select: { year: true } } } },
+        subject: { select: { id: true, name: true } },
+        teacher: { include: { user: { select: { id: true, firstName: true, lastName: true, email: true } } } },
+        period: { select: { id: true, name: true, status: true } },
+        questions: {
+          orderBy: { sortOrder: "asc" },
+          include: {
+            question: {
+              select: {
+                id: true,
+                subjectId: true,
+                axisId: true,
+                learningObjectiveId: true,
+                skillId: true,
+                type: true,
+                statement: true,
+                difficulty: true,
+                points: true,
+                isActive: true,
+                createdBy: true,
+                createdAt: true,
+                updatedAt: true,
+                subject: { select: { id: true, name: true } },
+                learningObjective: { select: { id: true, code: true, description: true } },
+                axis: { select: { id: true, name: true } },
+                options: { orderBy: { sortOrder: "asc" }, select: { id: true, text: true, sortOrder: true } },
+              },
+            },
+          },
+        },
+        _count: { select: { attempts: true, grades: true } },
+      },
+    });
+    if (!assessment) throw new NotFoundException("Evaluación no encontrada");
+    return assessment;
+  }
   private validateTransition(current: string, target: AssessmentStatus) {
     const allowed = VALID_TRANSITIONS[current as AssessmentStatus];
     if (!allowed || !allowed.includes(target)) {
@@ -514,5 +705,16 @@ export class AssessmentsService {
         `Transición inválida: ${current} → ${target}. Transiciones permitidas desde ${current}: ${allowed?.join(", ") ?? "ninguna"}`,
       );
     }
+  }
+
+  private cleanQuestionOptions(options: { text: string; isCorrect: boolean; sortOrder?: number }[]) {
+    return options
+      .map((option) => ({
+        text: option.text.trim(),
+        isCorrect: Boolean(option.isCorrect),
+        sortOrder: option.sortOrder,
+      }))
+      .filter((option) => option.text)
+      .slice(0, 8);
   }
 }

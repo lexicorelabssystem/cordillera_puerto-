@@ -1,10 +1,14 @@
 import { Injectable, NotFoundException, BadRequestException } from "@nestjs/common";
 import type { Prisma } from "@prisma/client";
 import { PrismaService } from "../../prisma/prisma.service.js";
+import { StorageService } from "../../storage/storage.service.js";
 
 @Injectable()
 export class ReportsService {
-  constructor(private readonly prisma: PrismaService) {}
+  constructor(
+    private readonly prisma: PrismaService,
+    private readonly storage: StorageService,
+  ) {}
 
   private average(values: number[]) {
     return values.length ? Number((values.reduce((sum, value) => sum + value, 0) / values.length).toFixed(2)) : 0;
@@ -589,6 +593,32 @@ export class ReportsService {
     };
   }
 
+  async createPendingReport(
+    type: string,
+    entityId: string | null,
+    userId: string,
+    meta: { courseId?: string; subjectId?: string; studentId?: string; format: string; filters: Record<string, unknown> },
+  ) {
+    const latest = await this.prisma.report.findFirst({
+      where: { type, entityId },
+      orderBy: { version: "desc" },
+      select: { version: true },
+    });
+    return this.prisma.report.create({
+      data: {
+        type,
+        entityId,
+        courseId: meta.courseId ?? null,
+        subjectId: meta.subjectId ?? null,
+        studentId: meta.studentId ?? null,
+        version: (latest?.version ?? 0) + 1,
+        status: "PENDING",
+        format: meta.format,
+        filters: meta.filters as Prisma.InputJsonValue,
+        generatedBy: userId,
+      },
+    });
+  }
   async saveReport(
     type: string,
     entityId: string | null,
@@ -624,6 +654,8 @@ export class ReportsService {
   }
 
   async listReports(type?: string, entityId?: string, page = 1, limit = 20) {
+    page = Number.isFinite(page) ? Math.max(1, Math.floor(page)) : 1;
+    limit = Number.isFinite(limit) ? Math.min(100, Math.max(1, Math.floor(limit))) : 20;
     const where: Record<string, unknown> = {};
     if (type) where.type = type;
     if (entityId) where.entityId = entityId;
@@ -647,6 +679,17 @@ export class ReportsService {
   async getReport(reportId: string) {
     const report = await this.prisma.report.findUnique({ where: { id: reportId } });
     if (!report) throw new NotFoundException("Reporte no encontrado");
+    if (report.fileAssetId) {
+      const asset = await this.prisma.fileAsset.findUnique({ where: { id: report.fileAssetId } });
+      if (!asset || !(await this.storage.exists(asset.storagePath))) {
+        throw new NotFoundException("Contenido del reporte no encontrado");
+      }
+      const summary = JSON.parse((await this.storage.getBuffer(asset.storagePath)).toString("utf8")) as Prisma.JsonValue;
+      const filters = report.filters && typeof report.filters === "object" && !Array.isArray(report.filters)
+        ? report.filters as Prisma.JsonObject
+        : {};
+      return { ...report, filters: { ...filters, summary } };
+    }
     return report;
   }
 

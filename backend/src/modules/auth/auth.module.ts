@@ -4,6 +4,7 @@ import { PassportModule } from "@nestjs/passport";
 import { AuthService } from "./auth.service.js";
 import { AuthController } from "./auth.controller.js";
 import { JwtStrategy } from "./jwt.strategy.js";
+import { TokenCleanupService } from "./token-cleanup.service.js";
 import { ConfigModule } from "../../config/config.module.js";
 import { AuditLogsModule } from "../audit-logs/audit-logs.module.js";
 import type { AppConfig } from "../../config/config.module.js";
@@ -26,7 +27,7 @@ import type { AppConfig } from "../../config/config.module.js";
     AuditLogsModule,
   ],
   controllers: [AuthController],
-  providers: [AuthService, JwtStrategy],
+  providers: [AuthService, JwtStrategy, TokenCleanupService],
   exports: [AuthService, JwtModule, PassportModule],
 })
 export class AuthModule {}

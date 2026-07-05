@@ -11,6 +11,7 @@ import {
   HttpStatus,
   UseGuards,
   ParseUUIDPipe,
+  BadRequestException,
 } from "@nestjs/common";
 import { ApiTags, ApiOperation, ApiResponse, ApiBearerAuth, ApiQuery } from "@nestjs/swagger";
 import { UserRole } from "@prisma/client";
@@ -59,6 +60,17 @@ export class UsersController {
     return this.usersService.findById(user.sub);
   }
 
+  @Post("bulk-delete")
+  @HttpCode(HttpStatus.OK)
+  @Roles("ADMIN", "SUPER_ADMIN", "UTP")
+  @ApiOperation({ summary: "Eliminar usuarios en lote definitivamente" })
+  async bulkRemove(@Body() payload: { ids: string[] }, @CurrentUser() user: JwtPayload) {
+    if (!payload.ids || !Array.isArray(payload.ids) || payload.ids.length === 0) {
+      throw new BadRequestException("Se requiere un arreglo de IDs de usuario");
+    }
+    return this.usersService.bulkPermanentDelete(payload.ids, user);
+  }
+
   @Get(":id")
   @Roles("ADMIN", "SUPER_ADMIN", "DIRECTION", "UTP")
   @ApiOperation({ summary: "Obtener usuario por ID" })
@@ -76,8 +88,18 @@ export class UsersController {
   @Delete(":id")
   @HttpCode(HttpStatus.NO_CONTENT)
   @Roles("ADMIN", "SUPER_ADMIN", "UTP")
-  @ApiOperation({ summary: "Eliminar usuario (soft delete)" })
+  @ApiOperation({ summary: "Desactivar usuario (soft delete)" })
   async remove(@Param("id", ParseUUIDPipe) id: string, @CurrentUser() user: JwtPayload) {
     await this.usersService.softDelete(id, user);
   }
+
+  @Delete(":id/permanent")
+  @HttpCode(HttpStatus.OK)
+  @Roles("ADMIN", "SUPER_ADMIN", "UTP")
+  @ApiOperation({ summary: "Eliminar usuario definitivamente" })
+  async permanentRemove(@Param("id", ParseUUIDPipe) id: string, @CurrentUser() user: JwtPayload) {
+    await this.usersService.permanentDelete(id, user);
+    return { ok: true, message: "Usuario eliminado definitivamente" };
+  }
+
 }

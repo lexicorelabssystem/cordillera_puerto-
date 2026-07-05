@@ -106,7 +106,7 @@ export function StudentFullProfilePage() {
     <div className="student-profile-page">
       {/* Breadcrumb */}
       <div className="breadcrumbs">
-        <span className="breadcrumbs__item"><a href="#" onClick={(e) => { e.preventDefault(); navigate("/admin/gradebook"); }}>Libro de Calificaciones</a></span>
+        <span className="breadcrumbs__item"><a href="#" onClick={(e) => { e.preventDefault(); navigate("../gradebook"); }}>Libro de Calificaciones</a></span>
         <span className="breadcrumbs__sep">/</span>
         <span className="breadcrumbs__item">{s.firstName as string} {s.lastName as string}</span>
       </div>

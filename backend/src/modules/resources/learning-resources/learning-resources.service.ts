@@ -56,6 +56,8 @@ export class LearningResourcesService {
   }
 
   async findAll(filters: ResourceFilterDto, page = 1, limit = 20) {
+    page = Number.isFinite(page) ? Math.max(1, Math.floor(page)) : 1;
+    limit = Number.isFinite(limit) ? Math.min(100, Math.max(1, Math.floor(limit))) : 20;
     const where: Record<string, unknown> = { status: { not: "ARCHIVED" } };
     if (filters.institutionId) where.institutionId = filters.institutionId;
     if (filters.type) where.type = filters.type;

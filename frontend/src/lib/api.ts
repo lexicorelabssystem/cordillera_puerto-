@@ -29,16 +29,9 @@ type AuthResponse = {
 const ACCESS_TOKEN_KEY = "cordillera_access_token";
 const REFRESH_TOKEN_KEY = "cordillera_refresh_token";
 
-function readStoredToken(key: string): string | null {
-  try {
-    return localStorage.getItem(key);
-  } catch {
-    return null;
-  }
-}
-
-let _accessToken: string | null = readStoredToken(ACCESS_TOKEN_KEY);
-let _refreshToken: string | null = readStoredToken(REFRESH_TOKEN_KEY);
+let _accessToken: string | null = null;
+persistToken(ACCESS_TOKEN_KEY, null);
+persistToken(REFRESH_TOKEN_KEY, null);
 
 function persistToken(key: string, value: string | null) {
   try {
@@ -52,17 +45,13 @@ function persistToken(key: string, value: string | null) {
 export function setAuthTokens(tokens: { token?: string; refreshToken?: string }) {
   if (tokens.token) {
     _accessToken = tokens.token;
-    persistToken(ACCESS_TOKEN_KEY, tokens.token);
+    persistToken(ACCESS_TOKEN_KEY, null);
   }
-  if (tokens.refreshToken) {
-    _refreshToken = tokens.refreshToken;
-    persistToken(REFRESH_TOKEN_KEY, tokens.refreshToken);
-  }
+  persistToken(REFRESH_TOKEN_KEY, null);
 }
 
 export function clearAuthTokens() {
   _accessToken = null;
-  _refreshToken = null;
   persistToken(ACCESS_TOKEN_KEY, null);
   persistToken(REFRESH_TOKEN_KEY, null);
 }
@@ -101,17 +90,9 @@ async function refreshSession(): Promise<boolean> {
 
   _refreshPromise = (async () => {
     try {
-      const headers = new Headers();
-      let body: string | undefined;
-      if (_refreshToken) {
-        headers.set("Content-Type", "application/json");
-        body = JSON.stringify({ refreshToken: _refreshToken });
-      }
       const response = await fetch(`${API_BASE}/auth/refresh`, {
         method: "POST",
         credentials: "include",
-        headers,
-        body,
       });
       if (response.ok) {
         const result = (await response.json().catch(() => null)) as AuthResponse | null;
@@ -192,11 +173,31 @@ async function request<T>(path: string, init?: RequestInit): Promise<T> {
 }
 
 async function requestBlob(path: string): Promise<Blob> {
-  const response = await fetch(`${API_BASE}${path}`, {
+  const headers = new Headers();
+  if (_accessToken) headers.set("Authorization", `Bearer ${_accessToken}`);
+
+  let response = await fetch(`${API_BASE}${path}`, {
     credentials: "include",
+    headers,
   });
+
+  if (response.status === 401 && !NO_REFRESH_PATHS.includes(path)) {
+    const refreshed = await refreshSession();
+    if (refreshed) {
+      if (_accessToken) headers.set("Authorization", `Bearer ${_accessToken}`);
+      response = await fetch(`${API_BASE}${path}`, {
+        credentials: "include",
+        headers,
+      });
+    } else {
+      if (_onSessionExpired) _onSessionExpired();
+      throw new Error("Sesion expirada. Por favor inicia sesion nuevamente.");
+    }
+  }
+
   if (!response.ok) {
-    throw new Error(`Descarga fallida (${response.status})`);
+    const err = await response.json().catch(() => null);
+    throw new Error(typeof err?.message === "string" ? err.message : `Descarga fallida (${response.status})`);
   }
   return response.blob();
 }
@@ -233,7 +234,6 @@ export const api = {
   refresh: () =>
     request<AuthResponse>("/auth/refresh", {
       method: "POST",
-      body: _refreshToken ? JSON.stringify({ refreshToken: _refreshToken }) : undefined,
     }).then((result) => {
       setAuthTokens(result);
       return result;
@@ -334,6 +334,13 @@ export const api = {
     }),
   deleteUser: (id: string) =>
     request<{ ok: boolean }>(`/users/${id}`, { method: "DELETE" }),
+  permanentDeleteUser: (id: string) =>
+    request<{ ok: boolean }>(`/users/${id}/permanent`, { method: "DELETE" }),
+  bulkDeleteUsers: (ids: string[]) =>
+    request<{ total: number; succeeded: number; failed: number; results: { id: string; ok: boolean; error?: string }[] }>("/users/bulk-delete", {
+      method: "POST",
+      body: JSON.stringify({ ids }),
+    }),
 
   // ─── Teachers ───────────────────────────────────
   myAssignments: () => request<TeacherAssignment[]>("/teachers/my/assignments"),
@@ -472,13 +479,15 @@ export const api = {
   listAssessments: (params?: Record<string, string | number | boolean | undefined>) =>
     request<{ data: unknown[] }>(`/assessments${buildQuery(params ?? {})}`).then((r) => r.data),
   getAssessment: (id: string) =>
-    request<{ id: string; title: string; assessmentType: string; status: string; courseId: string; subjectId: string; semester: number; maxScore: number; questions: { questionId: string; points: number; question: { id: string; statement: string; type: string } }[] }>(`/assessments/${id}`),
+    request<{ id: string; title: string; description?: string | null; assessmentType: string; deliveryMode?: string; status: string; courseId: string; subjectId: string; course?: { id: string; name: string; gradeLevel: number }; subject?: { id: string; name: string }; semester: number; maxScore: number; timeLimitMin?: number | null; startDate?: string; endDate?: string | null; questions: { id: string; questionId: string; sortOrder: number; points: number; question: { id: string; statement: string; type: string; subject?: { id: string; name: string }; options?: { id: string; text: string; sortOrder: number }[] } }[] }>(`/assessments/${id}`),
   getAssessmentAttempts: (assessmentId: string) =>
-    request<{ id: string; studentId: string; student: { firstName: string; lastName: string }; status: string; totalScore: number | null; percentage: number | null; answers: { questionId: string; question: { statement: string; type: string }; textAnswer: string | null; selectedOptionId: string | null; score: number | null; status: string; isCorrect: boolean | null }[] }[]>(`/attempts/assessment/${assessmentId}`),
+    request<{ data: { id: string; studentId: string; student: { firstName: string; lastName: string }; status: string; totalScore: number | null; percentage: number | null; answers: { questionId: string; question: { statement: string; type: string }; textAnswer: string | null; selectedOptionId: string | null; score: number | null; status: string; isCorrect: boolean | null }[] }[] }>(`/attempts/assessment/${assessmentId}?limit=100`).then((r) => r.data),
 
   // ─── Enrollments ────────────────────────────────
   closeAssessment: (id: string) =>
     request<unknown>(`/assessments/${id}/close`, { method: "POST" }),
+  publishAssessment: (id: string) =>
+    request<unknown>(`/assessments/${id}/publish`, { method: "POST" }),
   activateAssessment: (id: string) =>
     request<unknown>(`/assessments/${id}/activate`, { method: "POST" }),
   startAssessmentGrading: (id: string) =>
@@ -487,6 +496,18 @@ export const api = {
     request<unknown>(`/assessments/${id}/mark-graded`, { method: "POST" }),
   markAssessmentReported: (id: string) =>
     request<unknown>(`/assessments/${id}/mark-reported`, { method: "POST" }),
+  updateAssessmentQuestion: (assessmentId: string, questionId: string, payload: {
+    type: string;
+    statement: string;
+    points: number;
+    explanation?: string | null;
+    sortOrder?: number;
+    options?: { text: string; isCorrect: boolean; sortOrder?: number }[];
+  }) =>
+    request<unknown>(`/assessments/${assessmentId}/questions/${questionId}`, {
+      method: "PATCH",
+      body: JSON.stringify(payload),
+    }),
 
   enrollStudent: (payload: { studentId: string; courseId: string }) =>
     request<{ enrollmentId: string }>("/enrollments", {
@@ -511,6 +532,11 @@ export const api = {
     request<{ assessmentId: string; title: string; totalQuestions: number; totalAttempts: number; answersByStatus: Record<string, number>; grades: { studentId: string; studentName: string; score: number | null; percentage: number | null; grade: number }[] }>(`/grading/summary/${assessmentId}`),
   getPendingGrading: (assessmentId: string) =>
     request<{ assessmentId: string; totalPending: number; byStudent: { studentName: string; pendingCount: number; answers: { id: string; question: { id: string; type: string; statement: string; points: number }; textAnswer: string | null; selectedOptionId: string | null; status: string }[] }[] }>(`/grading/pending/${assessmentId}`),
+  gradeAnswer: (answerId: string, payload: { score: number; feedback?: string; status?: string }) =>
+    request<{ answerId: string; score: number | null; status: string; isCorrect: boolean | null }>(`/grading/answer/${answerId}`, {
+      method: "POST",
+      body: JSON.stringify(payload),
+    }),
 
   // ─── Alerts ─────────────────────────────────────
   myAlerts: () => request<RoleAlerts>("/alerts/teacher"),
@@ -529,14 +555,14 @@ export const api = {
     threshold?: number;
     format?: string;
   }) =>
-    request<{ reportId: string; type?: string }>("/reports/generate", {
+    request<{ reportId: string; backgroundJobId: string; bullJobId: string; status: string }>("/reports/generate", {
       method: "POST",
       body: JSON.stringify(payload)
     }),
   listReports: (params?: Record<string, string | number | boolean | undefined>) =>
     request<{ data: unknown[] }>(`/reports${buildQuery(params ?? {})}`).then((r) => r.data),
   getReport: (id: string) =>
-    request<{ id: string; type: string; status: string; data: unknown; filters: unknown; generatedAt: string | null }>(`/reports/${id}`),
+    request<{ id: string; type: string; status: string; format: string; filters: Record<string, unknown> | null; generatedAt: string | null }>(`/reports/${id}`),
 
   // ─── Dashboard ──────────────────────────────────
   adminOverview: (institutionId?: string) =>
@@ -556,14 +582,80 @@ export const api = {
     });
   },
 
+  uploadImportWithProgress: (
+    entityType: string,
+    file: File,
+    onProgress: (percent: number) => void,
+    institutionId?: string,
+  ): Promise<{ importJobId: string; fileName: string; fileSize: number }> => {
+    return new Promise((resolve, reject) => {
+      const formData = new FormData();
+      formData.append("file", file);
+      const xhr = new XMLHttpRequest();
+      xhr.open("POST", `${API_BASE}/imports/upload/${entityType}${buildQuery({ institutionId })}`);
+      xhr.withCredentials = true;
+      xhr.upload.addEventListener("progress", (e) => {
+        if (e.lengthComputable) {
+          onProgress(Math.round((e.loaded / e.total) * 100));
+        }
+      });
+      xhr.addEventListener("load", () => {
+        if (xhr.status >= 200 && xhr.status < 300) {
+          resolve(JSON.parse(xhr.responseText));
+        } else {
+          reject(new Error(`Fallo al subir archivo (${xhr.status})`));
+        }
+      });
+      xhr.addEventListener("error", () => reject(new Error("Error de conexión al subir archivo")));
+      xhr.send(formData);
+    });
+  },
+
+  validateImport: (importJobId: string) =>
+    request<{
+      importJobId: string;
+      entityType: string;
+      status: string;
+      preview: { rowNumber: number; data: Record<string, string>; valid: boolean; errors: string[] }[];
+      summary: { totalRows: number; validRows: number; errorRows: number; errors: { row: number; errors: string[] }[] };
+    }>(`/imports/validate/${importJobId}`),
+
+  confirmImport: (importJobId: string, skipErrors?: boolean) =>
+    request<{ importJobId: string; status: string; success: number; failed: number }>("/imports/confirm", {
+      method: "POST",
+      body: JSON.stringify({ importJobId, skipErrors: skipErrors ?? false }),
+    }),
+
   // ─── Exports ────────────────────────────────────
+  listImportJobs: (entityType?: string) =>
+    request<{
+      id: string;
+      entityType: string;
+      fileName: string;
+      status: string;
+      totalRows: number;
+      successRows: number;
+      errorRows: number;
+      trackedRecords: number;
+      createdAt: string;
+      completedAt: string | null;
+      deletedAt: string | null;
+    }[]>(`/imports${buildQuery({ entityType })}`),
+
+  deleteImportData: (importJobId: string) =>
+    request<{ importJobId: string; deleted: boolean; studentsDeleted: number; teachersDeleted: number; usersDeleted: number; enrollmentsDeleted: number }>(`/imports/${importJobId}/data`, {
+      method: "DELETE",
+    }),
+
   requestExport: (payload: { entityType: string; format: string; courseId?: string; institutionId?: string; academicYearId?: string; subjectId?: string }) =>
-    request<{ exportJobId: string }>("/exports", {
+    request<{ exportJobId: string; bullJobId: string; status: string }>("/exports/async", {
       method: "POST",
       body: JSON.stringify(payload)
     }),
 
   // ─── Audit ───────────────────────────────────────
+  listExportJobs: () =>
+    request<{ id: string; entityType: string; format: string; status: string; fileUrl: string | null; errorMessage: string | null; rowCount: number | null; createdAt: string; completedAt: string | null }[]>("/jobs"),
   listAuditLogs: (params?: Record<string, string | number | boolean | undefined>) =>
     request<PaginatedResponse<unknown>>(`/audit-logs${buildQuery(params ?? {})}`),
   auditSummary: (days?: number) =>
@@ -622,6 +714,198 @@ export const api = {
     request<{ ok: boolean }>(`/questions/options/${optionId}`, { method: "DELETE" }),
   getOaCoverage: (subjectId: string, gradeLevel: number) =>
     request<{ learningObjectiveId: string; code: string; description: string; questionCount: number }[]>(`/questions/oa-coverage?subjectId=${subjectId}&gradeLevel=${gradeLevel}`),
+
+  importEvaluationPdf: (payload: { file: File; subjectId: string; courseId?: string }) => {
+    const formData = new FormData();
+    formData.append("file", payload.file);
+    const headers = new Headers();
+    if (_accessToken) headers.set("Authorization", `Bearer ${_accessToken}`);
+    return fetch(`${API_BASE}/evaluations/import${buildQuery({ subjectId: payload.subjectId, courseId: payload.courseId })}`, {
+      method: "POST",
+      credentials: "include",
+      headers,
+      body: formData,
+    }).then(async (r) => {
+      if (!r.ok) {
+        const err = await r.json().catch(() => null);
+        throw new Error(typeof err?.message === "string" ? err.message : `No se pudo importar el PDF (${r.status})`);
+      }
+      return r.json() as Promise<{
+        draftId: string;
+        status: string;
+        fileName: string;
+        subjectId: string;
+        courseId: string | null;
+        questions: {
+          draftQuestionId: string;
+          numero: number;
+          enunciado: string;
+          tipo: string;
+          alternativas: string[];
+          respuestaCorrecta: string | null;
+          puntaje: number;
+          confianza: number;
+        }[];
+      }>;
+    });
+  },
+  commitImportedEvaluation: (draftId: string, payload: {
+    subjectId: string;
+    courseId?: string;
+    questions: {
+      draftQuestionId?: string;
+      number: number;
+      statement: string;
+      type: string;
+      alternatives: string[];
+      correctAnswer?: string | null;
+      points: number;
+    }[];
+  }) =>
+    request<{ draftId: string; createdCount: number; questions: unknown[] }>(`/evaluations/import/${draftId}/commit`, {
+      method: "POST",
+      body: JSON.stringify(payload),
+    }),
+  createAssessmentFromImportedEvaluation: (draftId: string, payload: {
+    title: string;
+    description?: string;
+    courseId: string;
+    subjectId: string;
+    assessmentType: string;
+    deliveryMode?: string;
+    semester: number;
+    startDate?: string;
+    endDate?: string;
+    periodId?: string;
+    timeLimitMin?: number;
+    weight?: number;
+    allowRetake?: boolean;
+    shuffleQuestions?: boolean;
+    questions: {
+      draftQuestionId?: string;
+      number: number;
+      statement: string;
+      type: string;
+      alternatives: string[];
+      correctAnswer?: string | null;
+      points: number;
+    }[];
+  }) =>
+    request<{ draftId: string; assessmentId: string; createdCount: number; maxScore: number }>(`/evaluations/import/${draftId}/create-assessment`, {
+      method: "POST",
+      body: JSON.stringify(payload),
+    }),
+  uploadAssessmentTemplate: async (payload: {
+    file: File;
+    title: string;
+    description?: string;
+    institutionId?: string;
+    subjectId?: string;
+    gradeLevel?: number;
+  }) => {
+    const formData = new FormData();
+    formData.append("file", payload.file);
+    const headers: Record<string, string> = {};
+    if (_accessToken) headers["Authorization"] = `Bearer ${_accessToken}`;
+    const url = `${API_BASE}/assessment-templates/upload${buildQuery({
+      title: payload.title,
+      description: payload.description,
+      institutionId: payload.institutionId,
+      subjectId: payload.subjectId,
+      gradeLevel: payload.gradeLevel,
+    })}`;
+
+    let r = await fetch(url, { method: "POST", credentials: "include", headers, body: formData });
+
+    if (r.status === 401) {
+      const refreshed = await refreshSession();
+      if (refreshed) {
+        if (_accessToken) headers["Authorization"] = `Bearer ${_accessToken}`;
+        r = await fetch(url, { method: "POST", credentials: "include", headers, body: formData });
+      } else {
+        if (_onSessionExpired) _onSessionExpired();
+        throw new Error("Sesion expirada. Por favor inicia sesion nuevamente.");
+      }
+    }
+
+    if (!r.ok) {
+      const err = await r.json().catch(() => null);
+      throw new Error(typeof err?.message === "string" ? err.message : `No se pudo subir la prueba (${r.status})`);
+    }
+    return r.json();
+  },
+  listAssessmentTemplates: (params?: {
+    institutionId?: string;
+    subjectId?: string;
+    gradeLevel?: number;
+    status?: string;
+    search?: string;
+  }) =>
+    request<unknown[]>(`/assessment-templates${buildQuery(params ?? {})}`),
+  getAssessmentTemplate: (id: string) =>
+    request<unknown>(`/assessment-templates/${id}`),
+  downloadAssessmentTemplateSource: (id: string) =>
+    requestBlob(`/assessment-templates/${id}/source/download`),
+  updateAssessmentTemplate: (id: string, payload: Record<string, unknown>) =>
+    request<unknown>(`/assessment-templates/${id}`, {
+      method: "PATCH",
+      body: JSON.stringify(payload),
+    }),
+  addAssessmentTemplateQuestion: (id: string, payload: Record<string, unknown>) =>
+    request<unknown>(`/assessment-templates/${id}/questions`, {
+      method: "POST",
+      body: JSON.stringify(payload),
+    }),
+  updateAssessmentTemplateQuestion: (id: string, questionId: string, payload: Record<string, unknown>) =>
+    request<unknown>(`/assessment-templates/${id}/questions/${questionId}`, {
+      method: "PUT",
+      body: JSON.stringify(payload),
+    }),
+  deleteAssessmentTemplateQuestion: (id: string, questionId: string) =>
+    request<void>(`/assessment-templates/${id}/questions/${questionId}`, { method: "DELETE" }),
+  publishAssessmentTemplate: (id: string) =>
+    request<unknown>(`/assessment-templates/${id}/publish`, { method: "POST" }),
+  archiveAssessmentTemplate: (id: string) =>
+    request<unknown>(`/assessment-templates/${id}/archive`, { method: "POST" }),
+  deleteAssessmentTemplate: (id: string) =>
+    request<{ ok: boolean }>(`/assessment-templates/${id}`, { method: "DELETE" }),
+  createAssessmentFromTemplate: (id: string, payload: {
+    courseId: string;
+    subjectId?: string;
+    title?: string;
+    description?: string;
+    assessmentType?: string;
+    deliveryMode?: string;
+    semester?: number;
+    startDate?: string;
+    endDate?: string;
+    periodId?: string;
+    timeLimitMin?: number;
+    weight?: number;
+    allowRetake?: boolean;
+    shuffleQuestions?: boolean;
+    publishNow?: boolean;
+  }) =>
+    request<{ templateId: string; assessmentId: string; createdCount: number; maxScore: number; status: string }>(`/assessment-templates/${id}/create-assessment`, {
+      method: "POST",
+      body: JSON.stringify(payload),
+    }),
+  startAssessmentAttempt: (assessmentId: string) =>
+    request<{ attemptId: string; assessmentId: string; startedAt: string; deadline: string | null; timeLimitMin: number | null; totalQuestions: number; remainingSec: number | null; status: string }>(`/attempts/start/${assessmentId}`, {
+      method: "POST",
+    }),
+  getAssessmentAttempt: (attemptId: string) =>
+    request<{ id: string; assessmentId: string; status: string; startedAt: string; submittedAt: string | null; timeRemainingSec?: number | null; totalScore: number | null; percentage: number | null; answers: { questionId: string; selectedOptionId: string | null; textAnswer: string | null; status: string; score: number | null; isCorrect: boolean | null }[] }>(`/attempts/${attemptId}`),
+  saveAssessmentAnswers: (attemptId: string, payload: { answers: { questionId: string; selectedOptionId?: string; textAnswer?: string }[]; timeSpentSec?: number }) =>
+    request<{ saved: number }>(`/attempts/${attemptId}/answers`, {
+      method: "POST",
+      body: JSON.stringify(payload),
+    }),
+  submitAssessmentAttempt: (attemptId: string, payload: { timeSpentSec?: number; confirmEmpty?: boolean }) =>
+    request<{ attemptId: string; status: string; totalScore: number; maxScore: number; percentage: number; grade: number | null; gradedCount: number; pendingManualCount: number }>(`/attempts/${attemptId}/submit`, {
+      method: "POST",
+      body: JSON.stringify(payload),
+    }),
 
   // ─── Grade Change Requests ──────────────────────
   listGradeChangeRequests: (params?: { status?: string; studentId?: string; courseId?: string }) =>
@@ -689,25 +973,38 @@ export const api = {
     request<unknown[]>(`/resources/${id}/usage`),
   archiveLearningResource: (id: string) =>
     request<unknown>(`/resources/${id}/archive`, { method: "POST" }),
-  uploadFile: (entityType: string, entityId: string, file: File) => {
+  uploadFile: async (entityType: string, entityId: string, file: File) => {
     const formData = new FormData();
     formData.append("file", file);
-    return fetch(`${API_BASE}/files/upload${buildQuery({ entityType, entityId })}`, {
-      method: "POST",
-      credentials: "include",
-      body: formData,
-    }).then(async (r) => {
-      if (!r.ok) {
-        const err = await r.json().catch(() => null);
-        throw new Error(typeof err?.message === "string" ? err.message : `Fallo al subir archivo (${r.status})`);
+    const headers: Record<string, string> = {};
+    if (_accessToken) headers["Authorization"] = `Bearer ${_accessToken}`;
+    const url = `${API_BASE}/files/upload${buildQuery({ entityType, entityId })}`;
+
+    let r = await fetch(url, { method: "POST", credentials: "include", headers, body: formData });
+
+    if (r.status === 401) {
+      const refreshed = await refreshSession();
+      if (refreshed) {
+        if (_accessToken) headers["Authorization"] = `Bearer ${_accessToken}`;
+        r = await fetch(url, { method: "POST", credentials: "include", headers, body: formData });
+      } else {
+        if (_onSessionExpired) _onSessionExpired();
+        throw new Error("Sesion expirada. Por favor inicia sesion nuevamente.");
       }
-      return r.json() as Promise<{ fileId: string; fileName: string; url: string; size: number }>;
-    });
+    }
+
+    if (!r.ok) {
+      const err = await r.json().catch(() => null);
+      throw new Error(typeof err?.message === "string" ? err.message : `Fallo al subir archivo (${r.status})`);
+    }
+    return r.json() as Promise<{ fileId: string; fileName: string; url: string; size: number }>;
   },
   listEntityFiles: (entityType: string, entityId: string) =>
     request<{ id: string; fileName: string; originalName: string; mimeType: string; size: number; url: string | null; createdAt: string }[]>(
       `/files/entity/${entityType}/${entityId}`,
     ),
+  downloadFileBlob: (fileName: string, mode: "view" | "download" = "download") =>
+    requestBlob(`/files/${mode}/${encodeURIComponent(fileName)}`),
   deleteFile: (fileId: string) =>
     request<void>(`/files/${fileId}`, { method: "DELETE" }),
 
@@ -765,8 +1062,8 @@ export const api = {
   // ─── Observations ────────────────────────────────
   createObservation: (payload: { studentId: string; courseId: string; type?: string; title: string; content: string }) =>
     request<unknown>("/observations", { method: "POST", body: JSON.stringify(payload) }),
-  listObservations: (params?: { studentId?: string; courseId?: string; type?: string }) =>
-    request<unknown[]>(`/observations${buildQuery(params ?? {})}`),
+  listObservations: (params?: { studentId?: string; courseId?: string; type?: string; page?: number; limit?: number }) =>
+    request<{ data: unknown[] }>(`/observations${buildQuery(params ?? {})}`).then((r) => r.data),
   getObservation: (id: string) =>
     request<unknown>(`/observations/${id}`),
   updateObservation: (id: string, payload: Record<string, unknown>) =>
@@ -835,4 +1132,7 @@ export const api = {
   getStudentSimceResults: () => request<unknown[]>("/simce/student/results"),
   getStudentSimceDetail: (assessmentId: string) => request<unknown>(`/simce/student/results/${assessmentId}`),
   getStudentSimceEssays: () => request<unknown[]>("/simce/student/essays"),
+  getStudentSimceEssay: (assessmentId: string) => request<unknown>(`/simce/student/essays/${assessmentId}`),
+  submitStudentSimceEssay: (assessmentId: string, payload: { responses: { questionNumber: number; selectedOption?: string }[] }) =>
+    request<unknown>(`/simce/student/essays/${assessmentId}/submit`, { method: "POST", body: JSON.stringify(payload) }),
 };
