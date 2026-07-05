@@ -136,7 +136,10 @@ function MaterialPdfPreview({ url, fileName }: { url: string; fileName: string }
 
     async function renderPdf() {
       try {
-        const loadingTask = pdfjsLib.getDocument({ url });
+        const response = await fetch(url);
+        if (!response.ok) throw new Error("PDF preview request failed");
+        const data = new Uint8Array(await response.arrayBuffer());
+        const loadingTask = pdfjsLib.getDocument({ data });
         const pdf = await loadingTask.promise;
         pdfDocument = pdf;
         if (cancelled) return;

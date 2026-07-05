@@ -10,6 +10,28 @@ import { SimcePdfViewer } from "../../pages/admin/simce/SimcePdfViewer";
 import { api } from "../../lib/api";
 import type { AuthUser } from "../../types/api";
 
+function downloadStudentBlob(blob: Blob, fileName: string) {
+  const url = URL.createObjectURL(blob);
+  const link = document.createElement("a");
+  link.href = url;
+  link.download = fileName;
+  document.body.appendChild(link);
+  link.click();
+  link.remove();
+  URL.revokeObjectURL(url);
+}
+
+async function openStudentFile(fileName: string) {
+  const blob = await api.downloadFileBlob(fileName, "view");
+  const url = URL.createObjectURL(blob);
+  window.open(url, "_blank", "noopener,noreferrer");
+  window.setTimeout(() => URL.revokeObjectURL(url), 60_000);
+}
+
+async function downloadStudentFile(fileName: string, originalName: string) {
+  const blob = await api.downloadFileBlob(fileName, "download");
+  downloadStudentBlob(blob, originalName || fileName);
+}
 interface Props {
   user: AuthUser;
   onLogout: () => void;
@@ -180,12 +202,12 @@ export function AlumnoDashboard({ user, onLogout }: Props) {
                     {material.files.map((file) => (
                       <div key={file.id} style={{ display: "flex", flexWrap: "wrap", gap: 8, alignItems: "center" }}>
                         <span style={{ color: "var(--muted)", fontSize: ".82rem" }}>{file.originalName}</span>
-                        <a className="btn-small" href={file.viewUrl} target="_blank" rel="noreferrer">
+                        <button className="btn-small" type="button" onClick={() => openStudentFile(file.fileName).catch(() => alert("No se pudo abrir el archivo."))}>
                           Abrir
-                        </a>
-                        <a className="btn-small" href={file.downloadUrl} download>
+                        </button>
+                        <button className="btn-small" type="button" onClick={() => downloadStudentFile(file.fileName, file.originalName).catch(() => alert("No se pudo descargar el archivo."))}>
                           Descargar
-                        </a>
+                        </button>
                       </div>
                     ))}
                   </div>
@@ -537,16 +559,19 @@ function SimceEssaysSection() {
     );
   }
 
-  const handleViewPdf = (essay: SimceEssayRow) => {
+  const handleViewPdf = async (essay: SimceEssayRow) => {
     if (!essay.pdfFile) return;
-    const url = `/api/v1/files/view/${essay.pdfFile.fileName}`;
-    setSelectedPdfUrl(url);
-    setSelectedPdfTitle(essay.title);
-  };
-
-  const getDownloadUrl = (essay: SimceEssayRow) => {
-    if (!essay.pdfFile) return null;
-    return `/api/v1/files/download/${essay.pdfFile.fileName}`;
+    try {
+      const blob = await api.downloadFileBlob(essay.pdfFile.fileName, "view");
+      const url = URL.createObjectURL(blob);
+      setSelectedPdfUrl((current) => {
+        if (current) URL.revokeObjectURL(current);
+        return url;
+      });
+      setSelectedPdfTitle(essay.title);
+    } catch {
+      alert("No se pudo abrir el PDF.");
+    }
   };
 
   const handleOpenEssay = (essay: SimceEssayRow) => {
@@ -589,7 +614,6 @@ function SimceEssaysSection() {
               </thead>
               <tbody>
                 {essays.map((essay) => {
-                  const downloadUrl = getDownloadUrl(essay);
                   return (
                     <tr key={essay.id}>
                       <td>
@@ -619,10 +643,10 @@ function SimceEssaysSection() {
                               Ver PDF
                             </button>
                           )}
-                          {downloadUrl && (
-                            <a className="btn-small" href={downloadUrl} download>
+                          {essay.pdfFile && (
+                            <button className="btn-small" type="button" onClick={() => essay.pdfFile && downloadStudentFile(essay.pdfFile.fileName, essay.pdfFile.originalName).catch(() => alert("No se pudo descargar el PDF."))}>
                               Descargar
-                            </a>
+                            </button>
                           )}
                           {!essay.pdfFile && (
                             <span style={{ color: "var(--muted)", fontSize: ".75rem" }}>Sin archivo</span>
@@ -638,7 +662,7 @@ function SimceEssaysSection() {
         )}
       </section>
 
-      <Modal isOpen={Boolean(selectedPdfUrl)} onClose={() => { setSelectedPdfUrl(null); setSelectedPdfTitle(""); }} title={selectedPdfTitle} size="lg">
+      <Modal isOpen={Boolean(selectedPdfUrl)} onClose={() => { if (selectedPdfUrl) URL.revokeObjectURL(selectedPdfUrl); setSelectedPdfUrl(null); setSelectedPdfTitle(""); }} title={selectedPdfTitle} size="lg">
         {selectedPdfUrl && (
           <SimcePdfViewer url={selectedPdfUrl} fileName={selectedPdfTitle} />
         )}
