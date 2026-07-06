@@ -1,4 +1,4 @@
-﻿import { Injectable, NotFoundException, ConflictException, BadRequestException } from "@nestjs/common";
+import { Injectable, NotFoundException, ConflictException, BadRequestException } from "@nestjs/common";
 import { PrismaService } from "../../prisma/prisma.service.js";
 import type { CreateCourseDto, UpdateCourseDto } from "./dto/create-course.dto.js";
 import type { JwtPayload } from "../../../common/decorators/current-user.decorator.js";
@@ -171,15 +171,74 @@ export class CoursesService {
       throw new BadRequestException("Primero debes desactivar el curso antes de eliminarlo definitivamente.");
     }
 
-    const totalDependencies = Object.values(dependencies._count).reduce((total, count) => total + count, 0);
-    if (totalDependencies > 0) {
-      throw new BadRequestException(
-        "No se puede eliminar definitivamente un curso con estudiantes, docentes, evaluaciones, material, asistencia, libro de clases, observaciones o SIMCE asociados. Desactívalo para conservar el historial.",
-      );
-    }
+    const deleted = await this.prisma.$transaction(async (tx) => {
+      const assessments = await tx.assessment.findMany({ where: { courseId: id }, select: { id: true } });
+      const assessmentIds = assessments.map((assessment) => assessment.id);
+      const remedialPlans = await tx.remedialPlan.findMany({ where: { courseId: id }, select: { id: true } });
+      const remedialPlanIds = remedialPlans.map((plan) => plan.id);
+      const learningResources = await tx.learningResource.findMany({
+        where: {
+          OR: [
+            { courseId: id },
+            { assessmentId: { in: assessmentIds } },
+            { remedialPlanId: { in: remedialPlanIds } },
+          ],
+        },
+        select: { id: true },
+      });
+      const resourceIds = learningResources.map((resource) => resource.id);
 
-    await this.prisma.course.delete({ where: { id } });
-    return { ok: true, id };
+      await tx.importedTestDraft.deleteMany({ where: { courseId: id } });
+      const reports = await tx.report.deleteMany({ where: { courseId: id } });
+      const resourceUsageLogs = await tx.resourceUsageLog.deleteMany({
+        where: {
+          OR: [
+            { courseId: id },
+            { resourceId: { in: resourceIds } },
+          ],
+        },
+      });
+      const learningResourcesDeleted = await tx.learningResource.deleteMany({
+        where: {
+          OR: [
+            { id: { in: resourceIds } },
+            { courseId: id },
+            { assessmentId: { in: assessmentIds } },
+            { remedialPlanId: { in: remedialPlanIds } },
+          ],
+        },
+      });
+      const assessmentAttempts = await tx.assessmentAttempt.deleteMany({ where: { assessmentId: { in: assessmentIds } } });
+      const assessmentsDeleted = await tx.assessment.deleteMany({ where: { id: { in: assessmentIds } } });
+      const simceAssessments = await tx.simceAssessment.deleteMany({ where: { courseId: id } });
+      const lessons = await tx.lesson.deleteMany({ where: { courseId: id } });
+      const remedialPlansDeleted = await tx.remedialPlan.deleteMany({ where: { id: { in: remedialPlanIds } } });
+      const attendances = await tx.attendance.deleteMany({ where: { courseId: id } });
+      const observations = await tx.observation.deleteMany({ where: { courseId: id } });
+      const classBookEntries = await tx.classBookEntry.deleteMany({ where: { courseId: id } });
+      const enrollments = await tx.enrollment.deleteMany({ where: { courseId: id } });
+      const teacherAssignments = await tx.teacherCourseAssignment.deleteMany({ where: { courseId: id } });
+
+      await tx.course.delete({ where: { id } });
+
+      return {
+        assessments: assessmentsDeleted.count,
+        assessmentAttempts: assessmentAttempts.count,
+        simceAssessments: simceAssessments.count,
+        learningResources: learningResourcesDeleted.count,
+        resourceUsageLogs: resourceUsageLogs.count,
+        remedialPlans: remedialPlansDeleted.count,
+        lessons: lessons.count,
+        attendances: attendances.count,
+        observations: observations.count,
+        classBookEntries: classBookEntries.count,
+        enrollments: enrollments.count,
+        teacherAssignments: teacherAssignments.count,
+        reports: reports.count,
+      };
+    });
+
+    return { ok: true, id, deleted };
   }
 
   async getStudentsByCourse(courseId: string, user?: JwtPayload) {

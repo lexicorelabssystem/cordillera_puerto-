@@ -1,8 +1,12 @@
+import { useMutation, useQueryClient } from "@tanstack/react-query";
 import type { AdminOverview } from "../../types/api";
 import { KpiCard } from "../../components/common/KpiCard";
+import { api } from "../../lib/api";
+import { useToast } from "../../components/common/Toast";
 
 interface Props {
   overview: AdminOverview;
+  canDeleteHistory?: boolean;
 }
 
 type SemaforoCursoRow = AdminOverview["semaforoCursos"][number];
@@ -21,7 +25,18 @@ function statusBadgeClass(status: string) {
   return "badge--inactive";
 }
 
-export function OverviewPage({ overview }: Props) {
+export function OverviewPage({ overview, canDeleteHistory = false }: Props) {
+  const queryClient = useQueryClient();
+  const { toast } = useToast();
+  const permanentDelete = useMutation({
+    mutationFn: (id: string) => api.permanentDeleteAssessment(id),
+    onSuccess: () => {
+      toast("Evaluacion e historial eliminados definitivamente.", "success");
+      queryClient.invalidateQueries({ queryKey: ["admin-overview"] });
+      queryClient.invalidateQueries({ queryKey: ["assessments"] });
+    },
+    onError: (error) => toast(error instanceof Error ? error.message : "No se pudo eliminar la evaluacion.", "error"),
+  });
   const totals = overview.totals;
   const cursosConNotas = overview.semaforoCursos.filter((row: SemaforoCursoRow) => row.total_grades > 0);
   const promedioGeneral =
@@ -144,6 +159,7 @@ export function OverviewPage({ overview }: Props) {
                 <th>Profesor</th>
                 <th>Respuestas</th>
                 <th>Notas</th>
+                {canDeleteHistory ? <th>Acciones</th> : null}
               </tr>
             </thead>
             <tbody>
@@ -163,6 +179,23 @@ export function OverviewPage({ overview }: Props) {
                   <td>{assessment.teacher_name}</td>
                   <td>{assessment.attempts_count}</td>
                   <td>{assessment.grades_count}</td>
+                  {canDeleteHistory ? (
+                  <td>
+                    <button
+                      type="button"
+                      className="btn-small btn-danger"
+                      disabled={permanentDelete.isPending}
+                      onClick={() => {
+                        const confirmed = window.confirm(
+                          `Eliminar definitivamente "${assessment.title}"? Tambien se borraran respuestas, intentos y notas. Esta accion no se puede deshacer.`,
+                        );
+                        if (confirmed) permanentDelete.mutate(assessment.assessment_id);
+                      }}
+                    >
+                      Eliminar historial
+                    </button>
+                  </td>
+                  ) : null}
                 </tr>
               ))}
             </tbody>

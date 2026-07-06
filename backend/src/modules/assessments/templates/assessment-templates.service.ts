@@ -317,11 +317,32 @@ export class AssessmentTemplatesService {
 
   async delete(id: string, user: JwtPayload) {
     const template = await this.getTemplateForManage(id, user);
+    const linkedAssessments = await this.prisma.assessment.findMany({
+      where: { sourceTemplateId: id },
+      select: { id: true },
+    });
+    const assessmentIds = linkedAssessments.map((assessment) => assessment.id);
+
     if (template.sourceFileId) {
       await this.filesService.deleteFile(template.sourceFileId, user, { failOnStorageError: true });
     }
-    await this.prisma.assessmentTemplate.delete({ where: { id } });
-    return { ok: true };
+
+    const deleted = await this.prisma.$transaction(async (tx) => {
+      if (assessmentIds.length > 0) {
+        await tx.report.deleteMany({ where: { assessmentId: { in: assessmentIds } } });
+        await tx.learningResource.updateMany({
+          where: { assessmentId: { in: assessmentIds } },
+          data: { assessmentId: null },
+        });
+        await tx.assessmentAttempt.deleteMany({ where: { assessmentId: { in: assessmentIds } } });
+        await tx.grade.deleteMany({ where: { assessmentId: { in: assessmentIds } } });
+        await tx.assessment.deleteMany({ where: { id: { in: assessmentIds } } });
+      }
+      await tx.assessmentTemplate.delete({ where: { id } });
+      return { assessments: assessmentIds.length };
+    });
+
+    return { ok: true, deleted };
   }
 
   async createAssessment(id: string, dto: CreateAssessmentFromTemplateDto, user: JwtPayload) {

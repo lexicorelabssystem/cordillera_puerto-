@@ -7,7 +7,7 @@ describe("LoginPage", () => {
   it("renderiza el formulario de login", () => {
     render(<LoginPage onLogin={vi.fn()} loading={false} error="" />);
 
-    expect(screen.getByText("CORDILLERA SAAS")).toBeInTheDocument();
+    expect(screen.getByAltText("EducaCore")).toBeInTheDocument();
     expect(screen.getByText("Iniciar Sesion")).toBeInTheDocument();
     expect(screen.getByLabelText("Correo electronico")).toBeInTheDocument();
     expect(screen.getByLabelText("Contrasena")).toBeInTheDocument();

@@ -227,6 +227,8 @@ export function AssessmentTemplatesPage() {
         setQuestions([]);
       }
       queryClient.invalidateQueries({ queryKey: ["assessment-templates"] });
+      queryClient.invalidateQueries({ queryKey: ["admin-overview"] });
+      queryClient.invalidateQueries({ queryKey: ["assessments"] });
     },
     onError: (error) => toast(error instanceof Error ? error.message : "No se pudo eliminar la plantilla.", "error"),
   });

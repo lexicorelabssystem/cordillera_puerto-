@@ -1,4 +1,4 @@
-﻿import {
+import {
   Controller, Get, Post, Patch, Delete, Body, Param, Query, UseGuards, ParseUUIDPipe, HttpCode, HttpStatus,
 } from "@nestjs/common";
 import { ApiTags, ApiOperation, ApiBearerAuth, ApiQuery } from "@nestjs/swagger";
@@ -62,7 +62,7 @@ export class CoursesController {
   @Delete(":id/permanent")
   @HttpCode(HttpStatus.OK)
   @Roles("SUPER_ADMIN")
-  @ApiOperation({ summary: "Eliminar curso definitivamente si no tiene dependencias" })
+  @ApiOperation({ summary: "Eliminar curso definitivamente junto con sus dependencias" })
   removePermanent(@Param("id", ParseUUIDPipe) id: string, @CurrentUser() user: JwtPayload) {
     return this.service.deletePermanent(id, user);
   }
