@@ -18,24 +18,23 @@ export function LoginPage({ onLogin, loading, error }: Props) {
   return (
     <main className="login-page">
       <section className="login-hero">
-        <h1>CORDILLERA SAAS</h1>
-        <p>Plataforma de Monitoreo de Aprendizajes para establecimientos educacionales chilenos.</p>
-        <div className="login-hero__features">
+        <div className="login-hero__brand">
+          <img src="/educacore.png" alt="EducaCore" />
+        </div>
+        <p className="login-hero__eyebrow">Sistema de gestion y acompanamiento escolar</p>
+        <h1>Gestion educativa conectada para comunidades escolares.</h1>
+        <p>
+          Centraliza evaluaciones, seguimiento pedagogico y acompanamiento docente en una plataforma clara para equipos directivos, profesores y estudiantes.
+        </p>
+        <div className="login-hero__features" aria-label="Capacidades principales de EducaCore">
           <div className="login-hero__feature">
-            <span className="login-hero__feature-icon">&#128202;</span>
-            <span>KPIs pedagogicos en tiempo real</span>
+            <span>Seguimiento academico por curso, asignatura y estudiante.</span>
           </div>
           <div className="login-hero__feature">
-            <span className="login-hero__feature-icon">&#128214;</span>
-            <span>Evaluaciones y banco de preguntas</span>
+            <span>Evaluaciones digitales, material de apoyo y retroalimentacion docente.</span>
           </div>
           <div className="login-hero__feature">
-            <span className="login-hero__feature-icon">&#128221;</span>
-            <span>Reportes, alertas y rutas remediales</span>
-          </div>
-          <div className="login-hero__feature">
-            <span className="login-hero__feature-icon">&#128187;</span>
-            <span>Escala de notas chilena 1.0 a 7.0</span>
+            <span>Informacion institucional organizada para decisiones pedagogicas oportunas.</span>
           </div>
         </div>
       </section>
