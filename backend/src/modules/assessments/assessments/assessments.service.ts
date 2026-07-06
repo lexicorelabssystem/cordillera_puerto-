@@ -282,6 +282,33 @@ export class AssessmentsService {
     return updated;
   }
 
+  async permanentDelete(id: string, user?: JwtPayload | string) {
+    if (user) await assertAssessmentScope(this.prisma, user, id);
+
+    const assessment = await this.prisma.assessment.findUnique({
+      where: { id },
+      select: { id: true, title: true },
+    });
+    if (!assessment) throw new NotFoundException("Evaluacion no encontrada");
+
+    const deleted = await this.prisma.$transaction(async (tx) => {
+      await tx.report.deleteMany({
+        where: { assessmentId: id },
+      });
+      await tx.learningResource.updateMany({
+        where: { assessmentId: id },
+        data: { assessmentId: null },
+      });
+      const attempts = await tx.assessmentAttempt.deleteMany({ where: { assessmentId: id } });
+      const grades = await tx.grade.deleteMany({ where: { assessmentId: id } });
+      await tx.assessment.delete({ where: { id } });
+      return { attempts: attempts.count, grades: grades.count };
+    });
+
+    await this.invalidateAssessmentCache(id);
+    return { ok: true, id, title: assessment.title, deleted };
+  }
+
   // ══════════════════════════════════════════════════════
   //  STATE MACHINE
   // ══════════════════════════════════════════════════════

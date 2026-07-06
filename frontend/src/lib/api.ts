@@ -478,6 +478,8 @@ export const api = {
     }),
   listAssessments: (params?: Record<string, string | number | boolean | undefined>) =>
     request<{ data: unknown[] }>(`/assessments${buildQuery(params ?? {})}`).then((r) => r.data),
+  permanentDeleteAssessment: (id: string) =>
+    request<{ ok: boolean; id: string }>(`/assessments/${id}/permanent`, { method: "DELETE" }),
   getAssessment: (id: string) =>
     request<{ id: string; title: string; description?: string | null; assessmentType: string; deliveryMode?: string; status: string; courseId: string; subjectId: string; course?: { id: string; name: string; gradeLevel: number }; subject?: { id: string; name: string }; semester: number; maxScore: number; timeLimitMin?: number | null; startDate?: string; endDate?: string | null; questions: { id: string; questionId: string; sortOrder: number; points: number; question: { id: string; statement: string; type: string; subject?: { id: string; name: string }; options?: { id: string; text: string; sortOrder: number }[] } }[] }>(`/assessments/${id}`),
   getAssessmentAttempts: (assessmentId: string) =>

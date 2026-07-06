@@ -83,6 +83,14 @@ export class AssessmentsController {
     return this.service.softDelete(id, user);
   }
 
+
+  @Delete(":id/permanent")
+  @Roles("ADMIN", "SUPER_ADMIN")
+  @ApiOperation({ summary: "Eliminar definitivamente una evaluacion y todo su historial" })
+  permanentDelete(@Param("id", ParseUUIDPipe) id: string, @CurrentUser() user: JwtPayload) {
+    return this.service.permanentDelete(id, user);
+  }
+
   // ─── STATE MACHINE ───────────────────────────────────
 
   @Post(":id/publish")

@@ -152,8 +152,8 @@ export class AdminService {
 
   private async getRecentAssessments(institutionId?: string) {
     const where = institutionId
-      ? { course: { institutionId } }
-      : {};
+      ? { course: { institutionId }, isActive: true }
+      : { isActive: true };
 
     const assessments = await this.prisma.assessment.findMany({
       where,

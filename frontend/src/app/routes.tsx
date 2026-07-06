@@ -127,8 +127,8 @@ const StudentFullProfilePage = lazy(() =>
 );
 
 function OverviewWrapper() {
-  const { overview } = useAdminContext();
-  return <OverviewPage overview={overview} />;
+  const { overview, user } = useAdminContext();
+  return <OverviewPage overview={overview} canDeleteHistory={["ADMIN", "SUPER_ADMIN"].includes(user.role)} />;
 }
 
 function StudentGradesWrapper() {
