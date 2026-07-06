@@ -21,33 +21,33 @@ export function LoginPage({ onLogin, loading, error }: Props) {
         <div className="login-hero__brand">
           <img src="/educacore.png" alt="EducaCore" />
         </div>
-        <p className="login-hero__eyebrow">Sistema de gestion y acompanamiento escolar</p>
-        <h1>EducaCore para la gestion educativa diaria.</h1>
+        <p className="login-hero__eyebrow">Sistema de gestion escolar</p>
+        <h1>EducaCore</h1>
         <p>
-          Una plataforma clara para organizar evaluaciones, seguimiento pedagogico y acompanamiento escolar en comunidades educativas.
+          Gestion educativa, evaluaciones y seguimiento pedagogico para comunidades escolares.
         </p>
       </section>
       <section className="login-panel" aria-label="Acceso a EducaCore">
         <form className="login-form" onSubmit={handleSubmit}>
-        <h2>Iniciar Sesion</h2>
+          <h2>Iniciar Sesion</h2>
           <p style={{ color: "var(--muted-light)", fontSize: ".88rem", marginBottom: "4px" }}>
-          Acceso para Administracion, Direccion, UTP, Profesores y Alumnos.
-        </p>
-        <label className="form-field">
-          <label>Correo electronico</label>
-          <input value={email} onChange={(e) => setEmail(e.target.value)} type="email" placeholder="admin@cordillera.cl" required autoFocus />
-        </label>
-        <label className="form-field">
-          <label>Contrasena</label>
-          <input value={password} onChange={(e) => setPassword(e.target.value)} type="password" placeholder="Admin2026*" required />
-        </label>
-        {error ? <div className="error">{error}</div> : null}
+            Acceso para Administracion, Direccion, UTP, Profesores y Alumnos.
+          </p>
+          <label className="form-field">
+            <label>Correo electronico</label>
+            <input value={email} onChange={(e) => setEmail(e.target.value)} type="email" placeholder="admin@cordillera.cl" required autoFocus />
+          </label>
+          <label className="form-field">
+            <label>Contrasena</label>
+            <input value={password} onChange={(e) => setPassword(e.target.value)} type="password" placeholder="Admin2026*" required />
+          </label>
+          {error ? <div className="error">{error}</div> : null}
           <button disabled={loading} type="submit">
-          {loading ? "Verificando..." : "Ingresar"}
-        </button>
-        <a href="/forgot-password">
-          Olvidaste tu contrasena?
-        </a>
+            {loading ? "Verificando..." : "Ingresar"}
+          </button>
+          <a href="/forgot-password">
+            Olvidaste tu contrasena?
+          </a>
         </form>
       </section>
     </main>
