@@ -3842,10 +3842,15 @@ input::placeholder, textarea::placeholder { color: var(--muted-light); }
   .shell-header {
     flex-direction: column;
     align-items: stretch;
+    justify-content: flex-start;
+    gap: 16px;
     padding: 16px;
+    margin-bottom: 18px;
   }
   .shell-header__brand {
-    align-items: flex-start;
+    align-items: center;
+    flex: 0 1 auto;
+    width: 100%;
     min-width: 0;
   }
   .shell-header__logo {
@@ -3859,7 +3864,10 @@ input::placeholder, textarea::placeholder { color: var(--muted-light); }
   }
   .shell-header h1 { font-size: 1.42rem; }
   .shell-header p { font-size: .88rem; }
-  .shell-header__actions { width: 100%; }
+  .shell-header__actions {
+    width: 100%;
+    flex: 0 1 auto;
+  }
 
   .header-actions {
     width: 100%;
@@ -3875,8 +3883,9 @@ input::placeholder, textarea::placeholder { color: var(--muted-light); }
     max-width: none;
   }
   .header-user {
+    width: 100%;
     min-width: 0;
-    min-height: 78px;
+    min-height: 72px;
   }
   .btn-logout {
     width: 100%;
