@@ -158,39 +158,31 @@ input::placeholder, textarea::placeholder { color: var(--muted-light); }
 .login-page {
   min-height: 100vh;
   display: grid;
-  grid-template-columns: minmax(560px, 1.05fr) minmax(500px, .95fr);
-  background:
-    linear-gradient(90deg, #075b61 0%, #0b7774 38%, #8fd4ca 54%, #edf8f4 68%, #f7f5ef 100%);
+  grid-template-columns: minmax(560px, .56fr) minmax(500px, .44fr);
+  background: linear-gradient(90deg, #075b61 0%, #0b7774 45%, #8fd4ca 56%, #edf8f4 64%, #f7f5ef 100%);
 }
 .login-hero {
   background: transparent;
   color: #fff;
-  padding: 54px 72px 72px;
+  padding: 56px 72px 64px;
   display: grid;
-  grid-template-rows: minmax(260px, 42vh) auto;
+  grid-template-rows: minmax(210px, 34vh) minmax(240px, auto);
   align-items: center;
-  justify-items: center;
-  text-align: center;
+  justify-items: start;
+  text-align: left;
   position: relative;
-  overflow: visible;
+  overflow: hidden;
 }
-.login-hero::after {
-  content: "";
-  position: absolute;
-  inset: 0 -26% 0 auto;
-  width: 44%;
-  background: linear-gradient(90deg, rgba(7,91,97,0) 0%, rgba(237,248,244,.52) 72%, rgba(247,245,239,.76) 100%);
-  pointer-events: none;
-}
+.login-hero::after { display: none; }
 .login-hero__brand {
-  width: min(500px, 88%);
-  margin: 0;
+  width: min(440px, 76%);
+  margin: 0 0 0 5%;
   padding: 0;
   border-radius: 0;
   background: transparent;
   box-shadow: none;
   align-self: center;
-  justify-self: center;
+  justify-self: start;
   position: relative;
   z-index: 1;
 }
@@ -202,19 +194,20 @@ input::placeholder, textarea::placeholder { color: var(--muted-light); }
   filter: drop-shadow(0 20px 30px rgba(4, 42, 45, .28));
 }
 .login-hero__copy {
-  width: min(720px, 100%);
-  align-self: end;
-  justify-self: center;
-  padding: 34px 42px 36px;
+  width: min(620px, 86%);
+  align-self: start;
+  justify-self: start;
+  margin-left: 5%;
+  padding: 26px 30px 28px;
   border-radius: 8px;
-  background: linear-gradient(135deg, rgba(103, 85, 63, .34), rgba(63, 105, 94, .2));
-  box-shadow: inset 0 1px 0 rgba(255,255,255,.16);
+  background: linear-gradient(135deg, rgba(86, 69, 49, .34), rgba(19, 92, 87, .18));
+  box-shadow: inset 0 1px 0 rgba(255,255,255,.14);
   position: relative;
   z-index: 1;
 }
 .login-hero__eyebrow {
-  margin: 0 auto 12px;
-  max-width: 560px;
+  margin: 0 0 10px;
+  max-width: 520px;
   font-size: .78rem;
   font-weight: 850;
   letter-spacing: .09em;
@@ -222,19 +215,19 @@ input::placeholder, textarea::placeholder { color: var(--muted-light); }
   opacity: .94;
 }
 .login-hero h1 {
-  max-width: 620px;
-  margin: 0 auto;
-  font-size: clamp(2.25rem, 3.4vw, 3.65rem);
+  max-width: 520px;
+  margin: 0;
+  font-size: clamp(2rem, 2.7vw, 3rem);
   line-height: 1.08;
   font-weight: 900;
   letter-spacing: 0;
 }
 .login-hero p {
-  margin: 16px auto 0;
+  margin: 14px 0 0;
   font-size: clamp(.98rem, 1.08vw, 1.12rem);
   line-height: 1.6;
   opacity: .95;
-  max-width: 610px;
+  max-width: 560px;
 }
 .login-hero__features { display: none; }
 .login-hero__feature { display: none; }
@@ -242,11 +235,10 @@ input::placeholder, textarea::placeholder { color: var(--muted-light); }
 .login-panel {
   min-height: 100vh;
   display: grid;
-  place-items: center;
-  padding: 48px 72px;
-  background:
-    radial-gradient(circle at 0% 50%, rgba(17, 132, 125, .18), rgba(237,248,244,0) 42%),
-    linear-gradient(90deg, rgba(143,212,202,.2), rgba(247,245,239,.78));
+  align-items: center;
+  justify-items: center;
+  padding: 48px 72px 48px 32px;
+  background: transparent;
 }
 .login-form {
   max-width: 430px;
@@ -317,7 +309,7 @@ input::placeholder, textarea::placeholder { color: var(--muted-light); }
   align-items: center;
   flex-wrap: wrap;
   position: relative;
-  overflow: visible;
+  overflow: hidden;
   z-index: 30;
   margin-bottom: 18px;
   padding: 18px 20px;
@@ -360,7 +352,8 @@ input::placeholder, textarea::placeholder { color: var(--muted-light); }
   height: 82px;
   flex: 0 0 104px;
   display: grid;
-  place-items: center;
+  align-items: center;
+  justify-items: center;
 }
 .shell-header__logo img {
   width: 100%;
@@ -493,7 +486,7 @@ input::placeholder, textarea::placeholder { color: var(--muted-light); }
   color: var(--ink);
   line-height: 1.1;
   white-space: nowrap;
-  overflow: visible;
+  overflow: hidden;
   text-overflow: ellipsis;
 }
 .header-user__role {
@@ -508,7 +501,8 @@ input::placeholder, textarea::placeholder { color: var(--muted-light); }
   height: 52px;
   flex: 0 0 52px;
   display: grid;
-  place-items: center;
+  align-items: center;
+  justify-items: center;
   border-radius: 999px;
   color: var(--accent-dark);
   font-weight: 850;
@@ -518,7 +512,7 @@ input::placeholder, textarea::placeholder { color: var(--muted-light); }
     var(--accent-light);
   border: 1px solid rgba(124, 45, 18, 0.14);
   box-shadow: 0 10px 20px rgba(92, 64, 39, 0.14);
-  overflow: visible;
+  overflow: hidden;
 }
 .header-user__avatar img {
   width: 100%;
@@ -994,7 +988,8 @@ input::placeholder, textarea::placeholder { color: var(--muted-light); }
   width: 36px;
   height: 36px;
   display: grid;
-  place-items: center;
+  align-items: center;
+  justify-items: center;
   border-radius: 50%;
   background: #2f3f64;
   color: #fff;
@@ -1107,7 +1102,8 @@ input::placeholder, textarea::placeholder { color: var(--muted-light); }
 .attendance-dot--excused { background: var(--info); }
 .attendance-pill {
   display: inline-grid;
-  place-items: center;
+  align-items: center;
+  justify-items: center;
   width: 18px;
   height: 18px;
   border-radius: 5px;
@@ -1513,7 +1509,8 @@ input::placeholder, textarea::placeholder { color: var(--muted-light); }
   height: 118px;
   border-radius: 999px;
   display: grid;
-  place-items: center;
+  align-items: center;
+  justify-items: center;
   align-content: center;
   background:
     radial-gradient(circle at center, #fff 58%, transparent 59%),
@@ -1589,7 +1586,7 @@ input::placeholder, textarea::placeholder { color: var(--muted-light); }
 }
 .student-grade-item small {
   color: var(--muted);
-  overflow: visible;
+  overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
 }
@@ -2156,7 +2153,7 @@ input::placeholder, textarea::placeholder { color: var(--muted-light); }
   border-radius: 20px;
   box-shadow: 0 8px 32px rgba(15, 52, 96, 0.25), 0 2px 8px rgba(0,0,0,0.1);
   position: relative;
-  overflow: visible;
+  overflow: hidden;
 }
 .libro-header-v2::before {
   content: "";
@@ -2368,7 +2365,7 @@ input::placeholder, textarea::placeholder { color: var(--muted-light); }
 /* ─── TABLE V2 ─── */
 .libro-tabla-panel-v2 {
   border-radius: 16px !important;
-  overflow: visible;
+  overflow: hidden;
   padding: 0 !important;
 }
 .libro-tabla-header-v2 {
@@ -2540,7 +2537,7 @@ input::placeholder, textarea::placeholder { color: var(--muted-light); }
   line-height: 1.2;
   text-align: center;
   max-width: 90px;
-  overflow: visible;
+  overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
 }
@@ -2769,7 +2766,7 @@ input::placeholder, textarea::placeholder { color: var(--muted-light); }
   width: 100%;
   max-width: 540px;
   animation: libroSlideUp .25s cubic-bezier(0.16, 1, 0.3, 1);
-  overflow: visible;
+  overflow: hidden;
 }
 @keyframes libroSlideUp {
   from { opacity: 0; transform: translateY(24px) scale(0.97); }
@@ -3057,7 +3054,7 @@ input::placeholder, textarea::placeholder { color: var(--muted-light); }
   border-radius: 20px;
   box-shadow: 0 8px 32px rgba(15, 52, 96, 0.25), 0 2px 8px rgba(0,0,0,0.1);
   position: relative;
-  overflow: visible;
+  overflow: hidden;
 }
 .gradebook-header::before {
   content: "";
@@ -3217,7 +3214,7 @@ input::placeholder, textarea::placeholder { color: var(--muted-light); }
 /* ─── TABLE PANEL ─── */
 .gradebook-table-panel {
   border-radius: 16px !important;
-  overflow: visible;
+  overflow: hidden;
   padding: 0 !important;
 }
 .gradebook-table-header {
@@ -3322,7 +3319,7 @@ input::placeholder, textarea::placeholder { color: var(--muted-light); }
   line-height: 1.2;
   text-align: center;
   max-width: 90px;
-  overflow: visible;
+  overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
 }
@@ -3351,7 +3348,8 @@ input::placeholder, textarea::placeholder { color: var(--muted-light); }
   display: inline-grid;
   min-height: 30px;
   min-width: 42px;
-  place-items: center;
+  align-items: center;
+  justify-items: center;
   border-radius: 6px;
   background: #ecfdf5;
   border: 1px solid #bbf7d0;
@@ -3549,7 +3547,7 @@ input::placeholder, textarea::placeholder { color: var(--muted-light); }
   display: flex;
   flex-direction: column;
   animation: gbSlideIn .3s cubic-bezier(0.16, 1, 0.3, 1);
-  overflow: visible;
+  overflow: hidden;
 }
 @keyframes gbSlideIn {
   from { transform: translateX(100%); }
@@ -3823,12 +3821,13 @@ input::placeholder, textarea::placeholder { color: var(--muted-light); }
 
 @media (max-width: 920px) {
   .login-page { grid-template-columns: 1fr; background: linear-gradient(160deg, #075b61 0%, #14928c 48%, #f7f5ef 48%, #f7f5ef 100%); }
-  .login-hero { padding: 42px 24px 34px; min-height: auto; grid-template-rows: auto auto; gap: 28px; }
+  .login-hero { padding: 42px 24px 34px; min-height: auto; grid-template-rows: auto auto; gap: 28px; justify-items: center; text-align: center; }
   .login-hero::after { display: none; }
-  .login-hero__brand { width: min(340px, 84%); }
-  .login-hero__copy { padding: 24px 22px 26px; }
-  .login-hero h1 { font-size: 2.2rem; }
-  .login-hero p { font-size: .98rem; }
+  .login-hero__brand { width: min(340px, 84%); margin: 0; justify-self: center; }
+  .login-hero__copy { width: min(620px, 100%); margin-left: 0; padding: 24px 22px 26px; justify-self: center; text-align: center; }
+  .login-hero__eyebrow { margin: 0 auto 10px; }
+  .login-hero h1 { font-size: 2.2rem; margin: 0 auto; }
+  .login-hero p { font-size: .98rem; margin: 14px auto 0; }
   .login-panel { min-height: auto; padding: 38px 20px 48px; background: #f7f5ef; }
 
   .shell { padding: 14px; }
@@ -4163,7 +4162,7 @@ input::placeholder, textarea::placeholder { color: var(--muted-light); }
 
 .omr-reader__overlay-container {
   border-radius: var(--radius);
-  overflow: visible;
+  overflow: hidden;
   box-shadow: var(--shadow);
   border: 1px solid var(--line);
 }
@@ -4229,7 +4228,7 @@ input::placeholder, textarea::placeholder { color: var(--muted-light); }
 .omr-reader__cell--question {
   max-width: 280px;
   white-space: nowrap;
-  overflow: visible;
+  overflow: hidden;
   text-overflow: ellipsis;
 }
 
@@ -4415,7 +4414,7 @@ input::placeholder, textarea::placeholder { color: var(--muted-light); }
 .shell--teacher #teacher-grades {
   order: -1;
   padding: 0;
-  overflow: visible;
+  overflow: hidden;
 }
 
 .shell--teacher #teacher-grades .panel-heading,
@@ -4842,7 +4841,7 @@ input::placeholder, textarea::placeholder { color: var(--muted-light); }
   height: 20px;
   background: var(--line);
   border-radius: 10px;
-  overflow: visible;
+  overflow: hidden;
 }
 .simce-review-bar-row__fill {
   height: 100%;
@@ -4882,7 +4881,7 @@ input::placeholder, textarea::placeholder { color: var(--muted-light); }
 .simce-pdf-reader {
   border: 1px solid var(--line);
   border-radius: 8px;
-  overflow: visible;
+  overflow: hidden;
   margin-top: 12px;
   background: #f2eee5;
 }
@@ -5024,7 +5023,7 @@ input::placeholder, textarea::placeholder { color: var(--muted-light); }
   align-items: stretch;
   margin: 0 0 18px;
   padding: 24px;
-  overflow: visible;
+  overflow: hidden;
   border: 1px solid #d9e1cf;
   border-radius: 14px;
   background:
@@ -5191,7 +5190,7 @@ input::placeholder, textarea::placeholder { color: var(--muted-light); }
   min-height: 132px;
   align-items: flex-start;
   padding: 16px;
-  overflow: visible;
+  overflow: hidden;
   border: 1px solid #dfd8ca;
   border-radius: 10px;
   background: linear-gradient(180deg, #fff, #fbf8f0);
@@ -5287,7 +5286,7 @@ input::placeholder, textarea::placeholder { color: var(--muted-light); }
 
 .shell--teacher #teacher-grades.teacher-gradebook-panel {
   padding: 0;
-  overflow: visible;
+  overflow: hidden;
 }
 
 .shell--teacher #teacher-grades.teacher-gradebook-panel > .panel-heading,
@@ -5454,7 +5453,7 @@ input::placeholder, textarea::placeholder { color: var(--muted-light); }
 }
 
 .shell--teacher .gb-student-main strong {
-  overflow: visible;
+  overflow: hidden;
   color: #162033;
   font-size: .95rem;
   text-overflow: ellipsis;
@@ -5523,7 +5522,7 @@ input::placeholder, textarea::placeholder { color: var(--muted-light); }
 
 .teacher-material-upload-progress__track {
   height: 10px;
-  overflow: visible;
+  overflow: hidden;
   border-radius: 999px;
   background: #e9e2d5;
 }
@@ -5632,7 +5631,7 @@ input::placeholder, textarea::placeholder { color: var(--muted-light); }
 }
 
 .assessment-create-modal {
-  overflow: visible;
+  overflow: hidden;
   border: 1px solid rgba(255, 255, 255, .75);
   border-radius: 18px;
   background: #fffdf8;
@@ -5822,7 +5821,7 @@ input::placeholder, textarea::placeholder { color: var(--muted-light); }
   background: var(--simce-blue);
   color: #fff;
   border-radius: 16px;
-  overflow: visible;
+  overflow: hidden;
   box-shadow: 0 24px 70px rgba(5, 42, 46, .12);
 }
 
@@ -5911,7 +5910,7 @@ input::placeholder, textarea::placeholder { color: var(--muted-light); }
   border-radius: 14px;
   box-shadow: var(--shadow);
   margin-top: 16px;
-  overflow: visible;
+  overflow: hidden;
 }
 
 .simce-exam__card-title {
@@ -5973,7 +5972,7 @@ input::placeholder, textarea::placeholder { color: var(--muted-light); }
   background: #edf2f7;
   border-radius: 999px;
   height: 12px;
-  overflow: visible;
+  overflow: hidden;
 }
 
 .simce-exam__progress-bar {
@@ -6000,7 +5999,7 @@ input::placeholder, textarea::placeholder { color: var(--muted-light); }
   background: var(--card);
   border-radius: 14px;
   margin: 14px 0;
-  overflow: visible;
+  overflow: hidden;
   box-shadow: 0 4px 12px rgba(16,24,40,.03);
   scroll-margin-top: 80px;
 }
@@ -6199,7 +6198,7 @@ input::placeholder, textarea::placeholder { color: var(--muted-light); }
 
 .modal-container.simce-submit-modal {
   max-width: 470px;
-  overflow: visible;
+  overflow: hidden;
   border: 1px solid #c9d8e8;
   border-radius: 18px;
   box-shadow: 0 28px 70px rgba(0, 35, 73, .24);
@@ -6225,7 +6224,8 @@ input::placeholder, textarea::placeholder { color: var(--muted-light); }
   height: 36px;
   padding: 0;
   display: grid;
-  place-items: center;
+  align-items: center;
+  justify-items: center;
   color: #fff;
   background: rgba(255, 255, 255, .12);
   border: 1px solid rgba(255, 255, 255, .18);
@@ -6255,7 +6255,8 @@ input::placeholder, textarea::placeholder { color: var(--muted-light); }
   height: 62px;
   margin: 0 auto 16px;
   display: grid;
-  place-items: center;
+  align-items: center;
+  justify-items: center;
   color: var(--simce-blue);
   background: var(--simce-sky);
   border: 1px solid #bdd7f1;
