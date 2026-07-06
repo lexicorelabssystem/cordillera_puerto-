@@ -4,6 +4,7 @@ import { SimceService, VALID_STATUS_TRANSITIONS } from "./simce.service.js";
 import { PrismaService } from "../prisma/prisma.service.js";
 import { DocumentAssessmentParserService } from "../assessments/import/document-assessment-parser.service.js";
 import { CacheService } from "../cache/cache.service.js";
+import { StorageService } from "../storage/storage.service.js";
 
 describe("SimceService", () => {
   let service: SimceService;
@@ -18,6 +19,7 @@ describe("SimceService", () => {
           useValue: { parseFromPdf: jest.fn(), parseFromFile: jest.fn() },
         },
         { provide: CacheService, useValue: { get: jest.fn(), set: jest.fn(), del: jest.fn() } },
+        { provide: StorageService, useValue: { getBuffer: jest.fn() } },
       ],
     }).compile();
 
