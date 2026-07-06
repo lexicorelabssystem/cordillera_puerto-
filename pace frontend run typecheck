@@ -1,0 +1,81 @@
+> [33ma12bb89[m[33m ([m[1;36mHEAD[m[33m -> [m[1;32mcoolify-deploy-test[m[33m, [m[1;31morigin/coolify-deploy-test[m[33m)[m fix: open protected material files with authenticated blobs
+> [33m336bc57[m fix: render teacher material PDFs with pdfjs
+> [33m33335a5[m fix: preview teacher material files with authenticated blobs
+> [33m9bd305a[m fix: serialize Docker build dependency install
+> [33ma07132b[m test: add production load audit for 50 students
+> [33m4dfac6c[m fix: delete assessment template source files from storage
+> [33m89fca48[m chore: add assessment template MinIO migration script
+> [33md0bc036[m feat: store assessment template sources in MinIO
+> [33mc53378f[m Store assessment template PDFs in MinIO
+> [33m84ef64a[m chore: endurecer docker y red privada
+> [33m34f4d1e[m chore: endurecer cors tokens y csrf
+> [33meb69421[m chore: endurecer secretos y configuracion productiva
+> [33mbe10b60[m chore: preparar repositorio para produccion
+> [33m3e54832[m Add worker service with shared uploads volume
+> [33m3d23328[m Fix download path for async export files
+> [33m1b386fc[m Add async export job fields migration
+> [33m599c6f0[m Fix async export filters normalization
+> [33mfd4e2cf[m Parse Redis URL for BullMQ connection
+> [33md397805[m Fix BullMQ Redis URL connection handling
+> [33mff481ef[m Fix worker NotificationsModule dependency
+> [33me62091b[m feat: add Dockerfile.worker, BullMQ worker system, and backend/frontend enhancements
+> [33m010658d[m Add assessment PDF download flow
+> [33m69fc484[m Update CMD to use '&&' for sequential execution
+> [33m69fb69c[m Refactor migration to add assessment and period status enums
+> [33medb927d[m Change onSend hook to async in main.ts
+> [33m2769f26[m Update healthcheck URL from localhost to 127.0.0.1
+> [33m73416df[m Agrega stack trace al body de error 500 en modo dev
+> [33m2dadd53[m Agrega try-catch con stack trace al overview para debug
+> [33m4ac2019[m Fix: import type PrismaService → import PrismaService para DI de NestJS
+> [33mb24d941[m Optimiza imagen Docker para despliegue en Coolify
+> [33m147cd0c[m Trigger redeploy del backend en Coolify
+> [33m78cca93[m Agrega imagen de portada
+> [33m12e785a[m Actualiza docker-compose: Dockerfile en raiz del repo
+> [33mb164019[m Limpia archivos basura del repo
+> [33me5dccc3[m Elimina Dockerfile duplicado en backend/, solo queda en raiz
+> [33m232214e[m Mueve Dockerfile a raiz del repo para compatibilidad con Coolify build context
+> [33m2243bf2[m Migraciones idempotentes: DO blocks con duplicate_object, entrypoint tolera fallos
+> [33m86117b3[m Agrega .dockerignore — excluye excels, pdfs, zip del contexto Docker
+> [33mde53384[m Fix: AssessmentStatus enum type en todos los where status in[] del proyecto
+> [33mbd9b191[m Force any types on Prisma includes to bypass Railway tsc strict mode
+> [33m6d682ab[m Fix Railway deploy: features.ts local, AssessmentStatus type cast, QuestionOption answers relation
+> [33m36a0e95[m Agrega relacion inversa StudentAnswer en QuestionOption para deploy Railway
+> [33m7a8a0b4[m Arregla tests: api.test.ts 27/27, assessments/grading specs, useAuth logout, README test count
+> [33m543b0fe[m Auditoria integral: 18 correcciones de seguridad, arquitectura, datos y calidad
+> [33mb3d6588[m Protege Swagger con JWT, agrega CI/CD pipeline y auditoria integral
+> [33m3bce88f[m Mejoras visuales del modal de envío y corrección de títulos Asignatura/Nivel
+> [33m03dbe8c[m Conservar cursos sin letra al importar alumnos
+> [33m49c7a43[m fix permanent teacher deletion
+> [33m5c22f6a[m Agrega importacion masiva de profesores
+> [33m83d7f60[m Remove temporary educacore admin seed
+> [33m8f89610[m Fix temporary login passwords for imported users
+> [33m125d834[m fix: copy backend scripts into production image
+> [33m7e619c8[m feat: script reset temp passwords, usar config.bcryptRounds en imports
+> [33me60ceca[m fix: normalizar email en import masiva, login throttle, guard anti-doble-click, UI envio evaluacion
+> [33md533523[m Add import data deletion
+> [33m00d3710[m Match student import courses by grade
+> [33m74e2adf[m Fix student import Excel validation
+> [33m01af780[m Harden import validation parsing
+> [33m2db0fa4[m Add UTP student bulk import
+> [33m1051fcb[m feat: eliminacion masiva y definitiva de usuarios inactivos en UsersView
+> [33m52f4b4a[m feat: importacion masiva de estudiantes accesible desde UTP con barra de progreso
+> [33ma021227[m fix: type error en titulo de subida masiva
+> [33mc03747d[m feat: barra de progreso con porcentaje y titulo automatico del documento en subida masiva
+> [33m21142fc[m feat: subida masiva de archivos en banco de pruebas
+> [33m71cdcd1[m fix: navegacion relativa en monitoreo y evaluaciones para admin/utp/direction
+> [33m26a670b[m feat: agregar eliminacion definitiva de plantillas en banco de pruebas
+> [33m0be8760[m fix: assessment timer countdown and React hooks order in monitoring detail page
+> [33m4b81ca4[m feat: add time limit modal when assigning assessment templates to course
+> [33m536f1be[m feat: replace grade level input with course selector in assessment templates page
+> [33m330ef6c[m fix: auto-publish+activate assessment when teacher assigns from shared templates bank
+> [33m059f24b[m fix: teacher shared templates panel shows all published templates regardless of grade/subject match
+> [33mf3473a1[m feat: SIMCE-style assessment attempt page for students + exam CSS design system
+> [33m6cceb21[m chore: sync package-lock.json with jszip dependency
+> [33m0ff2c46[m fix: replace broken hand-rolled ZIP parser with jszip for docx extraction
+> [33mbf6a731[m fix: multipart upload auth, CSRF/CORS for Coolify domains, CSP cleanup
+> [33mdab391e[m feat: plantillas de evaluaciones, validacion docente, parser de documentos, modulo alumno, y mejoras a importacion y grading
+> [33mc4f9561[m Allow Coolify API in frontend CSP
+> [33me96dfcb[m Fix feature flags boolean typing
+> [33m9a295e5[m Fix feature flags shared import for Coolify
+> [33mdfae5f1[m Fix backend feature flags import for Coolify deploy
+< [33m9c83e8b[m[33m ([m[1;31morigin/main[m[33m, [m[1;31morigin/HEAD[m[33m)[m Update healthcheck URL to use 127.0.0.1

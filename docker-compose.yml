@@ -1,16 +1,47 @@
 services:
   postgres:
-    image: postgres:16-alpine
+    build:
+      context: .
+      dockerfile: Dockerfile.postgres
+    image: cordillera-postgres:16-pgbackrest
     container_name: cordillera-postgres
     restart: unless-stopped
     environment:
       POSTGRES_USER: ${POSTGRES_USER:?POSTGRES_USER requerido}
       POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?POSTGRES_PASSWORD requerido}
       POSTGRES_DB: ${POSTGRES_DB:?POSTGRES_DB requerido}
+      PGBACKREST_STANZA: cordillera
+      PGBACKREST_PG1_PATH: /var/lib/postgresql/data
+      PGBACKREST_REPO1_TYPE: s3
+      PGBACKREST_REPO1_PATH: /cordillera/postgresql
+      PGBACKREST_REPO1_S3_BUCKET: ${PITR_S3_BUCKET:?PITR_S3_BUCKET requerido}
+      PGBACKREST_REPO1_S3_ENDPOINT: ${PITR_S3_ENDPOINT:?PITR_S3_ENDPOINT requerido}
+      PGBACKREST_REPO1_S3_REGION: ${PITR_S3_REGION:-us-east-1}
+      PGBACKREST_REPO1_S3_KEY: ${PITR_S3_KEY:?PITR_S3_KEY requerido}
+      PGBACKREST_REPO1_S3_KEY_SECRET: ${PITR_S3_SECRET:?PITR_S3_SECRET requerido}
+      PGBACKREST_REPO1_S3_URI_STYLE: ${PITR_S3_URI_STYLE:-host}
+      PGBACKREST_REPO1_CIPHER_TYPE: aes-256-cbc
+      PGBACKREST_REPO1_CIPHER_PASS: ${PITR_REPO_CIPHER_PASS:?PITR_REPO_CIPHER_PASS requerido}
+      PGBACKREST_REPO1_RETENTION_FULL: ${PITR_RETENTION_FULL:-4}
+      PGBACKREST_REPO1_RETENTION_DIFF: ${PITR_RETENTION_DIFF:-14}
+      PGBACKREST_COMPRESS_TYPE: zst
+      PGBACKREST_PROCESS_MAX: ${PITR_PROCESS_MAX:-2}
+      PGBACKREST_LOCK_PATH: /var/lib/postgresql/data/pgbackrest-lock
     ports:
       - "${POSTGRES_BIND_ADDRESS:-127.0.0.1}:${POSTGRES_HOST_PORT:-5433}:5432"
     volumes:
       - pgdata:/var/lib/postgresql/data
+      - postgres_socket:/var/run/postgresql
+    command:
+      - postgres
+      - -c
+      - wal_level=replica
+      - -c
+      - archive_mode=on
+      - -c
+      - archive_timeout=${PITR_ARCHIVE_TIMEOUT:-60s}
+      - -c
+      - archive_command=pgbackrest --stanza=cordillera archive-push %p
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U $$POSTGRES_USER -d $$POSTGRES_DB"]
       interval: 5s
@@ -207,7 +238,10 @@ services:
       - cordillera-private
 
   backup:
-    image: postgres:16-alpine
+    build:
+      context: .
+      dockerfile: Dockerfile.postgres
+    image: cordillera-postgres:16-pgbackrest
     container_name: cordillera-backup
     restart: unless-stopped
     depends_on:
@@ -218,13 +252,38 @@ services:
       PGUSER: ${POSTGRES_USER:?POSTGRES_USER requerido}
       PGPASSWORD: ${POSTGRES_PASSWORD:?POSTGRES_PASSWORD requerido}
       PGDATABASE: ${POSTGRES_DB:?POSTGRES_DB requerido}
+      PGBACKREST_STANZA: cordillera
+      PGBACKREST_PG1_PATH: /var/lib/postgresql/data
+      PGBACKREST_REPO1_TYPE: s3
+      PGBACKREST_REPO1_PATH: /cordillera/postgresql
+      PGBACKREST_REPO1_S3_BUCKET: ${PITR_S3_BUCKET:?PITR_S3_BUCKET requerido}
+      PGBACKREST_REPO1_S3_ENDPOINT: ${PITR_S3_ENDPOINT:?PITR_S3_ENDPOINT requerido}
+      PGBACKREST_REPO1_S3_REGION: ${PITR_S3_REGION:-us-east-1}
+      PGBACKREST_REPO1_S3_KEY: ${PITR_S3_KEY:?PITR_S3_KEY requerido}
+      PGBACKREST_REPO1_S3_KEY_SECRET: ${PITR_S3_SECRET:?PITR_S3_SECRET requerido}
+      PGBACKREST_REPO1_S3_URI_STYLE: ${PITR_S3_URI_STYLE:-host}
+      PGBACKREST_REPO1_CIPHER_TYPE: aes-256-cbc
+      PGBACKREST_REPO1_CIPHER_PASS: ${PITR_REPO_CIPHER_PASS:?PITR_REPO_CIPHER_PASS requerido}
+      PGBACKREST_REPO1_RETENTION_FULL: ${PITR_RETENTION_FULL:-4}
+      PGBACKREST_REPO1_RETENTION_DIFF: ${PITR_RETENTION_DIFF:-14}
+      PGBACKREST_COMPRESS_TYPE: zst
+      PGBACKREST_PROCESS_MAX: ${PITR_PROCESS_MAX:-2}
+      PGBACKREST_LOCK_PATH: /var/lib/postgresql/data/pgbackrest-lock
+      PITR_FULL_BACKUP_DAY: ${PITR_FULL_BACKUP_DAY:-7}
+      PITR_BACKUP_HOUR: ${PITR_BACKUP_HOUR:-2}
+      PITR_CHECK_INTERVAL_SECONDS: ${PITR_CHECK_INTERVAL_SECONDS:-300}
       BACKUP_DIR: /backups
       BACKUP_RETENTION_DAYS: ${BACKUP_RETENTION_DAYS:-30}
       BACKUP_CRON_SCHEDULE: "${BACKUP_CRON_SCHEDULE:-0 3 * * *}"
     volumes:
       - backups:/backups
+      - pgdata:/var/lib/postgresql/data
+      - postgres_socket:/var/run/postgresql
+      - pitr_state:/var/lib/pgbackrest
       - ./scripts/backup-entrypoint.sh:/usr/local/bin/backup-entrypoint.sh:ro
-    entrypoint: ["/bin/sh", "/usr/local/bin/backup-entrypoint.sh"]
+      - ./scripts/pgbackrest-scheduler.sh:/usr/local/bin/pgbackrest-scheduler.sh:ro
+    entrypoint: ["/bin/sh", "-c"]
+    command: /bin/sh /usr/local/bin/backup-entrypoint.sh & /bin/sh /usr/local/bin/pgbackrest-scheduler.sh
     networks:
       - cordillera-private
 
@@ -270,6 +329,10 @@ volumes:
   pgdata:
     driver: local
   backups:
+    driver: local
+  postgres_socket:
+    driver: local
+  pitr_state:
     driver: local
   redisdata:
     driver: local

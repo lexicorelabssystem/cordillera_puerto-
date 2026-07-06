@@ -15,6 +15,7 @@ import { resolveUserScope } from "../../common/authz/access-scope.js";
 import type { JwtPayload } from "../../common/decorators/current-user.decorator.js";
 import { DocumentAssessmentParserService } from "../assessments/import/document-assessment-parser.service.js";
 import { CacheService } from "../cache/cache.service.js";
+import { StorageService } from "../storage/storage.service.js";
 import type { ParsedAssessmentDocument } from "../assessments/import/document-assessment-parser.service.js";
 
 
@@ -93,6 +94,7 @@ export class SimceService {
     private readonly prisma: PrismaService,
     private readonly documentParser: DocumentAssessmentParserService,
     private readonly cache: CacheService,
+    private readonly storage: StorageService,
   ) {}
 
   // ══════════════════════════════════════════════════════
@@ -963,7 +965,7 @@ export class SimceService {
 
     let buffer: Buffer;
     try {
-      buffer = file.buffer ?? await fs.promises.readFile(file.storagePath);
+      buffer = file.buffer ?? await this.storage.getBuffer(file.storagePath);
     } catch {
       throw new NotFoundException("PDF SIMCE no encontrado");
     }
