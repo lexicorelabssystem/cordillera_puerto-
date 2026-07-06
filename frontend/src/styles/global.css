@@ -159,12 +159,12 @@ input::placeholder, textarea::placeholder { color: var(--muted-light); }
   min-height: 100vh;
   display: grid;
   grid-template-columns: minmax(520px, 1fr) minmax(460px, 1fr);
-  background: #f7f5ef;
+  background: linear-gradient(90deg, #0b7774 0%, #14928c 48%, #eef5ef 48%, #f7f5ef 100%);
 }
 .login-hero {
   background: linear-gradient(135deg, #075b61 0%, #0d807b 58%, #159b95 100%);
   color: #fff;
-  padding: 56px 64px;
+  padding: 56px 72px;
   display: flex;
   flex-direction: column;
   justify-content: center;
@@ -173,10 +173,17 @@ input::placeholder, textarea::placeholder { color: var(--muted-light); }
   position: relative;
   overflow: hidden;
 }
-.login-hero::after { display: none; }
+.login-hero::after {
+  content: "";
+  position: absolute;
+  inset: 0 -1px 0 auto;
+  width: 28%;
+  background: linear-gradient(90deg, rgba(21,155,149,0) 0%, rgba(247,245,239,.82) 100%);
+  pointer-events: none;
+}
 .login-hero__brand {
-  width: min(430px, 82%);
-  margin: 0 auto 38px;
+  width: min(460px, 84%);
+  margin: 0 auto 44px;
   padding: 0;
   border-radius: 0;
   background: transparent;
@@ -188,28 +195,31 @@ input::placeholder, textarea::placeholder { color: var(--muted-light); }
   height: auto;
   object-fit: contain;
   filter: drop-shadow(0 18px 28px rgba(4, 42, 45, .22));
+  position: relative;
+  z-index: 1;
 }
 .login-hero__eyebrow {
-  margin: 0 0 16px;
-  font-size: .92rem;
+  margin: 0 auto 14px;
+  max-width: 560px;
+  font-size: .78rem;
   font-weight: 800;
   letter-spacing: .08em;
   text-transform: uppercase;
   opacity: .92;
 }
 .login-hero h1 {
-  max-width: 720px;
-  font-size: clamp(2.7rem, 4.6vw, 5.1rem);
-  line-height: 1.04;
-  font-weight: 900;
+  max-width: 620px;
+  font-size: clamp(2rem, 3.2vw, 3.35rem);
+  line-height: 1.12;
+  font-weight: 850;
   letter-spacing: 0;
 }
 .login-hero p {
-  margin: 22px auto 0;
-  font-size: clamp(1.1rem, 1.45vw, 1.35rem);
-  line-height: 1.7;
+  margin: 18px auto 0;
+  font-size: clamp(.98rem, 1.12vw, 1.08rem);
+  line-height: 1.65;
   opacity: .94;
-  max-width: 720px;
+  max-width: 590px;
 }
 .login-hero__features { display: none; }
 .login-hero__feature { display: none; }
@@ -220,15 +230,16 @@ input::placeholder, textarea::placeholder { color: var(--muted-light); }
   align-items: center;
   justify-content: center;
   padding: 48px;
+  background: radial-gradient(circle at 0% 50%, rgba(21,155,149,.12), rgba(247,245,239,0) 42%);
 }
 .login-form {
-  max-width: 420px;
+  max-width: 430px;
   margin: auto;
   width: calc(100% - 40px);
   background: var(--card);
   padding: 32px;
   border-radius: var(--radius-lg);
-  box-shadow: var(--shadow-lg);
+  box-shadow: 0 24px 70px rgba(5, 42, 46, .12);
   display: grid;
   gap: 16px;
 }
@@ -484,7 +495,7 @@ input::placeholder, textarea::placeholder { color: var(--muted-light); }
   place-items: center;
   border-radius: 999px;
   color: var(--accent-dark);
-  font-weight: 900;
+  font-weight: 850;
   font-size: .86rem;
   background:
     linear-gradient(135deg, rgba(255, 237, 213, 0.95), rgba(255, 255, 255, 0.96)),
@@ -1892,7 +1903,7 @@ input::placeholder, textarea::placeholder { color: var(--muted-light); }
   max-width: 520px;
   max-height: 90vh;
   overflow-y: auto;
-  box-shadow: var(--shadow-lg);
+  box-shadow: 0 24px 70px rgba(5, 42, 46, .12);
   display: grid;
 }
 .modal-container.modal--sm { max-width: 380px; }
@@ -1939,7 +1950,7 @@ input::placeholder, textarea::placeholder { color: var(--muted-light); }
   border-radius: var(--radius);
   font-weight: 600;
   font-size: .88rem;
-  box-shadow: var(--shadow-lg);
+  box-shadow: 0 24px 70px rgba(5, 42, 46, .12);
   animation: toast-slide-in .3s ease;
 }
 .toast-item--leaving {
@@ -5192,7 +5203,7 @@ input::placeholder, textarea::placeholder { color: var(--muted-light); }
   background: #edf2ff;
   color: #2447b8;
   font-size: .78rem;
-  font-weight: 900;
+  font-weight: 850;
 }
 
 .shell--teacher .teacher-course-card strong {
@@ -5301,7 +5312,7 @@ input::placeholder, textarea::placeholder { color: var(--muted-light); }
 .shell--teacher .teacher-grade-field > span {
   color: #786b5c;
   font-size: .76rem;
-  font-weight: 900;
+  font-weight: 850;
   letter-spacing: .05em;
   text-transform: uppercase;
 }
@@ -5342,7 +5353,7 @@ input::placeholder, textarea::placeholder { color: var(--muted-light); }
   border-radius: 10px;
   background: #0f7c70;
   color: #fff;
-  font-weight: 900;
+  font-weight: 850;
   white-space: nowrap;
 }
 
@@ -5361,7 +5372,7 @@ input::placeholder, textarea::placeholder { color: var(--muted-light); }
   border-radius: 8px;
   background: #fff;
   color: #6f4f2b;
-  font-weight: 900;
+  font-weight: 850;
 }
 
 .shell--teacher .gradebook-kpi-grid {
@@ -5412,7 +5423,7 @@ input::placeholder, textarea::placeholder { color: var(--muted-light); }
   background: #2447b8;
   color: #fff;
   font-size: .82rem;
-  font-weight: 900;
+  font-weight: 850;
 }
 
 .shell--teacher .gb-student-main {
@@ -5486,7 +5497,7 @@ input::placeholder, textarea::placeholder { color: var(--muted-light); }
 
 .teacher-material-upload-progress__header span {
   color: #2447b8;
-  font-weight: 900;
+  font-weight: 850;
 }
 
 .teacher-material-upload-progress__track {
@@ -5624,7 +5635,7 @@ input::placeholder, textarea::placeholder { color: var(--muted-light); }
 .assessment-create-modal__header span {
   color: #6a745f;
   font-size: .76rem;
-  font-weight: 900;
+  font-weight: 850;
   letter-spacing: .08em;
   text-transform: uppercase;
 }
@@ -5679,7 +5690,7 @@ input::placeholder, textarea::placeholder { color: var(--muted-light); }
 .assessment-create-field label {
   color: #786b5c;
   font-size: .78rem;
-  font-weight: 900;
+  font-weight: 850;
   letter-spacing: .05em;
   text-transform: uppercase;
 }
@@ -5724,7 +5735,7 @@ input::placeholder, textarea::placeholder { color: var(--muted-light); }
   border-radius: 10px;
   background: #0f7c70;
   color: #fff;
-  font-weight: 900;
+  font-weight: 850;
 }
 
 @media (max-width: 1080px) {
@@ -5791,7 +5802,7 @@ input::placeholder, textarea::placeholder { color: var(--muted-light); }
   color: #fff;
   border-radius: 16px;
   overflow: hidden;
-  box-shadow: var(--shadow-lg);
+  box-shadow: 0 24px 70px rgba(5, 42, 46, .12);
 }
 
 .simce-exam__topbar-main {
@@ -5818,7 +5829,7 @@ input::placeholder, textarea::placeholder { color: var(--muted-light); }
   font-size: clamp(22px, 3vw, 36px);
   letter-spacing: .025em;
   line-height: 1.12;
-  font-weight: 900;
+  font-weight: 850;
   overflow-wrap: anywhere;
   word-break: break-word;
 }
@@ -5832,7 +5843,7 @@ input::placeholder, textarea::placeholder { color: var(--muted-light); }
 .simce-exam__badge {
   background: var(--simce-yellow);
   color: #11315a;
-  font-weight: 900;
+  font-weight: 850;
   border-radius: 14px;
   padding: 14px 22px;
   font-size: 20px;
@@ -6026,7 +6037,7 @@ input::placeholder, textarea::placeholder { color: var(--muted-light); }
   border: 2px solid var(--simce-blue);
   color: var(--simce-blue);
   border-radius: 999px;
-  font-weight: 900;
+  font-weight: 850;
   font-size: 13px;
   margin-right: 6px;
   flex-shrink: 0;
@@ -6082,7 +6093,7 @@ input::placeholder, textarea::placeholder { color: var(--muted-light); }
   background: var(--card);
   padding: 18px;
   margin-top: 20px;
-  box-shadow: var(--shadow-lg);
+  box-shadow: 0 24px 70px rgba(5, 42, 46, .12);
 }
 
 .simce-exam__result-grid {
@@ -6102,7 +6113,7 @@ input::placeholder, textarea::placeholder { color: var(--muted-light); }
 
 .simce-exam__result-number {
   font-size: 24px;
-  font-weight: 900;
+  font-weight: 850;
   color: var(--simce-blue);
 }
 
@@ -6118,7 +6129,7 @@ input::placeholder, textarea::placeholder { color: var(--muted-light); }
   margin-top: 12px;
   padding: 12px;
   border-radius: 12px;
-  font-weight: 900;
+  font-weight: 850;
   text-align: center;
   font-size: 14px;
 }
@@ -6184,7 +6195,7 @@ input::placeholder, textarea::placeholder { color: var(--muted-light); }
   margin: 0;
   color: #fff;
   font-size: 1.25rem;
-  font-weight: 900;
+  font-weight: 850;
   letter-spacing: -.01em;
 }
 
