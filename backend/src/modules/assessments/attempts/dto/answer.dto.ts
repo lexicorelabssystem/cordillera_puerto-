@@ -35,6 +35,14 @@ export class SaveAnswersDto {
 }
 
 export class SubmitAttemptDto {
+  @ApiPropertyOptional({ description: "Respuestas finales a guardar antes de enviar", type: [SingleAnswerDto] })
+  @IsOptional()
+  @IsArray()
+  @ArrayMaxSize(120)
+  @ValidateNested({ each: true })
+  @Type(() => SingleAnswerDto)
+  answers?: SingleAnswerDto[];
+
   @ApiPropertyOptional({ description: "Tiempo total empleado en segundos" })
   @IsOptional()
   @IsInt()
