@@ -21,11 +21,13 @@ export function LoginPage({ onLogin, loading, error }: Props) {
         <div className="login-hero__brand">
           <img src="/educacore.png" alt="EducaCore" />
         </div>
-        <p className="login-hero__eyebrow">Sistema de gestion escolar</p>
-        <h1>EducaCore</h1>
-        <p>
-          Gestion educativa, evaluaciones y seguimiento pedagogico para comunidades escolares.
-        </p>
+        <div className="login-hero__copy">
+          <p className="login-hero__eyebrow">Sistema de gestion escolar</p>
+          <h1>EducaCore</h1>
+          <p>
+            Gestion educativa, evaluaciones y seguimiento pedagogico para comunidades escolares.
+          </p>
+        </div>
       </section>
       <section className="login-panel" aria-label="Acceso a EducaCore">
         <form className="login-form" onSubmit={handleSubmit}>
