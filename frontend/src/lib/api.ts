@@ -901,7 +901,7 @@ export const api = {
       method: "POST",
       body: JSON.stringify(payload),
     }),
-  submitAssessmentAttempt: (attemptId: string, payload: { timeSpentSec?: number; confirmEmpty?: boolean }) =>
+  submitAssessmentAttempt: (attemptId: string, payload: { answers?: { questionId: string; selectedOptionId?: string; textAnswer?: string }[]; timeSpentSec?: number; confirmEmpty?: boolean }) =>
     request<{ attemptId: string; status: string; totalScore: number; maxScore: number; percentage: number; grade: number | null; gradedCount: number; pendingManualCount: number }>(`/attempts/${attemptId}/submit`, {
       method: "POST",
       body: JSON.stringify(payload),

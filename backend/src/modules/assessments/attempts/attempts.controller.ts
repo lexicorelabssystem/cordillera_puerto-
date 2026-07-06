@@ -45,7 +45,7 @@ export class AttemptsController {
     @Body() dto: SubmitAttemptDto,
     @CurrentUser() user: JwtPayload,
   ) {
-    return this.service.submitAttempt(id, user.sub, dto.timeSpentSec, dto.confirmEmpty);
+    return this.service.submitAttempt(id, user.sub, dto.timeSpentSec, dto.confirmEmpty, dto.answers ?? []);
   }
 
   @Get(":id")

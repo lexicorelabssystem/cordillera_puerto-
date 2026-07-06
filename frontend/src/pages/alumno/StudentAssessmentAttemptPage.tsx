@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useParams } from "react-router-dom";
 import { ShellLayout } from "../../components/common/ShellLayout";
@@ -49,6 +49,7 @@ export function StudentAssessmentAttemptPage({ user, onLogout }: Props) {
   const [timerSeconds, setTimerSeconds] = useState<number | null>(null);
   const [showReview, setShowReview] = useState(false);
   const [showSubmitConfirm, setShowSubmitConfirm] = useState(false);
+  const autoSubmitTriggeredRef = useRef(false);
 
   const assessmentQuery = useQuery({
     queryKey: ["student-assessment-detail", id],
@@ -107,6 +108,7 @@ export function StudentAssessmentAttemptPage({ user, onLogout }: Props) {
   const startMutation = useMutation({
     mutationFn: () => api.startAssessmentAttempt(id!),
     onSuccess: (result) => {
+      autoSubmitTriggeredRef.current = false;
       setAttemptId(result.attemptId);
       if (result.timeLimitMin) {
         setTimerSeconds(result.timeLimitMin * 60);
@@ -132,15 +134,25 @@ export function StudentAssessmentAttemptPage({ user, onLogout }: Props) {
   });
 
   const submitMutation = useMutation({
-    mutationFn: async () => {
+    mutationFn: async (options?: { auto?: boolean }) => {
       if (!attemptId) throw new Error("Primero inicia la evaluacion.");
-      if (answerPayload.length) {
-        await api.saveAssessmentAnswers(attemptId, { answers: answerPayload });
+      const elapsedSec = assessment?.timeLimitMin && timerSeconds !== null
+        ? Math.max(0, assessment.timeLimitMin * 60 - timerSeconds)
+        : undefined;
+
+      if (!options?.auto && answerPayload.length) {
+        await api.saveAssessmentAnswers(attemptId, { answers: answerPayload, timeSpentSec: elapsedSec });
       }
-      return api.submitAssessmentAttempt(attemptId, { confirmEmpty: true });
+
+      return api.submitAssessmentAttempt(attemptId, {
+        answers: answerPayload,
+        timeSpentSec: elapsedSec,
+        confirmEmpty: true,
+      });
     },
-    onSuccess: (result) => {
+    onSuccess: (result, options) => {
       setShowSubmitConfirm(false);
+      setTimerSeconds(0);
       setSubmitted({
         correct: Math.round((result.percentage / 100) * totalQuestions),
         total: totalQuestions,
@@ -149,15 +161,23 @@ export function StudentAssessmentAttemptPage({ user, onLogout }: Props) {
         pendingManual: result.pendingManualCount,
         answers: [],
       });
-      toast("Evaluacion enviada.", "success");
+      toast(options?.auto ? "Tiempo finalizado. Evaluacion enviada automaticamente." : "Evaluacion enviada.", "success");
       queryClient.invalidateQueries({ queryKey: ["student-portal"] });
       queryClient.invalidateQueries({ queryKey: ["student-assessment-attempt", attemptId] });
     },
     onError: (error) => {
+      autoSubmitTriggeredRef.current = false;
       toast(error instanceof Error ? error.message : "No se pudo enviar.", "error");
     },
   });
 
+  useEffect(() => {
+    if (!attemptId || locked || submitted || timerSeconds !== 0 || submitMutation.isPending || autoSubmitTriggeredRef.current) return;
+    autoSubmitTriggeredRef.current = true;
+    setShowSubmitConfirm(false);
+    toast("Tiempo finalizado. Enviando evaluacion automaticamente...", "info");
+    submitMutation.mutate({ auto: true });
+  }, [attemptId, locked, submitMutation, submitted, timerSeconds, toast]);
   function setOption(questionId: string, selectedOptionId: string) {
     setAnswers((cur) => ({ ...cur, [questionId]: { selectedOptionId } }));
   }
@@ -269,7 +289,7 @@ export function StudentAssessmentAttemptPage({ user, onLogout }: Props) {
                   <li>Cada pregunta de seleccion multiple tiene alternativas. Solo una es correcta.</li>
                 ) : null}
                 <li>Lee con calma cada pregunta y analiza todas las alternativas antes de responder.</li>
-                {assessment.timeLimitMin ? <li>Dispones de <strong>{assessment.timeLimitMin} minutos</strong>. El cronometro es referencial.</li> : null}
+                {assessment.timeLimitMin ? <li>Dispones de <strong>{assessment.timeLimitMin} minutos</strong>. Al agotarse, la evaluacion se enviara automaticamente.</li> : null}
                 <li>Al finalizar, presiona <strong>Enviar evaluacion</strong> para ver el resultado.</li>
               </ul>
               <div className="simce-exam__init">
@@ -499,7 +519,7 @@ export function StudentAssessmentAttemptPage({ user, onLogout }: Props) {
                 type="button"
                 className="simce-exam__btn simce-exam__btn--primary"
                 disabled={submitMutation.isPending}
-                onClick={() => submitMutation.mutate()}
+                onClick={() => submitMutation.mutate({ auto: false })}
               >
                 {submitMutation.isPending ? "Enviando..." : "Sí, enviar evaluación"}
               </button>

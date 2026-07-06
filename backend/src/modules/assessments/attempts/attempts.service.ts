@@ -240,7 +240,13 @@ export class AttemptsService {
   //  SUBMIT ATTEMPT
   // ══════════════════════════════════════════════════════
 
-  async submitAttempt(attemptId: string, userId: string, timeSpentSec?: number, confirmEmpty?: boolean) {
+  async submitAttempt(
+    attemptId: string,
+    userId: string,
+    timeSpentSec?: number,
+    confirmEmpty?: boolean,
+    finalAnswers: { questionId: string; selectedOptionId?: string; textAnswer?: string }[] = [],
+  ) {
     const scope = await resolveUserScope(this.prisma, userId);
     if (!scope.studentId) throw new ForbiddenException("Perfil de estudiante no encontrado");
 
@@ -264,9 +270,14 @@ export class AttemptsService {
       throw new BadRequestException(`El intento ya fue ${attempt.status === "COMPLETED" ? "enviado" : attempt.status}`);
     }
 
-    // Check for unanswered questions
+    const finalAnswerQuestionIds = new Set(finalAnswers.map((answer) => answer.questionId));
+
+    // Check for unanswered questions, considering answers sent with this final submit.
     if (!confirmEmpty) {
-      const answeredIds = new Set(attempt.answers.map((a) => a.questionId));
+      const answeredIds = new Set([
+        ...attempt.answers.map((a) => a.questionId),
+        ...finalAnswerQuestionIds,
+      ]);
       const unanswered = attempt.assessment.questions.filter((q) => !answeredIds.has(q.questionId));
       if (unanswered.length > 0) {
         throw new BadRequestException({
@@ -284,7 +295,10 @@ export class AttemptsService {
       (answer) => !answer.isGraded && answer.selectedOptionId,
     );
     const optionIds = [
-      ...new Set(ungradedAnswers.map((answer) => answer.selectedOptionId).filter((id): id is string => Boolean(id))),
+      ...new Set([
+        ...ungradedAnswers.map((answer) => answer.selectedOptionId).filter((id): id is string => Boolean(id)),
+        ...finalAnswers.map((answer) => answer.selectedOptionId).filter((id): id is string => Boolean(id)),
+      ]),
     ];
     const options = optionIds.length > 0
       ? await this.prisma.questionOption.findMany({
@@ -293,7 +307,49 @@ export class AttemptsService {
       })
       : [];
     const optionById = new Map(options.map((option) => [option.id, option]));
-    const savedAnswerIds = new Set(attempt.answers.map((answer) => answer.questionId));
+    const preparedFinalAnswers = finalAnswers.map((answer) => {
+      const aq = assessmentQuestionById.get(answer.questionId);
+      if (!aq) {
+        throw new BadRequestException(`La pregunta ${answer.questionId} no pertenece a esta evaluacion`);
+      }
+
+      let isCorrect: boolean | null = null;
+      let score: number | null = null;
+      let isGraded = false;
+      let status: AnswerStatus = "PENDING";
+
+      if (answer.selectedOptionId && ["MULTIPLE_CHOICE", "TRUE_FALSE"].includes(aq.question.type)) {
+        const option = optionById.get(answer.selectedOptionId);
+        if (!option || option.questionId !== answer.questionId) {
+          throw new BadRequestException(`La alternativa ${answer.selectedOptionId} no pertenece a la pregunta ${answer.questionId}`);
+        }
+        isCorrect = option.isCorrect;
+        score = isCorrect ? aq.points : 0;
+        isGraded = true;
+        status = isCorrect ? "CORRECT" : "INCORRECT";
+      } else if (answer.textAnswer && ["SHORT_ANSWER", "ESSAY"].includes(aq.question.type)) {
+        status = "MANUAL_REVIEW";
+        isGraded = false;
+      } else if (!answer.selectedOptionId && !answer.textAnswer) {
+        status = "OMITTED";
+        score = 0;
+        isGraded = true;
+      }
+
+      return {
+        questionId: answer.questionId,
+        selectedOptionId: answer.selectedOptionId ?? null,
+        textAnswer: answer.textAnswer ?? null,
+        isCorrect,
+        score,
+        status,
+        isGraded,
+      };
+    });
+    const savedAnswerIds = new Set([
+      ...attempt.answers.map((answer) => answer.questionId),
+      ...preparedFinalAnswers.map((answer) => answer.questionId),
+    ]);
     const omittedQuestions = attempt.assessment.questions.filter((question) => !savedAnswerIds.has(question.questionId));
     const maxScore = attempt.assessment.questions.reduce((sum, q) => sum + q.points, 0);
     const elapsed = timeSpentSec ?? Math.floor(
@@ -302,6 +358,32 @@ export class AttemptsService {
     const now = new Date();
 
     return this.prisma.$transaction(async (tx) => {
+      for (const answer of preparedFinalAnswers) {
+        await tx.studentAnswer.upsert({
+          where: { attemptId_questionId: { attemptId, questionId: answer.questionId } },
+          create: {
+            attemptId,
+            questionId: answer.questionId,
+            selectedOptionId: answer.selectedOptionId,
+            textAnswer: answer.textAnswer,
+            isCorrect: answer.isCorrect,
+            score: answer.score,
+            status: answer.status,
+            isGraded: answer.isGraded,
+            answeredAt: now,
+          },
+          update: {
+            selectedOptionId: answer.selectedOptionId,
+            textAnswer: answer.textAnswer,
+            isCorrect: answer.isCorrect,
+            score: answer.score,
+            status: answer.status,
+            isGraded: answer.isGraded,
+            answeredAt: now,
+          },
+        });
+      }
+
       for (const answer of ungradedAnswers) {
         const aq = assessmentQuestionById.get(answer.questionId);
         if (!aq || !["MULTIPLE_CHOICE", "TRUE_FALSE"].includes(aq.question.type)) continue;
